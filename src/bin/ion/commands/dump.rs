@@ -12,8 +12,7 @@ extern "C" {
 }
 
 fn run_ion_c_cli(args: &[&str]) {
-
-    // Convert the length-prefixed Rust String arguments to null-terminated C strings.
+    // Convert the length-prefixed Rust str arguments to null-terminated C strings
     let argv_as_c_str = args
         .iter()
         .map(|arg| CString::new(*arg).unwrap())
@@ -27,7 +26,7 @@ fn run_ion_c_cli(args: &[&str]) {
         .map(|arg| arg.as_ptr())
         .collect::<Vec<*const c_char>>();
 
-    // The number arguments as a C int
+    // The number of arguments as a C int
     let argc = argv_as_char_star.len() as c_int;
 
     // Programs sometimes rely on argv being null-terminated, so we'll push a null onto the array.
@@ -42,7 +41,7 @@ fn run_ion_c_cli(args: &[&str]) {
 
 pub fn app() -> App<'static, 'static> {
     App::new("dump")
-        .about("Prints Ion in the requested format.")
+        .about("Prints Ion in the requested format")
         .arg(
             Arg::with_name("format")
                 .long("format")
