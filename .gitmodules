@@ -1,0 +1,3 @@
+[submodule "ion-c"]
+	path = ion-c
+	url = https://github.com/amzn/ion-c.git

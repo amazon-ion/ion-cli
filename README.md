@@ -1,11 +1,14 @@
-## My Project
+## `ion-cli`
 
-TODO: Fill this README out!
+_This package is considered experimental. It is under active/early development,
+and the API is subject to change._
 
-Be sure to:
+## Developer notes
 
-* Change the title in this README
-* Edit your repository description on GitHub
+Run the following command to initialize all of the necessary git submodules.
+```
+git submodule update --init --recursive
+```
 
 ## Security
 
@@ -14,4 +17,3 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 ## License
 
 This project is licensed under the Apache-2.0 License.
-
