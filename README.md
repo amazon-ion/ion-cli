@@ -29,9 +29,9 @@ and the API is subject to change._
 5. Confirm that `~/.cargo/bin` is on your `$PATH`. `rustup` will probably take care of this for you.
 
 6. Confirm that the executable is available
-```
-ion help
-```
+   ```
+   ion help
+   ```
 
 ## Security
 
