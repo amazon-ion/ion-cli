@@ -7,28 +7,26 @@ and the API is subject to change._
 
 1. Clone the repository
 ```
-git clone https://github.com/amzn/ion-cli.git
+git clone --recursive https://github.com/amzn/ion-cli.git
 ```
+(If you had already cloned it, but the `ion-c` directory is missing or empty, run `git submodule update --init --recursive`.)
 
 2. Step into the newly created directory
 ```
 cd ion-cli
 ```
 
-3. Run the following command to initialize all of the necessary git submodules
-```
-git submodule update --init --recursive
-```
+3. Install Rust/Cargo [via `rustup`](https://rustup.rs/)
 
-4. Install Rust/Cargo [via `rustup`](https://rustup.rs/)
-
-5. Build the `ion` tool
+4. Build the `ion` tool
 ```
 cargo install --path .
 ```
 This will put a copy of the `ion` executable in `~/.cargo/bin`.
 
-6. Add `~/.cargo/bin` to your `$PATH`
+**If this step fails:** You're likely missing one of `ion-c`'s dependencies. Make sure you have `cmake`, `gcc`, `g++`, and `libc++` installed.
+
+5. Confirm that `~/.cargo/bin` is on your `$PATH`. `rustup` will probably take care of this for you.
 
 7. Confirm that the executable is available
 ```
