@@ -1,4 +1,5 @@
 use cmake::Config;
+use std::env;
 use std::fs::create_dir_all;
 use std::path::Path;
 use std::process;
@@ -37,11 +38,21 @@ fn main() {
 
     // decNumber library
     println!("cargo:rustc-link-search=native=./ion-c/build/release/build/decNumber");
-    println!("cargo:rustc-link-lib=static=decNumberStatic");
+    println!("cargo:rustc-link-lib=static=decNumber_static");
 
     // C++ library
-    println!("cargo:rustc-link-search=native=/usr/lib");
-    println!("cargo:rustc-link-lib=c++");
+    let target = env::var("TARGET").unwrap();
+    if target.contains("apple") {
+        // macOS users use libc++
+        println!("cargo:rustc-link-lib=dylib=c++");
+    } else if target.contains("linux") {
+        // GCC users
+        println!("cargo:rustc-link-lib=dylib=stdc++");
+    } else {
+        // TODO support Windows/Unixes/etc. correctly
+        unimplemented!("Linking C++ is not yet supported on this platform {}", target);
+    }
+
 
     // ion-c CLI library
     println!("cargo:rustc-link-search=native=./ion-c/build/release/build/tools/cli/");
