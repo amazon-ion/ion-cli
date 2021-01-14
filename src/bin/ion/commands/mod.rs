@@ -1,7 +1,7 @@
 use clap::{App, ArgMatches};
 
-pub mod dump;
 pub mod beta;
+pub mod dump;
 
 // Creates a Vec of CLI configurations for all of the available built-in commands
 pub fn built_in_commands() -> Vec<App<'static, 'static>> {
