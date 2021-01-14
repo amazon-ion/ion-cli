@@ -50,9 +50,11 @@ fn main() {
         println!("cargo:rustc-link-lib=dylib=stdc++");
     } else {
         // TODO support Windows/Unixes/etc. correctly
-        unimplemented!("Linking C++ is not yet supported on this platform {}", target);
+        unimplemented!(
+            "Linking C++ is not yet supported on this platform {}",
+            target
+        );
     }
-
 
     // ion-c CLI library
     println!("cargo:rustc-link-search=native=./ion-c/build/release/build/tools/cli/");
