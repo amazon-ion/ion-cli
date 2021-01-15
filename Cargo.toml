@@ -11,6 +11,10 @@ repository = "https://github.com/amzn/ion-cli"
 [dependencies]
 clap = "~2.27.0"
 libc = "0.2"
+ion-rs = { path = "/Users/zslayton/ion-rust"}
+colored = "2.0.0"
+memmap = "0.7.0"
+tempfile = "3.2.0"
 
 [build-dependencies]
 cmake = "0.1.44"
@@ -19,4 +23,3 @@ cmake = "0.1.44"
 name = "ion"
 test = false
 bench = false
-
