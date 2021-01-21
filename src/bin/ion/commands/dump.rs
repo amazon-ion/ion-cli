@@ -1,9 +1,11 @@
+use anyhow::Result;
 use clap::{App, Arg, ArgMatches};
 
 use libc::c_char;
 use libc::c_int;
 use std::ffi::CString;
 use std::ptr;
+use crate::commands::CommandConfig;
 
 // ion_c_cli_main is a C function that lives in the ion-c CLI, to which ion-cli is
 // statically linked.
@@ -39,7 +41,7 @@ fn run_ion_c_cli(args: &[&str]) {
     }
 }
 
-pub fn app() -> App<'static, 'static> {
+pub fn app() -> CommandConfig {
     App::new("dump")
         .about("Prints Ion in the requested format")
         .arg(
@@ -68,7 +70,7 @@ pub fn app() -> App<'static, 'static> {
         )
 }
 
-pub fn run(command_name: &str, matches: &ArgMatches<'static>) {
+pub fn run(command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     let mut args: Vec<&str> = vec![command_name, "process"];
 
     // -f pretty|text|binary
@@ -93,4 +95,5 @@ pub fn run(command_name: &str, matches: &ArgMatches<'static>) {
     }
 
     run_ion_c_cli(&args);
+    Ok(())
 }
