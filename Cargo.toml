@@ -5,6 +5,9 @@ authors = ["The Ion Team <ion-team@amazon.com>"]
 edition = "2018"
 description = "Command line tool for working with the Ion data format."
 repository = "https://github.com/amzn/ion-cli"
+license = "Apache-2.0"
+categories = ["command-line-utilities", "development-tools", "encoding", "parsing"]
+keywords = ["format", "parse", "encode"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
