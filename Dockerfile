@@ -1,5 +1,5 @@
 FROM rust:1.56-slim as builder
-ENV builddeps="cmake git gcc g++ clang"
+ENV builddeps="cmake git clang"
 WORKDIR /usr/src/ion-cli
 COPY . .
 RUN apt-get update -y \
