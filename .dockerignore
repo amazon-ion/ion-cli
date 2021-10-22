@@ -1,0 +1,8 @@
+/target
+/.idea
+
+*.md
+
+Dockerfile
+LICENSE
+NOTICE
