@@ -35,15 +35,15 @@ and the API is subject to change._
 
 ### Docker Instructions
 
-1. Install Docker (see OS specific instructions on the [Docker website](https://docs.docker.com/get-docker/))
-2. Clone the repository (recursive clone not necessary)
+1. Clone the repository (recursive clone not necessary)
    ```
    git clone https://github.com/amzn/ion-cli.git
    ```
-3. Step into the newly created directory
+2. Step into the newly created directory
    ```
    cd ion-cli
    ```
+3. Install Docker (see OS specific instructions on the [Docker website](https://docs.docker.com/get-docker/))
 4. Build and run the image
    ```
    # build the image
