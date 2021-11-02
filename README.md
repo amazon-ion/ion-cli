@@ -24,7 +24,7 @@ and the API is subject to change._
    ```
    This will put a copy of the `ion` executable in `~/.cargo/bin`.
 
-   **If this step fails:** You're likely missing one of `ion-c`'s dependencies. Make sure you have `cmake` and `clang` installed.
+   **If this step fails:** You're likely missing one of `ion-c`'s dependencies. Make sure you have `cmake`, `gcc`, `g++` and `clang` installed. On Debian-based Linux distributions, the only required dependencies are `cmake` and `clang`.
 
 5. Confirm that `~/.cargo/bin` is on your `$PATH`. `rustup` will probably take care of this for you.
 
