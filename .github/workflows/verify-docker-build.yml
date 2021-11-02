@@ -1,0 +1,26 @@
+name: Verify Docker image builds
+on:
+    push:
+        branches:
+            - master
+
+    pull_request:
+        branches:
+            - master
+
+jobs:
+  push_to_registry:
+    name: Build docker image
+    runs-on: ubuntu-20.04
+    steps:
+    -
+        name: Checkout repository
+        uses: actions/checkout@v2
+    -
+        name: Setup Docker buildx
+        uses: docker/setup-buildx-action@v1
+    -
+        name: Build image
+        run: docker buildx build -t ion-cli:test-build .
+
+

@@ -24,7 +24,7 @@ and the API is subject to change._
    ```
    This will put a copy of the `ion` executable in `~/.cargo/bin`.
 
-   **If this step fails:** You're likely missing one of `ion-c`'s dependencies. Make sure you have `cmake`, `gcc`, `g++`, and `libc++` installed.
+   **If this step fails:** You're likely missing one of `ion-c`'s dependencies. Make sure you have `cmake` and `clang` installed.
 
 5. Confirm that `~/.cargo/bin` is on your `$PATH`. `rustup` will probably take care of this for you.
 
@@ -35,15 +35,15 @@ and the API is subject to change._
 
 ### Docker Instructions
 
-1. Clone the repository (recursive clone not necessary)
+1. Install Docker (see OS specific instructions on the [Docker website](https://docs.docker.com/get-docker/))
+2. Clone the repository (recursive clone not necessary)
    ```
    git clone https://github.com/amzn/ion-cli.git
    ```
-2. Step into the newly created directory
+3. Step into the newly created directory
    ```
    cd ion-cli
    ```
-3. Install Docker (see OS specific instructions on the [Docker website](https://docs.docker.com/get-docker/))
 4. Build and run the image
    ```
    # build the image
