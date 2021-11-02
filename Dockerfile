@@ -1,5 +1,5 @@
 FROM rust:1.56.1-slim-buster as builder
-ENV builddeps="cmake git clang"
+ENV builddeps="cmake git"
 WORKDIR /usr/src/ion-cli
 COPY . .
 RUN apt-get update -y \
