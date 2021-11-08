@@ -24,7 +24,12 @@ ion-schema = "0.1.0"
 [build-dependencies]
 cmake = "0.1.44"
 
+[dev-dependencies]
+rstest = "~0.10.0"
+assert_cmd = "~1.0.5"
+tempfile = "~3.2.0"
+
 [[bin]]
 name = "ion"
-test = false
+test = true
 bench = false
