@@ -5,7 +5,7 @@ COPY . .
 RUN apt-get update -y \
   && apt-get install -y ${builddeps} \
   && git submodule update --init --recursive
-RUN cargo install --path .
+RUN cargo install --verbose --path .
 
 FROM debian:11.1-slim
 COPY --from=builder /usr/local/cargo/bin/ion /usr/bin/ion
