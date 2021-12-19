@@ -16,7 +16,7 @@ enum FileMode {
 }
 
 struct TestCase<S: AsRef<str>> {
-    /// The text of the ion grammar to test
+    /// The text of the ion payload to test
     ion_text: S,
     /// The expected Ion
     expected_ion: OwnedElement,
@@ -37,12 +37,38 @@ impl From<(&'static str, &'static str)> for TestCase<&'static str> {
 #[case::simple((
 r#"
 {
-  name: "Fido"
+  name: "Fido",
+
+  age: years::4,
+
+  birthday: 2012-03-01T,
+
+  toys: [
+    ball,
+    rope,
+  ],
+
+  weight: pounds::41.2,
+
+  buzz: {{VG8gaW5maW5pdHkuLi4gYW5kIGJleW9uZCE=}},
 }
 "#,
 r#"
 {
-  name: "Fido"
+  name: "Fido",
+
+  age: years::4,
+
+  birthday: 2012-03-01T,
+
+  toys: [
+    ball,
+    rope,
+  ],
+
+  weight: pounds::41.2,
+
+  buzz: {{VG8gaW5maW5pdHkuLi4gYW5kIGJleW9uZCE=}},
 }
 "#
 ).into())]
