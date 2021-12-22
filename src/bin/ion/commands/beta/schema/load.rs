@@ -1,8 +1,8 @@
 use anyhow::{Result};
 use clap::{App, Arg, ArgMatches};
-use ion_schema_rust::authority::{DocumentAuthority, FileSystemDocumentAuthority};
+use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
 use std::path::Path;
-use ion_schema_rust::system::SchemaSystem;
+use ion_schema::system::SchemaSystem;
 
 const ABOUT: &str = "Loads an Ion Schema file using user provided schema id and returns a result message. Shows an error message if there were any invalid schema syntax found during the load process";
 
@@ -57,13 +57,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     let mut schema_system = SchemaSystem::new(document_authorities);
 
     // load given schema
-    let schema = schema_system.load_schema(schema_id);
-
-    if schema.is_ok() {
-        eprintln!("Schema: {:?} was successfully loaded", schema.unwrap().id());
-    } else {
-        eprintln!("{:?}", schema.unwrap_err());
-    }
+    println!("Schema: {:#?}", schema_system.load_schema(schema_id)?);
 
     Ok(())
 }
