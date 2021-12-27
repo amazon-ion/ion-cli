@@ -1,4 +1,5 @@
 pub mod inspect;
+pub mod schema;
 
 use anyhow::Result;
 use clap::{App, ArgMatches};
@@ -11,12 +12,14 @@ use crate::commands::{CommandRunner, CommandConfig};
 pub fn beta_subcommands() -> Vec<CommandConfig> {
     vec![
         inspect::app(),
+        schema::app()
     ]
 }
 
 pub fn runner_for_beta_subcommand(command_name: &str) -> Option<CommandRunner> {
     let runner = match command_name {
         "inspect" => inspect::run,
+        "schema" => schema::run,
         _ => return None
     };
     Some(runner)
