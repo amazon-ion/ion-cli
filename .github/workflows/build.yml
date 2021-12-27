@@ -30,8 +30,8 @@ jobs:
       - name: Rust Toolchain
         uses: actions-rs/toolchain@v1
         with:
-          profile: minimal
-          toolchain: stable
+          # nightly can be very volatile--pin this to a version we know works well...
+          toolchain: nightly-2021-08-30
           override: true
       - name: Cargo Build
         uses: actions-rs/cargo@v1
@@ -42,7 +42,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --verbose --workspace
+          args: --verbose --workspace -- --test-threads=1
 
       # TODO: fix rustfmt issues
       # - name: Rustfmt Check
