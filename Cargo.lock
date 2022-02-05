@@ -30,6 +30,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
 
 [[package]]
+name = "arrayvec"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8da52d66c7071e2e3fa2a1e5c6d088fec47b593032b254f5e980de8ea54454d6"
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -294,13 +300,14 @@ dependencies = [
 
 [[package]]
 name = "ion-cli"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
  "cmake",
  "colored",
- "ion-rs",
+ "ion-rs 0.8.0",
+ "ion-schema",
  "libc",
  "memmap",
  "tempfile",
@@ -308,10 +315,11 @@ dependencies = [
 
 [[package]]
 name = "ion-rs"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9b5511aa03f80ded9dd90d0244770cd7280a8eea1546fa25ea8f3e4dad0a541"
+checksum = "8bf75af80121752ccbbab9db0366ba35ee48ecc6167cc41fce8a634601138f8c"
 dependencies = [
+ "arrayvec 0.7.2",
  "base64",
  "bigdecimal",
  "bytes",
@@ -319,6 +327,38 @@ dependencies = [
  "delegate",
  "ion-c-sys",
  "nom 6.1.2",
+ "num-bigint",
+ "num-traits",
+ "thiserror",
+]
+
+[[package]]
+name = "ion-rs"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6640b51cd262630f3d3ee3b14baf2e1b06cfbbb4f91ac016725ecf09100d3f44"
+dependencies = [
+ "arrayvec 0.7.2",
+ "base64",
+ "bigdecimal",
+ "bytes",
+ "chrono",
+ "delegate",
+ "ion-c-sys",
+ "nom 6.1.2",
+ "num-bigint",
+ "num-traits",
+ "thiserror",
+]
+
+[[package]]
+name = "ion-schema"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "338e16fcad39203a34e529cfb7da57df3e04c37dfc9bdb831399ed3bcd1bb865"
+dependencies = [
+ "chrono",
+ "ion-rs 0.7.0",
  "num-bigint",
  "num-traits",
  "thiserror",
@@ -351,7 +391,7 @@ version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6607c62aa161d23d17a9072cc5da0be67cdfc89d3afb1e8d9c842bebc2525ffe"
 dependencies = [
- "arrayvec",
+ "arrayvec 0.5.2",
  "bitflags 1.2.1",
  "cfg-if 1.0.0",
  "ryu",

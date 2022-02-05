@@ -1,8 +1,8 @@
 [package]
 name = "ion-cli"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["The Ion Team <ion-team@amazon.com>"]
-edition = "2018"
+edition = "2021"
 description = "Command line tool for working with the Ion data format."
 repository = "https://github.com/amzn/ion-cli"
 license = "Apache-2.0"
@@ -15,7 +15,7 @@ keywords = ["format", "parse", "encode"]
 anyhow = "1.0"
 clap = "~2.27.0"
 colored = "2.0.0"
-ion-rs = "~0.6.0"
+ion-rs = "0.8.0"
 libc = "0.2"
 memmap = "0.7.0"
 tempfile = "3.2.0"
