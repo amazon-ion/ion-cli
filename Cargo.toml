@@ -30,6 +30,6 @@ assert_cmd = "~1.0.5"
 tempfile = "~3.2.0"
 
 [[bin]]
-name = "ion-cli"
+name = "ion"
 test = true
 bench = false
