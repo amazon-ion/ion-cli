@@ -22,10 +22,13 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           # nightly can be very volatile--pin this to a version we know works well...
-          toolchain: nightly-2021-08-30
+          toolchain: nightly-2022-01-10
           override: true
       - name: Cargo Test
-        # uses: actions-rs/cargo@v1
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --workspace --all-features --no-fail-fast --verbose -- --test-threads=1
         env:
           CARGO_INCREMENTAL: '0'
           # https://github.com/marketplace/actions/rust-grcov
@@ -34,8 +37,6 @@ jobs:
           #RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
           RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
           RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off'
-        run: |
-          cargo test --workspace --all-features --no-fail-fast --verbose -- --test-threads=1
       - id: coverage
         name: Code Coverage
         uses: actions-rs/grcov@v0.1

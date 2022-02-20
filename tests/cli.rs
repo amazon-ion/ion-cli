@@ -1,4 +1,5 @@
 use anyhow::Result;
+use assert_cmd::Command;
 use ion_rs::value::owned::OwnedElement;
 use ion_rs::value::reader::*;
 use rstest::*;
@@ -6,7 +7,6 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::time::Duration;
 use tempfile::TempDir;
-use assert_cmd::Command;
 
 enum FileMode {
     /// Use `STDIN` or `STDOUT`
@@ -28,7 +28,7 @@ impl From<(&'static str, &'static str)> for TestCase<&'static str> {
         let expected_ion = element_reader().read_one(expected_ion.as_bytes()).unwrap();
         Self {
             ion_text,
-            expected_ion
+            expected_ion,
         }
     }
 }
@@ -74,14 +74,13 @@ r#"
 ).into())]
 fn run_it<S: AsRef<str>>(
     #[case] test_case: TestCase<S>,
-#[values("", "binary", "text", "pretty")] format_flag: &str,
-#[values(FileMode::Default, FileMode::Named)] input_mode: FileMode,
-#[values(FileMode::Default, FileMode::Named)] output_mode: FileMode
+    #[values("", "binary", "text", "pretty")] format_flag: &str,
+    #[values(FileMode::Default, FileMode::Named)] input_mode: FileMode,
+    #[values(FileMode::Default, FileMode::Named)] output_mode: FileMode,
 ) -> Result<()> {
-
     let TestCase {
         ion_text,
-        expected_ion
+        expected_ion,
     } = test_case;
 
     let temp_dir = TempDir::new()?;
@@ -97,7 +96,7 @@ fn run_it<S: AsRef<str>>(
     match output_mode {
         FileMode::Default => {
             // do nothing
-        },
+        }
         FileMode::Named => {
             // tell driver to output to a file
             cmd.arg("-o");
@@ -109,7 +108,7 @@ fn run_it<S: AsRef<str>>(
         FileMode::Default => {
             // do nothing
             cmd.write_stdin(ion_text.as_ref());
-        },
+        }
         FileMode::Named => {
             // dump our test data to input file
             let mut input_file = File::create(&input_path)?;
@@ -120,7 +119,6 @@ fn run_it<S: AsRef<str>>(
 
             // make this the input for our driver
             cmd.arg(input_path.to_str().unwrap());
-
         }
     };
 

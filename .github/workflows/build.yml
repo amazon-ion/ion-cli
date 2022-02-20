@@ -8,21 +8,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     # We want to run on external PRs, but not on internal ones as push automatically builds
     # H/T: https://github.com/Dart-Code/Dart-Code/commit/612732d5879730608baa9622bf7f5e5b7b51ae65
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != 'amzn/ion-rust'
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != 'amzn/ion-cli'
     strategy:
       matrix:
         # TODO: add windows after fixing build issues
         os: [ubuntu-latest, macos-latest]
 
     steps:
-      # TODO: fix Windows build
-      # - name: Remove MSys64 MingW64 Binaries
-      #   if: runner.os == 'Windows'
-      #   # remove this because there is a bad libclang.dll that confuses bindgen
-      #   run: Remove-Item -LiteralPath "C:\msys64\mingw64\bin" -Force -Recurse
-      # - name: Install Dependencies
-      #   if: runner.os == 'Windows'
-      #   run: choco install llvm -y
       - name: Git Checkout
         uses: actions/checkout@v2
         with:
@@ -30,8 +22,8 @@ jobs:
       - name: Rust Toolchain
         uses: actions-rs/toolchain@v1
         with:
-          # nightly can be very volatile--pin this to a version we know works well...
-          toolchain: nightly-2021-08-30
+          profile: minimal
+          toolchain: stable
           override: true
       - name: Cargo Build
         uses: actions-rs/cargo@v1
@@ -43,10 +35,8 @@ jobs:
         with:
           command: test
           args: --verbose --workspace -- --test-threads=1
-
-      # TODO: fix rustfmt issues
-      # - name: Rustfmt Check
-      #   uses: actions-rs/cargo@v1
-      #   with:
-      #     command: fmt
-      #     args: --verbose -- --check
+      - name: Rustfmt Check
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --verbose -- --check
