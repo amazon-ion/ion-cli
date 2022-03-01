@@ -72,6 +72,8 @@ r#"
 }
 "#
 ).into())]
+/// Calls the ion CLI binary dump command with a set of arguments the ion-cli is expected to support.
+/// This does not verify specific formatting, only basic CLI behavior.
 fn run_it<S: AsRef<str>>(
     #[case] test_case: TestCase<S>,
     #[values("", "binary", "text", "pretty")] format_flag: &str,

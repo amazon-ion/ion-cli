@@ -12,9 +12,16 @@ jobs:
     strategy:
       matrix:
         # TODO: add windows after fixing build issues
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-2019]
 
     steps:
+      - name: Remove MSys64 MingW64 Binaries
+        if: runner.os == 'Windows'
+        # remove this because there is a bad libclang.dll that confuses bindgen
+        run: Remove-Item -LiteralPath "C:\msys64\mingw64\bin" -Force -Recurse
+      - name: Install Dependencies
+        if: runner.os == 'Windows'
+        run: choco install llvm -y
       - name: Git Checkout
         uses: actions/checkout@v2
         with:
