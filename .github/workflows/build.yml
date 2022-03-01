@@ -13,16 +13,9 @@ jobs:
       matrix:
         # TODO: add windows after fixing cmake version error issues
         # see for example Windows build workflow: https://github.com/amzn/ion-rust/blob/a4b154cc0a5b5b661a45ac14d3719a501573d8f2/.github/workflows/rust.yml#L13-L28
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest]
 
     steps:
-      - name: Remove MSys64 MingW64 Binaries
-        if: runner.os == 'Windows'
-        # remove this because there is a bad libclang.dll that confuses bindgen
-        run: Remove-Item -LiteralPath "C:\msys64\mingw64\bin" -Force -Recurse
-      - name: Install Dependencies
-        if: runner.os == 'Windows'
-        run: choco install llvm -y
       - name: Git Checkout
         uses: actions/checkout@v2
         with:
