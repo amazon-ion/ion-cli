@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         # TODO: add windows after fixing build issues
-        os: [ubuntu-latest, macos-latest, windows-2019]
+        os: [ubuntu-latest, windows-2019, macos-latest]
 
     steps:
       - name: Remove MSys64 MingW64 Binaries
