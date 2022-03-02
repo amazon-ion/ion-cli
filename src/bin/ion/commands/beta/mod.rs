@@ -39,7 +39,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
             "The requested beta command ('{}') is not supported and clap did not generate an error message.",
             command_name
         );
-        unreachable!(message);
+        unreachable!("{}", message);
     }
     Ok(())
 }
