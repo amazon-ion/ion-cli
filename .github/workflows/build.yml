@@ -1,0 +1,44 @@
+name: CI Build
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: ${{ matrix.os }}
+    # We want to run on external PRs, but not on internal ones as push automatically builds
+    # H/T: https://github.com/Dart-Code/Dart-Code/commit/612732d5879730608baa9622bf7f5e5b7b51ae65
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != 'amzn/ion-cli'
+    strategy:
+      matrix:
+        # TODO: add windows after fixing cmake version error issues
+        # see for example Windows build workflow: https://github.com/amzn/ion-rust/blob/a4b154cc0a5b5b661a45ac14d3719a501573d8f2/.github/workflows/rust.yml#L13-L28
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Git Checkout
+        uses: actions/checkout@v2
+        with:
+          submodules: recursive
+      - name: Rust Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Cargo Build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --verbose --workspace
+      - name: Cargo Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --verbose --workspace -- --test-threads=1
+      # TODO: run rustfmt and enable check
+      # - name: Rustfmt Check
+      #   uses: actions-rs/cargo@v1
+      #   with:
+      #     command: fmt
+      #     args: --verbose -- --check
