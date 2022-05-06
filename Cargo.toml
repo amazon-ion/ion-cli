@@ -15,14 +15,10 @@ keywords = ["format", "parse", "encode"]
 anyhow = "1.0"
 clap = "~2.27.0"
 colored = "2.0.0"
-ion-rs = "0.10.0"
-libc = "0.2"
+ion-rs = "0.11.0"
 memmap = "0.7.0"
 tempfile = "3.2.0"
-ion-schema = "0.2.0"
-
-[build-dependencies]
-cmake = "0.1.44"
+ion-schema = "0.3.0"
 
 [dev-dependencies]
 rstest = "~0.10.0"
