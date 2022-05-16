@@ -1,5 +1,6 @@
 pub mod inspect;
 pub mod schema;
+pub mod query;
 
 use crate::commands::{CommandConfig, CommandRunner};
 use anyhow::Result;
@@ -10,14 +11,19 @@ use clap::{App, ArgMatches};
 
 // Creates a Vec of CLI configurations for all of the available built-in commands
 pub fn beta_subcommands() -> Vec<CommandConfig> {
-    vec![inspect::app(), schema::app()]
+    vec![
+        inspect::app(),
+        schema::app(),
+        query::app()
+    ]
 }
 
 pub fn runner_for_beta_subcommand(command_name: &str) -> Option<CommandRunner> {
     let runner = match command_name {
         "inspect" => inspect::run,
         "schema" => schema::run,
-        _ => return None,
+        "query" => query::run,
+        _ => return None
     };
     Some(runner)
 }
