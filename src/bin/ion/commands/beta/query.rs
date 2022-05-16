@@ -1,18 +1,11 @@
-use std::cmp::min;
-use std::fmt::{Display, Write};
-use std::fs::File;
-use std::io;
-use std::io::BufWriter;
-use std::ops::Range;
-use std::str::{from_utf8_unchecked, FromStr};
-
-use anyhow::{bail, Context, Result};
 use clap::{App, Arg, ArgMatches};
-use colored::Colorize;
+use anyhow::{Result};
+use ion_rs::{SystemReader, IonDataSource, RawReader};
+use ion_rs::text::raw_text_reader::RawTextReader;
+use std::fs;
+use std::path::Path;
 use ion_rs::result::IonResult;
-use ion_rs::text::writer::TextWriter;
-use ion_rs::{IonType, RawBinaryReader, SystemReader, SystemStreamItem};
-use memmap::MmapOptions;
+use ion_rs::raw_reader::RawStreamItem::{VersionMarker, Value};
 
 const ABOUT: &str =
     "A command-line processor for Ion.";
@@ -27,12 +20,35 @@ pub fn app() -> App<'static, 'static> {
             Arg::with_name("jq")
                 .long("jq")
                 .short("j")
-                .takes_value(false)
-                .help("Use jq query syntax"),
+                .help("Uses jq query syntax."),
+        )
+        .arg(
+            Arg::with_name("QUERY")
+                .index(1)
+                .help("Specify the query to run."),
+        )
+        .arg(
+            Arg::with_name("INPUT")
+                .index(2)
+                .required(false)
+                .multiple(true)
+                .help("Specify the input Ion file for querying."),
         )
 }
 
 // This function is invoked by the `jq` command's parent, `beta`.
 pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
+    let is_jq = matches.occurrences_of("jq") == 1;
+    println!("Is jq syntax expected: {}", is_jq);
+
+    let query = matches.value_of("QUERY").unwrap();
+    println!("Query: {}", query);
+
+    let input: Vec<&str> = matches.values_of("INPUT").unwrap().collect();
+    println!("Input: {:?}", input);
+
+    let ion_content = fs::read(Path::new(input[0]))?;
+    let reader = RawTextReader::new(ion_content);
+
     todo!()
 }
