@@ -398,9 +398,9 @@ dependencies = [
 
 [[package]]
 name = "ion-schema"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "338e16fcad39203a34e529cfb7da57df3e04c37dfc9bdb831399ed3bcd1bb865"
+checksum = "18a3ab276f000b1bb25a6f6c866c3d6d035fd76a3058dd789e7c2f370f70d27b"
 dependencies = [
  "chrono",
  "ion-rs 0.7.0",
