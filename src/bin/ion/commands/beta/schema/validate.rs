@@ -1,5 +1,5 @@
 
-use anyhow::{Result};
+use anyhow::{Result, Context};
 use clap::{App, Arg, ArgMatches};
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
 use std::path::Path;
@@ -77,10 +77,10 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
 
     // Extract Ion value provided by user
     let input_file = matches.value_of("input").unwrap();
-    let value = fs::read(input_file).expect("Can not load given ion file");
+    let value = fs::read(input_file).with_context(|| format!("Could not open '{}'", schema_id))?;
     let owned_elements: Vec<OwnedElement> = element_reader()
         .read_all(&value)
-        .expect("parsing failed unexpectedly");
+        .with_context(|| format!("Could not parse Ion file: '{}'", schema_id))?;
 
     // Set up document authorities vector
     let mut document_authorities: Vec<Box<dyn DocumentAuthority>> = vec![];
@@ -98,7 +98,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     let schema = schema_system.load_schema(schema_id);
 
     // get the type provided by user from the schema file
-    let type_ref = schema.unwrap().get_type(schema_type).unwrap();
+    let type_ref = schema?.get_type(schema_type).with_context(|| format!("Schema {} does not have type {}", schema_id, schema_type))?;
 
     // create a text writer to make the output
     let mut output = vec![];
@@ -114,21 +114,21 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
             Ok(_) => {
                 writer.write_string("Valid")?;
                 writer.set_field_name("value");
-                const TEST_BUF_LEN: usize = 4 * 1024 * 1024;
-                let mut buf = vec![0u8; TEST_BUF_LEN];
+                const BUF_LEN: usize = 4 * 1024 * 1024;
+                let mut buf = vec![0u8; BUF_LEN];
                 let mut element_writer =
                     Format::Text(TextKind::Pretty).element_writer_for_slice(&mut buf)?;
                 element_writer.write(&owned_element)?;
                 let slice = element_writer.finish()?;
-                let slice = from_utf8(slice).unwrap_or("<INVALID UTF-8>");
+                let slice = String::from_utf8_lossy(slice);
                 writer.write_string(slice)?;
                 writer.set_field_name("schema");
                 writer.write_string(schema_id)?;
             }
-            Err(_) => {
+            Err(error) => {
                 writer.write_string("Invalid")?;
                 writer.set_field_name("violation");
-                writer.write_string(format!("{:#?}", validation_result.unwrap_err()))?;
+                writer.write_string(format!("{:#?}", error))?;
             }
         }
         writer.step_out()?;
