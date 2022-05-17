@@ -1,4 +1,5 @@
 pub mod load;
+pub mod validate;
 
 use anyhow::Result;
 use clap::{App, ArgMatches};
@@ -11,12 +12,14 @@ use crate::commands::{CommandRunner, CommandConfig};
 pub fn schema_subcommands() -> Vec<CommandConfig> {
     vec![
         load::app(),
+        validate::app()
     ]
 }
 
 pub fn runner_for_schema_subcommand(command_name: &str) -> Option<CommandRunner> {
     let runner = match command_name {
         "load" => load::run,
+        "validate" => validate::run,
         _ => return None
     };
     Some(runner)
