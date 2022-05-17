@@ -9,9 +9,7 @@ use std::str::{from_utf8_unchecked, FromStr};
 use anyhow::{bail, Context, Result};
 use clap::{App, Arg, ArgMatches};
 use colored::Colorize;
-use ion_rs::result::IonResult;
-use ion_rs::text::writer::TextWriter;
-use ion_rs::{IonType, RawBinaryReader, SystemReader, SystemStreamItem};
+use ion_rs::*;
 use memmap::MmapOptions;
 
 const ABOUT: &str =
@@ -228,7 +226,7 @@ struct IonInspector<'a> {
     // Reusable buffer for tracking indentation
     indentation_buffer: String,
     // Text Ion writer for formatting scalar values
-    text_ion_writer: TextWriter<Vec<u8>>,
+    text_ion_writer: RawTextWriter<Vec<u8>>,
 }
 
 impl<'a> IonInspector<'a> {
@@ -239,7 +237,8 @@ impl<'a> IonInspector<'a> {
         limit_bytes: usize,
     ) -> IonInspector<'b> {
         let reader = SystemReader::new(RawBinaryReader::new(io::Cursor::new(input)));
-        let text_ion_writer = TextWriter::new(Vec::with_capacity(TEXT_WRITER_INITIAL_BUFFER_SIZE));
+        let text_ion_writer =
+            RawTextWriter::new(Vec::with_capacity(TEXT_WRITER_INITIAL_BUFFER_SIZE));
         IonInspector {
             output: out,
             reader,
@@ -282,9 +281,9 @@ impl<'a> IonInspector<'a> {
         let mut bytes_skipped_this_level = 0;
 
         loop {
-            let (ion_type, _is_null) = match self.reader.next()? {
-                None => break,
-                Some(SystemStreamItem::VersionMarker(major, minor)) => {
+            let ion_type = match self.reader.next()? {
+                SystemStreamItem::Nothing => break,
+                SystemStreamItem::VersionMarker(major, minor) => {
                     if major != 1 || minor != 0 {
                         bail!(
                             "Only Ion 1.0 is supported. Found IVM for v{}.{}",
@@ -303,12 +302,12 @@ impl<'a> IonInspector<'a> {
                     .expect("output() failure from on_ivm()");
                     continue;
                 }
-                Some(SystemStreamItem::SymbolTableData(ion_type, is_null))
-                | Some(SystemStreamItem::Value(ion_type, is_null)) => {
-                    // We don't care if this is a system or user-level value; that distinction
-                    // is handled inside the SystemReader.
-                    (ion_type, is_null)
-                }
+                // We don't care if this is a system or user-level value; that distinction
+                // is handled inside the SystemReader.
+                SystemStreamItem::SymbolTableValue(ion_type)
+                | SystemStreamItem::Value(ion_type)
+                | SystemStreamItem::SymbolTableNull(ion_type)
+                | SystemStreamItem::Null(ion_type) => ion_type,
             };
             // See if we've already processed `bytes_to_skip` bytes; if not, move to the next value.
             let complete_value_range = self.complete_value_range();
@@ -408,33 +407,36 @@ impl<'a> IonInspector<'a> {
     }
 
     fn write_field_if_present(&mut self) -> IonResult<()> {
-        if let Some(field_token) = self.reader.raw_field_name_token() {
-            let field_id = field_token.local_sid().expect("No SID for field name.");
-            self.hex_buffer.clear();
-            to_hex(
-                &mut self.hex_buffer,
-                self.reader.raw_field_id_bytes().unwrap(),
-            );
-
-            let field_name = self
-                .reader
-                .field_name()
-                .expect("Field ID present, name missing.");
-            self.text_buffer.clear();
-            write!(&mut self.text_buffer, "'{}':", field_name)?;
-
-            self.color_buffer.clear();
-            write!(&mut self.color_buffer, " // ${}:", field_id)?;
-            write!(&mut self.text_buffer, "{}", &self.color_buffer.dimmed())?;
-            output(
-                self.output,
-                self.reader.field_id_offset(),
-                self.reader.field_id_length(),
-                &self.indentation_buffer,
-                &self.hex_buffer,
-                &self.text_buffer,
-            )?;
+        if self.reader.parent_type() != Some(IonType::Struct) {
+            // We're not in a struct; nothing to do.
+            return Ok(());
         }
+        let field_token = self.reader.raw_field_name_token()?;
+        let field_id = field_token.local_sid().expect("No SID for field name.");
+        self.hex_buffer.clear();
+        to_hex(
+            &mut self.hex_buffer,
+            self.reader.raw_field_id_bytes().unwrap(),
+        );
+
+        let field_name = self
+            .reader
+            .field_name()
+            .expect("Field ID present, name missing.");
+        self.text_buffer.clear();
+        write!(&mut self.text_buffer, "'{:?}':", field_name)?;
+
+        self.color_buffer.clear();
+        write!(&mut self.color_buffer, " // ${}:", field_id)?;
+        write!(&mut self.text_buffer, "{}", &self.color_buffer.dimmed())?;
+        output(
+            self.output,
+            self.reader.field_id_offset(),
+            self.reader.field_id_length(),
+            &self.indentation_buffer,
+            &self.hex_buffer,
+            &self.text_buffer,
+        )?;
         Ok(())
     }
 
@@ -540,14 +542,14 @@ impl<'a> IonInspector<'a> {
         } else {
             match ion_type {
                 Null => writer.write_null(ion_type),
-                Boolean => writer.write_bool(reader.read_bool()?.unwrap()),
-                Integer => writer.write_i64(reader.read_i64()?.unwrap()),
-                Float => writer.write_f64(reader.read_f64()?.unwrap()),
-                Decimal => writer.write_big_decimal(&reader.read_big_decimal()?.unwrap()),
-                Timestamp => writer.write_timestamp(&reader.read_timestamp()?.unwrap()),
+                Boolean => writer.write_bool(reader.read_bool()?),
+                Integer => writer.write_i64(reader.read_i64()?),
+                Float => writer.write_f64(reader.read_f64()?),
+                Decimal => writer.write_decimal(&reader.read_decimal()?),
+                Timestamp => writer.write_timestamp(&reader.read_timestamp()?),
                 Symbol => {
                     // TODO: Make this easier in the reader
-                    let symbol_token = reader.read_raw_symbol()?.unwrap();
+                    let symbol_token = reader.read_raw_symbol()?;
                     let sid = symbol_token.local_sid().unwrap();
                     let text = reader
                         .symbol_table()
@@ -556,11 +558,11 @@ impl<'a> IonInspector<'a> {
                     write!(comment_buffer, " // ${}", sid)?;
                     writer.write_symbol(text)
                 }
-                String => reader.string_ref_map(|s| writer.write_string(s))?.unwrap(),
-                Clob => reader.clob_ref_map(|c| writer.write_clob(c))?.unwrap(),
-                Blob => reader.blob_ref_map(|b| writer.write_blob(b))?.unwrap(),
-                // The containers don't use the TextWriter to format anything. They simply write the
-                // appropriate opening delimiter.
+                String => reader.map_string(|s| writer.write_string(s))?,
+                Clob => reader.map_clob(|c| writer.write_clob(c))?,
+                Blob => reader.map_blob(|b| writer.write_blob(b))?,
+                // The containers don't use the RawTextWriter to format anything. They simply write
+                // the appropriate opening delimiter.
                 List => {
                     write!(text_buffer, "[")?;
                     return Ok(());

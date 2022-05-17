@@ -1,7 +1,7 @@
 mod commands;
 
-use anyhow::Result;
 use crate::commands::{built_in_commands, runner_for_built_in_command};
+use anyhow::Result;
 use clap::{crate_authors, crate_version, App, AppSettings};
 
 const PROGRAM_NAME: &str = "ion";

@@ -1,9 +1,9 @@
 pub mod load;
 pub mod validate;
 
+use crate::commands::{CommandConfig, CommandRunner};
 use anyhow::Result;
 use clap::{App, ArgMatches};
-use crate::commands::{CommandRunner, CommandConfig};
 
 // To add a schema subcommand, add your new command to the `schema_subcommands`
 // and `runner_for_schema_subcommands` functions.

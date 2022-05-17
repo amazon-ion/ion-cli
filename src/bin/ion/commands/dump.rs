@@ -1,11 +1,11 @@
 use anyhow::Result;
 use clap::{App, Arg, ArgMatches};
 
+use crate::commands::CommandConfig;
 use libc::c_char;
 use libc::c_int;
 use std::ffi::CString;
 use std::ptr;
-use crate::commands::CommandConfig;
 
 // ion_c_cli_main is a C function that lives in the ion-c CLI, to which ion-cli is
 // statically linked.

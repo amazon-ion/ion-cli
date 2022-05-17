@@ -1,8 +1,8 @@
-use anyhow::{Result};
+use anyhow::Result;
 use clap::{App, Arg, ArgMatches};
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
-use std::path::Path;
 use ion_schema::system::SchemaSystem;
+use std::path::Path;
 
 const ABOUT: &str = "Loads an Ion Schema file using user provided schema id and returns a result message. Shows an error message if there were any invalid schema syntax found during the load process";
 
@@ -61,4 +61,3 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
 
     Ok(())
 }
-

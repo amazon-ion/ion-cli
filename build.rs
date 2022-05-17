@@ -35,15 +35,24 @@ fn main() {
     // which libraries to link against and in which directories they can be found.
 
     // ion_events library
-    println!("cargo:rustc-link-search=native={}/build/tools/events", ion_c_release_dir);
+    println!(
+        "cargo:rustc-link-search=native={}/build/tools/events",
+        ion_c_release_dir
+    );
     println!("cargo:rustc-link-lib=static=ion_events_static");
 
     // ion_c library
-    println!("cargo:rustc-link-search=native={}/build/ionc", ion_c_release_dir);
+    println!(
+        "cargo:rustc-link-search=native={}/build/ionc",
+        ion_c_release_dir
+    );
     println!("cargo:rustc-link-lib=static=ionc_static");
 
     // decNumber library
-    println!("cargo:rustc-link-search=native={}/build/decNumber", ion_c_release_dir);
+    println!(
+        "cargo:rustc-link-search=native={}/build/decNumber",
+        ion_c_release_dir
+    );
     println!("cargo:rustc-link-lib=static=decNumber_static");
 
     // C++ library
@@ -63,7 +72,10 @@ fn main() {
     }
 
     // ion-c CLI library
-    println!("cargo:rustc-link-search=native={}/build/tools/cli/", ion_c_release_dir);
+    println!(
+        "cargo:rustc-link-search=native={}/build/tools/cli/",
+        ion_c_release_dir
+    );
     println!("cargo:rustc-link-lib=static=ion_cli_main");
 
     // Only rebuild ion-c if that submodule directory is updated
