@@ -356,6 +356,7 @@ dependencies = [
  "ion-schema",
  "libc",
  "memmap",
+ "nom 7.1.1",
  "rstest",
  "tempfile",
 ]
