@@ -1,8 +1,8 @@
-use clap::{App, Arg, ArgMatches};
+use clap::{App, Arg, ArgMatches, Values};
 use anyhow::{Result};
 use ion_rs::{SystemReader, IonDataSource, RawReader};
 use ion_rs::text::raw_text_reader::RawTextReader;
-use std::fs;
+use std::{fs, io};
 use std::path::Path;
 use ion_rs::result::IonResult;
 use ion_rs::raw_reader::RawStreamItem::{VersionMarker, Value};
@@ -31,7 +31,7 @@ pub fn app() -> App<'static, 'static> {
             Arg::with_name("INPUT")
                 .index(2)
                 .required(false)
-                .multiple(true)
+                .multiple(false)//TODO: handle multiple files, explicitly specified stdin
                 .help("Specify the input Ion file for querying."),
         )
 }
@@ -44,11 +44,14 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     let query = matches.value_of("QUERY").unwrap();
     println!("Query: {}", query);
 
-    let input: Vec<&str> = matches.values_of("INPUT").unwrap().collect();
-    println!("Input: {:?}", input);
+    let mut rdr: Box<dyn io::Read> = match matches.value_of("INPUT") {
+        None => Box::new(io::stdin()), // no files provided, read from stdin
+        Some(input_file) => Box::new(fs::File::open(input_file).unwrap()),
+    };
 
-    let ion_content = fs::read(Path::new(input[0]))?;
-    let reader = RawTextReader::new(ion_content);
+    // send input to stdout
+    io::copy(&mut rdr, &mut io::stdout()).unwrap();
+    // let reader = RawTextReader::new(ion_content);
 
     todo!()
 }
