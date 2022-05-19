@@ -83,10 +83,10 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     println!("Output: ");
 
     match jq_expression {
-        JqExpression::Dot => {
+        JqTerm::Dot => {
             // identity, do nothing
         }
-        JqExpression::Field(ref name) => {
+        JqTerm::Field(ref name) => {
             // select field for the given field name
             foobar = Box::new(foobar.flat_map(|oe| select_field(name, oe)).into_iter());
         }
@@ -98,7 +98,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     Ok(())
 }
 
-//TODO: this should be a function that we can use with flat_map on an iter
+//TODO: add a switch to get_all/get OwnedElements
 fn select_field<'a>(field_name: &'a String, owned_element: &'a OwnedElement) -> Box<dyn Iterator<Item=&'a OwnedElement> + 'a> {
     if let Some(ion_struct) = owned_element.as_struct() {
         return ion_struct.get_all(field_name);
@@ -109,7 +109,7 @@ fn select_field<'a>(field_name: &'a String, owned_element: &'a OwnedElement) -> 
 fn print(ion_element: &OwnedElement) -> Result<()> {
     //TODO: Handle arbitrarily-sized output objects, or at least larger ones
     let mut buf = vec![0u8; 4096];
-    let mut writer = Format::Text(TextKind::Compact).element_writer_for_slice(&mut buf)?;
+    let mut writer = Format::Text(TextKind::Pretty).element_writer_for_slice(&mut buf)?;
     writer.write(ion_element)?;
     let result = writer.finish()?;
 
@@ -121,12 +121,12 @@ fn print(ion_element: &OwnedElement) -> Result<()> {
 // Yields Ok("", "foo")
 // .foo.bar
 // .foo | .bar
-fn field(input: &str) -> IResult<&str, JqExpression> {
+fn field(input: &str) -> IResult<&str, JqTerm> {
     map(preceded(dot, identifier),
-        |name| JqExpression::Field(name.to_string()))(input)
+        |name| JqTerm::Field(FieldToken { value: name.to_string() }))(input)
 }
 
-fn expression(input: &str) -> IResult<&str, JqExpression> {
+fn expression(input: &str) -> IResult<&str, JqTerm> {
     alt((
         field,
         dot
@@ -157,13 +157,31 @@ fn identifier_trailing_characters(input: &str) -> IResult<&str, &str> {
     recognize(many0_count(identifier_trailing_character))(input)
 }
 
-fn dot(input:&str) -> IResult<&str, JqExpression> {
-    map(char('.'), |_| JqExpression::Dot)(input)
+fn dot(input:&str) -> IResult<&str, JqTerm> {
+    map(char('.'), |_| JqTerm::Dot)(input)
 }
 
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum JqExpression {
+pub(crate) enum JqTerm {
     Dot,
-    Field(String),
+    Field(FieldToken),
+    TermField(JqTerm, FieldToken)
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldToken {
+    value: String
+}
+
+// impl FieldToken {
+//     fn new(value: String) -> Self {
+//         Self {
+//            value
+//         }
+//     }
+//
+//     fn value(&self) -> &String {
+//         &self.value
+//     }
+// }
