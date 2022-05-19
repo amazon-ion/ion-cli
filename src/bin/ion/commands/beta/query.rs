@@ -4,9 +4,9 @@ use std::{fs, io};
 use nom::*;
 use std::io::{Read};
 use ion_rs::value::reader::{ElementReader, element_reader};
-use ion_rs::value::owned::{OwnedElement, OwnedStruct};
+use ion_rs::value::owned::OwnedElement;
 use ion_rs::value::{Element, Struct};
-use ion_rs::value::writer::{ElementWriter, Format, TextKind, SliceElementWriter};
+use ion_rs::value::writer::{ElementWriter, Format, TextKind};
 use nom::combinator::*;
 use nom::sequence::*;
 use nom::branch::*;
@@ -63,9 +63,9 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     };
 
     // get the identifier from given query
-    let (_remaining, jqExpression) = expression(query).unwrap();
+    let (_remaining, jq_expression) = expression(query).unwrap();
 
-    println!("jqExpression: {:?}", jqExpression);
+    println!("jq_expression: {:?}", jq_expression);
 
     println!("Reading in Ion data...");
     // read the given input Ion file with element reader
@@ -74,31 +74,32 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     rdr.read_to_end(&mut ion_buffer)?;
 
     //TODO: Use native reader and writer
-    let mut ion_iter = element_reader()
-        .iterate_over(&ion_buffer)
+    let ion_elements = element_reader()
+        .read_all(&ion_buffer)
         .with_context(|| "Could not parse Ion file")?;
 
-    let mut foobar = Box::new(ion_iter.map(|oe| &oe.unwrap()));
+    let mut foobar: Box<dyn Iterator<Item = &OwnedElement>> = Box::new(ion_elements.iter().map(|oe| oe).into_iter());
 
     println!("Output: ");
 
-
-    match jqExpression {
+    match jq_expression {
         JqExpression::Dot => {
             // identity, do nothing
         }
-        JqExpression::Field(name) => {
-            foobar = Box::new(foobar.flat_map(|oe| select_field(name, oe)));
+        JqExpression::Field(ref name) => {
+            // select field for the given field name
+            foobar = Box::new(foobar.flat_map(|oe| select_field(name, oe)).into_iter());
         }
     }
 
-    ion_iter.map(|oe| print(oe));
+    // print query results
+    foobar.for_each(|oe| print(oe).unwrap());
 
     Ok(())
 }
 
 //TODO: this should be a function that we can use with flat_map on an iter
-fn select_field<'a>(field_name: String, owned_element: &'a OwnedElement) -> Box<dyn Iterator<Item=&OwnedElement> + 'a> {
+fn select_field<'a>(field_name: &'a String, owned_element: &'a OwnedElement) -> Box<dyn Iterator<Item=&'a OwnedElement> + 'a> {
     if let Some(ion_struct) = owned_element.as_struct() {
         return ion_struct.get_all(field_name);
     };
@@ -116,7 +117,6 @@ fn print(ion_element: &OwnedElement) -> Result<()> {
     Ok(())
 }
 
-
 // Recognize something like `.foo`
 // Yields Ok("", "foo")
 // .foo.bar
@@ -128,8 +128,8 @@ fn field(input: &str) -> IResult<&str, JqExpression> {
 
 fn expression(input: &str) -> IResult<&str, JqExpression> {
     alt((
-        dot,
-        field
+        field,
+        dot
     ))(input)
 }
 
