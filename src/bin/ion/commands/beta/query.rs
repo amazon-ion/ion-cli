@@ -4,7 +4,7 @@ use std::{fs, io};
 use nom::*;
 use std::io::{Read};
 use ion_rs::value::reader::{ElementReader, element_reader};
-use ion_rs::value::owned::OwnedElement;
+use ion_rs::value::owned::{OwnedElement};
 use ion_rs::value::{Element, Struct};
 use ion_rs::value::writer::{ElementWriter, Format, TextKind};
 use nom::combinator::*;
@@ -12,6 +12,8 @@ use nom::sequence::*;
 use nom::branch::*;
 use nom::multi::*;
 use nom::character::complete::*;
+use std::rc::Rc;
+use futures::stream::{self, StreamExt};
 
 const ABOUT: &str =
     "A command-line processor for Ion.";
@@ -78,7 +80,8 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
         .read_all(&ion_buffer)
         .with_context(|| "Could not parse Ion file")?;
 
-    let mut foobar: Box<dyn Iterator<Item = &OwnedElement>> = Box::new(ion_elements.iter().map(|oe| oe).into_iter());
+    let mut stream = stream::iter(ion_elements.iter());
+    let mut ion_iter: Box<dyn Iterator<Item = Option<&OwnedElement>>> = Box::new(ion_elements.iter().map(|oe| Some(oe)).into_iter());
 
     println!("Output: ");
 
@@ -88,32 +91,40 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
         }
         JqTerm::Field(ref name) => {
             // select field for the given field name
-            foobar = Box::new(foobar.flat_map(|oe| select_field(name, oe)).into_iter());
+            ion_iter = Box::new(ion_iter.map(|oe| select_field(&name.value, oe)).into_iter());
         }
+        _ => {}
     }
 
     // print query results
-    foobar.for_each(|oe| print(oe).unwrap());
+    ion_iter.for_each(|oe| print(oe).unwrap());
 
     Ok(())
 }
 
 //TODO: add a switch to get_all/get OwnedElements
-fn select_field<'a>(field_name: &'a String, owned_element: &'a OwnedElement) -> Box<dyn Iterator<Item=&'a OwnedElement> + 'a> {
-    if let Some(ion_struct) = owned_element.as_struct() {
-        return ion_struct.get_all(field_name);
-    };
-    Box::new(std::iter::empty())
+fn select_field<'a>(field_name: &'a String, owned_element: Option<&'a OwnedElement>) -> Option<&'a OwnedElement> {
+    if let Some(ion_struct) = owned_element.unwrap().as_struct() {
+        return ion_struct.get(field_name);
+    }
+    panic!("Cannot index {} with string {}", owned_element.unwrap().ion_type(), field_name)
 }
 
-fn print(ion_element: &OwnedElement) -> Result<()> {
-    //TODO: Handle arbitrarily-sized output objects, or at least larger ones
-    let mut buf = vec![0u8; 4096];
-    let mut writer = Format::Text(TextKind::Pretty).element_writer_for_slice(&mut buf)?;
-    writer.write(ion_element)?;
-    let result = writer.finish()?;
+fn print(ion_element: Option<&OwnedElement>) -> Result<()> {
+    match ion_element {
+        None => {
+            println!("null");
+        }
+        Some(element) => {
+            //TODO: Handle arbitrarily-sized output objects, or at least larger ones
+            let mut buf = vec![0u8; 4096];
+            let mut writer = Format::Text(TextKind::Pretty).element_writer_for_slice(&mut buf)?;
 
-    println!("{}", String::from_utf8_lossy(result).to_string());
+            writer.write(element)?;
+            let result = writer.finish()?;
+            println!("{}", String::from_utf8_lossy(result).to_string());
+        }
+    }
     Ok(())
 }
 
@@ -166,7 +177,7 @@ fn dot(input:&str) -> IResult<&str, JqTerm> {
 pub(crate) enum JqTerm {
     Dot,
     Field(FieldToken),
-    TermField(JqTerm, FieldToken)
+    TermField(Rc<JqTerm>, FieldToken)
 }
 
 #[derive(Debug, Clone, PartialEq)]
