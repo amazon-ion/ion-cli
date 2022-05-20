@@ -102,16 +102,13 @@ fn select_term<'a>(jq_term: Box<JqTerm>, ion_iter: Box<dyn Iterator<Item=Option<
         }
         JqTerm::TermField(jq_recursive_term, jq_field) => {
             // Recursive call to select term
-            select_term(Box::new(JqTerm::Field(jq_field.to_owned())), select_term(jq_recursive_term, ion_iter))
+            select_term(jq_recursive_term, select_term(Box::new(JqTerm::Field(jq_field.to_owned())), ion_iter))
         }
     }
 }
 
 //TODO: add a switch to get_all/get OwnedElements
 fn select_field(field_name: String, owned_element: Option<&OwnedElement>) -> Option<&OwnedElement> {
-    // println!("{}", field_name);
-    // println!("{:?}", owned_element.unwrap());
-    // println!("---------");
     if let Some(ion_struct) = owned_element.unwrap().as_struct() {
         return ion_struct.get(field_name);
     }
@@ -148,19 +145,19 @@ fn field(input: &str) -> IResult<&str, JqTerm> {
 
 fn term(input: &str) -> IResult<&str, JqTerm> {
     alt ((
+        term_field,
         field,
         dot
     ))(input)
 }
 
 fn term_field(input: &str) -> IResult<&str, JqTerm> {
-    map(tuple((term, field)),
-        |(jq_term, jq_field)| JqTerm::TermField(Box::new(jq_term), jq_field.field().unwrap()))(input)
+    map(tuple((field, term)),
+        |(jq_field, jq_term)| JqTerm::TermField(Box::new(jq_term), jq_field.field().unwrap()))(input)
 }
 
 fn expression(input: &str) -> IResult<&str, JqTerm> {
     alt((
-        term_field,
         term,
         field,
         dot
