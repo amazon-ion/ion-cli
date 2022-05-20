@@ -12,8 +12,6 @@ use nom::sequence::*;
 use nom::branch::*;
 use nom::multi::*;
 use nom::character::complete::*;
-use std::rc::Rc;
-use futures::stream::{self, StreamExt};
 
 const ABOUT: &str =
     "A command-line processor for Ion.";
@@ -65,9 +63,9 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     };
 
     // get the identifier from given query
-    let (_remaining, jq_expression) = expression(query).unwrap();
+    let (_remaining, jq_term) = expression(query).unwrap();
 
-    println!("jq_expression: {:?}", jq_expression);
+    println!("jq_expression: {:?}", jq_term);
 
     println!("Reading in Ion data...");
     // read the given input Ion file with element reader
@@ -80,21 +78,11 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
         .read_all(&ion_buffer)
         .with_context(|| "Could not parse Ion file")?;
 
-    let mut stream = stream::iter(ion_elements.iter());
     let mut ion_iter: Box<dyn Iterator<Item = Option<&OwnedElement>>> = Box::new(ion_elements.iter().map(|oe| Some(oe)).into_iter());
 
     println!("Output: ");
 
-    match jq_expression {
-        JqTerm::Dot => {
-            // identity, do nothing
-        }
-        JqTerm::Field(ref name) => {
-            // select field for the given field name
-            ion_iter = Box::new(ion_iter.map(|oe| select_field(&name.value, oe)).into_iter());
-        }
-        _ => {}
-    }
+    ion_iter = select_term(Box::new(jq_term), ion_iter);
 
     // print query results
     ion_iter.for_each(|oe| print(oe).unwrap());
@@ -102,8 +90,28 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     Ok(())
 }
 
+fn select_term<'a>(jq_term: Box<JqTerm>, ion_iter: Box<dyn Iterator<Item=Option<&'a OwnedElement>> + 'a>) -> Box<dyn Iterator<Item=Option<&'a OwnedElement>> + 'a> {
+    match *jq_term {
+        JqTerm::Dot => {
+            // identity, do nothing
+            Box::new(std::iter::empty())
+        }
+        JqTerm::Field(name) => {
+            // select field for the given field name
+            Box::new(ion_iter.map(move |oe| select_field(name.value.to_owned(), oe)).into_iter())
+        }
+        JqTerm::TermField(jq_recursive_term, jq_field) => {
+            // Recursive call to select term
+            select_term(Box::new(JqTerm::Field(jq_field.to_owned())), select_term(jq_recursive_term, ion_iter))
+        }
+    }
+}
+
 //TODO: add a switch to get_all/get OwnedElements
-fn select_field<'a>(field_name: &'a String, owned_element: Option<&'a OwnedElement>) -> Option<&'a OwnedElement> {
+fn select_field(field_name: String, owned_element: Option<&OwnedElement>) -> Option<&OwnedElement> {
+    // println!("{}", field_name);
+    // println!("{:?}", owned_element.unwrap());
+    // println!("---------");
     if let Some(ion_struct) = owned_element.unwrap().as_struct() {
         return ion_struct.get(field_name);
     }
@@ -132,13 +140,28 @@ fn print(ion_element: Option<&OwnedElement>) -> Result<()> {
 // Yields Ok("", "foo")
 // .foo.bar
 // .foo | .bar
+// .foo
 fn field(input: &str) -> IResult<&str, JqTerm> {
     map(preceded(dot, identifier),
         |name| JqTerm::Field(FieldToken { value: name.to_string() }))(input)
 }
 
+fn term(input: &str) -> IResult<&str, JqTerm> {
+    alt ((
+        field,
+        dot
+    ))(input)
+}
+
+fn term_field(input: &str) -> IResult<&str, JqTerm> {
+    map(tuple((term, field)),
+        |(jq_term, jq_field)| JqTerm::TermField(Box::new(jq_term), jq_field.field().unwrap()))(input)
+}
+
 fn expression(input: &str) -> IResult<&str, JqTerm> {
     alt((
+        term_field,
+        term,
         field,
         dot
     ))(input)
@@ -177,22 +200,18 @@ fn dot(input:&str) -> IResult<&str, JqTerm> {
 pub(crate) enum JqTerm {
     Dot,
     Field(FieldToken),
-    TermField(Rc<JqTerm>, FieldToken)
+    TermField(Box<JqTerm>, FieldToken)
 }
 
+impl JqTerm {
+    pub fn field(&self) -> Option<FieldToken> {
+        match self {
+            JqTerm::Field(field) => {Some(field.to_owned())}
+            _ => None
+        }
+    }
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldToken {
     value: String
 }
-
-// impl FieldToken {
-//     fn new(value: String) -> Self {
-//         Self {
-//            value
-//         }
-//     }
-//
-//     fn value(&self) -> &String {
-//         &self.value
-//     }
-// }
