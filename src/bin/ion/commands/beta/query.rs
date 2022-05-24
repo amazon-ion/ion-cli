@@ -5,7 +5,7 @@ use nom::*;
 use std::io::{Read};
 use ion_rs::value::reader::{ElementReader, element_reader};
 use ion_rs::value::owned::{OwnedElement};
-use ion_rs::value::{Element, Struct};
+use ion_rs::value::{Element, Struct, Builder};
 use ion_rs::value::writer::{ElementWriter, Format, TextKind};
 use nom::combinator::*;
 use nom::sequence::*;
@@ -63,7 +63,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     };
 
     // get the identifier from given query
-    let (_remaining, jq_term) = expression(query).unwrap();
+    let (_remaining, jq_term) = term(query).unwrap();
 
     println!("jq_expression: {:?}", jq_term);
 
@@ -91,10 +91,11 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
 }
 
 fn select_term<'a>(jq_term: Box<JqTerm>, ion_iter: Box<dyn Iterator<Item=Option<&'a OwnedElement>> + 'a>) -> Box<dyn Iterator<Item=Option<&'a OwnedElement>> + 'a> {
+    // TODO: remove usage of move here
     match *jq_term {
         JqTerm::Dot => {
             // identity, do nothing
-            Box::new(std::iter::empty())
+            ion_iter
         }
         JqTerm::Field(name) => {
             // select field for the given field name
@@ -103,6 +104,13 @@ fn select_term<'a>(jq_term: Box<JqTerm>, ion_iter: Box<dyn Iterator<Item=Option<
         JqTerm::TermField(jq_recursive_term, jq_field) => {
             // Recursive call to select term
             select_term(jq_recursive_term, select_term(Box::new(JqTerm::Field(jq_field.to_owned())), ion_iter))
+        }
+        // TODO: Understand ownership and lifetimes
+        // JqTerm::Literal(literal) => {
+        //     Box::new(ion_iter.map(move |oe| Some(&OwnedElement::new_i64(literal))).into_iter())
+        // }
+        _ => {
+            panic!("Don't know how to handle jq term")
         }
     }
 }
@@ -138,30 +146,23 @@ fn print(ion_element: Option<&OwnedElement>) -> Result<()> {
 // .foo.bar
 // .foo | .bar
 // .foo
-fn field(input: &str) -> IResult<&str, JqTerm> {
-    map(preceded(dot, identifier),
-        |name| JqTerm::Field(FieldToken { value: name.to_string() }))(input)
-}
-
 fn term(input: &str) -> IResult<&str, JqTerm> {
     alt ((
-        term_field,
+        field_term,
         field,
+        literal,
         dot
     ))(input)
 }
 
-fn term_field(input: &str) -> IResult<&str, JqTerm> {
+fn field_term(input: &str) -> IResult<&str, JqTerm> {
     map(tuple((field, term)),
         |(jq_field, jq_term)| JqTerm::TermField(Box::new(jq_term), jq_field.field().unwrap()))(input)
 }
 
-fn expression(input: &str) -> IResult<&str, JqTerm> {
-    alt((
-        term,
-        field,
-        dot
-    ))(input)
+fn field(input: &str) -> IResult<&str, JqTerm> {
+    map(preceded(dot, identifier),
+        |name| JqTerm::Field(FieldToken { value: name.to_string() }))(input)
 }
 
 fn identifier(input: &str) -> IResult<&str, &str> {
@@ -188,15 +189,55 @@ fn identifier_trailing_characters(input: &str) -> IResult<&str, &str> {
     recognize(many0_count(identifier_trailing_character))(input)
 }
 
+fn literal(input: &str) -> IResult<&str, JqTerm> {
+    map(map_res(digit1, str::parse::<i64>), |i| JqTerm::Literal(i))(input)
+}
+
+// map_res(digit1, str::parse)(input)
+
 fn dot(input:&str) -> IResult<&str, JqTerm> {
     map(char('.'), |_| JqTerm::Dot)(input)
 }
 
-
+// Term:
+//         '.'   |
+//         ".."  |
+//         "break" '$' IDENT    |
+//         Term FIELD '?'       |
+//         FIELD '?'            |
+//         Term '.' String '?'  |
+//         '.' String '?'       |
+//         Term FIELD           |
+//         FIELD                |
+//         Term '.' String      |
+//         '.' String           |
+//         Term '[' Exp ']' '?'          |
+//         Term '[' Exp ']'              |
+//         Term '[' ']' '?'              |
+//         Term '[' ']'                  |
+//         Term '[' Exp ':' Exp ']' '?'  |
+//         Term '[' Exp ':' ']' '?'      |
+//         Term '[' ':' Exp ']' '?'      |
+//         Term '[' Exp ':' Exp ']'      |
+//         Term '[' Exp ':' ']'          |
+//         Term '[' ':' Exp ']'          |
+//         LITERAL  |
+//         String   |
+//         FORMAT   |
+//         '(' Exp ')'     |
+//         '[' Exp ']'     |
+//         '[' ']'         |
+//         '{' MkDict '}'  |
+//         '$' "__loc__"   |
+//         '$' IDENT       |
+//         IDENT           |
+//         IDENT '(' Args ')'
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum JqTerm {
+    Literal(i64),
     Dot,
     Field(FieldToken),
+    //TODO: change to FieldTerm
     TermField(Box<JqTerm>, FieldToken)
 }
 
