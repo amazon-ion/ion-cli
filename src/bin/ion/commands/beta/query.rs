@@ -63,9 +63,10 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     };
 
     // get the identifier from given query
-    let (_remaining, jq_term) = term(query).unwrap();
+    let (_remaining, path) = path(query).unwrap();
 
-    println!("jq_expression: {:?}", jq_term);
+    println!("_remaining: {:?}", _remaining);
+    println!("path: {:?}", path);
 
     println!("Reading in Ion data...");
     // read the given input Ion file with element reader
@@ -146,37 +147,38 @@ fn print(ion_element: Option<&OwnedElement>) -> Result<()> {
 // .foo.bar
 // .foo | .bar
 // .foo
-fn term(input: &str) -> IResult<&str, JqTerm> {
-    alt ((
-        field_term,
-        field,
-        number,
-        dot
-    ))(input)
-}
+// fn term(input: &str) -> IResult<&str, JqTerm> {
+//     alt ((
+//         field_term,
+//         field,
+//         number,
+//         dot
+//     ))(input)
+// }
 
 fn expression<T>(input: &str) -> IResult<&str, T> {
     alt((number, string))(input)
 }
 
-fn field_term(input: &str) -> IResult<&str, JqTerm> {
-    map(tuple((field, term)),
-        |(jq_field, jq_term)| JqTerm::TermField(Box::new(jq_term), jq_field.field().unwrap()))(input)
-}
+// fn field_term(input: &str) -> IResult<&str, JqTerm> {
+//     map(tuple((field, term)),
+//         |(jq_field, jq_term)| JqTerm::TermField(Box::new(jq_term), jq_field.field().unwrap()))(input)
+// }
 
+// .["foo"]
+// .identifier(.part|[range])*
 fn path<T>(input: &str) -> IResult<&str, Path<T>> {
     map(
         tuple((field, path_trail)),
         |(head, tail)| {
             let mut path = Vec::new();
-            //TODO: expected `&mut Vec<<unknown>, Global>`, found `Path<<unknown>>`
-            path.append(tail);
+            path.push(head);
+            path.extend(tail);
             path
         }
     )
 }
 
-// .identifier(.part|[range])*
 fn path_trail<T>(input: &str) -> IResult<&str, Path<T>> {
     fold_many0(alt((field, range)),
                         Vec::new,
@@ -195,7 +197,9 @@ fn path_trail<T>(input: &str) -> IResult<&str, Path<T>> {
 // TODO: Handle non-index ranges, e.g. [a:b] instead of [a]
 fn range<T>(input: &str) -> IResult<&str, Part<T>> {
     map(delimited(char('['), expression, char(']')),
-        |name| Part::Index(name.to_string()))(input)
+        |name| match typeof name {
+            // Part::Index(name.to_string())
+        })(input)
 }
 
 fn field<T>(input: &str) -> IResult<&str, Part<T>> {
@@ -204,10 +208,11 @@ fn field<T>(input: &str) -> IResult<&str, Part<T>> {
 }
 
 // "foo bar"
+//TODO: Fixme, this is yielding a string including quotes
 fn string(input: &str) -> IResult<&str, &str> {
-    recognize(delimited(char('"'),
-                        many0(not(char('"'))),
-                        char('"')))(input)
+    delimited(char('"'),
+              recognize(many0_count(not(char('"')))),
+              char('"'))(input)
 }
 
 #[cfg(test)]
@@ -251,13 +256,12 @@ fn identifier_trailing_characters(input: &str) -> IResult<&str, &str> {
     recognize(many0_count(identifier_trailing_character))(input)
 }
 
-// "123b" => 123
+// "123b" => Ok("b", 123)
 //TODO: Fixme - we're discarding/truncating
-fn number(input: &str) -> IResult<&str, (&str, JqTerm)> {
+fn number(input: &str) -> IResult<&str, i64> {
     map(
         map_res(digit1, str::parse::<i64>), // Result<(&str, i64)>
-        |(remainder, i)| (remainder, JqTerm::Literal(i))
-    )(input)
+        |(_, i)| i)(input)
 }
 
 // map_res(digit1, str::parse)(input)

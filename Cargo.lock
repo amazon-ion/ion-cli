@@ -409,6 +409,19 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 [[package]]
 name = "ion-c-sys"
 version = "0.4.14"
+dependencies = [
+ "bigdecimal",
+ "bindgen",
+ "chrono",
+ "cmake",
+ "ion-c-sys-macros 0.1.1",
+ "num-bigint",
+ "paste",
+]
+
+[[package]]
+name = "ion-c-sys"
+version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "437af3116667611a1aa6a6b8cdbff2e6343e6b8416ceb14e10402303e8a602a9"
 dependencies = [
@@ -416,9 +429,18 @@ dependencies = [
  "bindgen",
  "chrono",
  "cmake",
- "ion-c-sys-macros",
+ "ion-c-sys-macros 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-bigint",
  "paste",
+]
+
+[[package]]
+name = "ion-c-sys-macros"
+version = "0.1.1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -463,7 +485,7 @@ dependencies = [
  "bytes",
  "chrono",
  "delegate",
- "ion-c-sys",
+ "ion-c-sys 0.4.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "nom 6.1.2",
  "num-bigint",
  "num-traits",
@@ -473,8 +495,6 @@ dependencies = [
 [[package]]
 name = "ion-rs"
 version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffacd656579b8eb8e712a5761a738cace24ab6f3e03393302a412e16dfa34053"
 dependencies = [
  "arrayvec 0.7.2",
  "base64",
@@ -482,7 +502,7 @@ dependencies = [
  "bytes",
  "chrono",
  "delegate",
- "ion-c-sys",
+ "ion-c-sys 0.4.14",
  "nom 7.1.1",
  "num-bigint",
  "num-integer",
