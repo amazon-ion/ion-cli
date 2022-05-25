@@ -5,7 +5,7 @@ use nom::*;
 use std::io::{Read};
 use ion_rs::value::reader::{ElementReader, element_reader};
 use ion_rs::value::owned::{OwnedElement};
-use ion_rs::value::{Element, Struct, Builder};
+use ion_rs::value::{Element, Struct};
 use ion_rs::value::writer::{ElementWriter, Format, TextKind};
 use nom::combinator::*;
 use nom::sequence::*;
@@ -150,9 +150,13 @@ fn term(input: &str) -> IResult<&str, JqTerm> {
     alt ((
         field_term,
         field,
-        literal,
+        number,
         dot
     ))(input)
+}
+
+fn expression<T>(input: &str) -> IResult<&str, T> {
+    alt((number, string))(input)
 }
 
 fn field_term(input: &str) -> IResult<&str, JqTerm> {
@@ -160,11 +164,64 @@ fn field_term(input: &str) -> IResult<&str, JqTerm> {
         |(jq_field, jq_term)| JqTerm::TermField(Box::new(jq_term), jq_field.field().unwrap()))(input)
 }
 
-fn field(input: &str) -> IResult<&str, JqTerm> {
-    map(preceded(dot, identifier),
-        |name| JqTerm::Field(FieldToken { value: name.to_string() }))(input)
+fn path<T>(input: &str) -> IResult<&str, Path<T>> {
+    map(
+        tuple((field, path_trail)),
+        |(head, tail)| {
+            let mut path = Vec::new();
+            //TODO: expected `&mut Vec<<unknown>, Global>`, found `Path<<unknown>>`
+            path.append(tail);
+            path
+        }
+    )
 }
 
+// .identifier(.part|[range])*
+fn path_trail<T>(input: &str) -> IResult<&str, Path<T>> {
+    fold_many0(alt((field, range)),
+                        Vec::new,
+                            |mut acc, part| {
+                                acc.push(part);
+                                acc
+                            }
+    )(input)
+}
+// a[0]
+// a[1+2]
+// a["foo"]
+// a[1:]
+// a[1:10]
+// ["foo"]["bar"]?[baz]
+// TODO: Handle non-index ranges, e.g. [a:b] instead of [a]
+fn range<T>(input: &str) -> IResult<&str, Part<T>> {
+    map(delimited(char('['), expression, char(']')),
+        |name| Part::Index(name.to_string()))(input)
+}
+
+fn field<T>(input: &str) -> IResult<&str, Part<T>> {
+    map(preceded(dot, identifier),
+        |name| Part::Index(name.to_string()))(input)
+}
+
+// "foo bar"
+fn string(input: &str) -> IResult<&str, &str> {
+    recognize(delimited(char('"'),
+                        many0(not(char('"'))),
+                        char('"')))(input)
+}
+
+#[cfg(test)]
+mod string_tests {
+    use super::*;
+
+    #[test]
+    fn test_string() {
+        assert_eq!(string(r#""foo bar""#), Ok(("", "foo bar")));
+    }
+}
+
+
+// foo
 fn identifier(input: &str) -> IResult<&str, &str> {
     let (remaining, identifier_text) = recognize(terminated(
         pair(identifier_initial_character, identifier_trailing_characters),
@@ -172,6 +229,11 @@ fn identifier(input: &str) -> IResult<&str, &str> {
     ))(input)?;
 
     Ok((remaining, identifier_text))
+}
+
+#[cfg(test)]
+mod identifier_tests {
+
 }
 
 /// Matches any character that can appear at the start of an identifier.
@@ -189,8 +251,13 @@ fn identifier_trailing_characters(input: &str) -> IResult<&str, &str> {
     recognize(many0_count(identifier_trailing_character))(input)
 }
 
-fn literal(input: &str) -> IResult<&str, JqTerm> {
-    map(map_res(digit1, str::parse::<i64>), |i| JqTerm::Literal(i))(input)
+// "123b" => 123
+//TODO: Fixme - we're discarding/truncating
+fn number(input: &str) -> IResult<&str, (&str, JqTerm)> {
+    map(
+        map_res(digit1, str::parse::<i64>), // Result<(&str, i64)>
+        |(remainder, i)| (remainder, JqTerm::Literal(i))
+    )(input)
 }
 
 // map_res(digit1, str::parse)(input)
@@ -252,4 +319,12 @@ impl JqTerm {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldToken {
     value: String
+}
+
+type Path<T> = Vec<Part<T>>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Part<I> {
+    Index(I),
+    Range(Option<I>, Option<I>)
 }
