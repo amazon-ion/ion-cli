@@ -4,7 +4,7 @@ use std::{fs, io};
 use nom::*;
 use std::io::{Read};
 use ion_rs::value::reader::{ElementReader, element_reader};
-use ion_rs::value::owned::{OwnedElement};
+use ion_rs::value::owned::{OwnedElement, OwnedSequence};
 use ion_rs::value::{Element, Struct, Sequence};
 use ion_rs::value::writer::{ElementWriter, Format, TextKind};
 use nom::combinator::*;
@@ -94,6 +94,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     Ok(())
 }
 
+// .["foo"][]
 // .["foo"]
 // .[0]
 // [1, 2 ,3]
@@ -113,8 +114,18 @@ fn filter(path: Path<Token>, ion_iter: IonIterator) -> IonIterator {
                 }
             }
         }
-        Part::Range(_, _) => {
-            panic!("Ranges are unsupported!")
+        Part::Range(from, to) => {
+            match (from, to) {
+                (Some(from_token), Some(to_token)) => {
+                    match (from_token, to_token) {
+                        (Token::Number(from_number), Token::Number(to_number)) => {
+                            Box::new(acc.map(move |oe| select_range(Some(from_number), Some(to_number), oe)).flatten().into_iter())
+                        },
+                        _ => todo!()
+                    }
+                }
+                _ => todo!()
+            }
         }
     } )
 }
@@ -129,6 +140,31 @@ fn select_element(index: i64, owned_element: Option<&OwnedElement>) -> Option<&O
         return ion_sequence.get(idx);
     }
     panic!("Cannot index {} with index {}", owned_element.unwrap().ion_type(), index)
+}
+
+fn select_range(from: Option<i64>, to: Option<i64>, owned_element: Option<&OwnedElement>) -> Vec<Option<&OwnedElement>> {
+    if let Some(ion_sequence) = owned_element.unwrap().as_sequence() {
+        let (from_idx, to_idx) = match (from ,to) {
+            (Some(from_index), Some(to_index)) => {
+                (as_index(ion_sequence, from_index), as_index(ion_sequence, to_index))
+            }
+            _ => todo!()
+        };
+
+        // TODO: check if both from and to are in bound and from < to
+        let itr = ion_sequence.iter();
+        let result: Vec<Option<&OwnedElement>> = itr.skip(from_idx).take(to_idx - from_idx + 1).map(|oe| Some(oe)).collect();
+        return result;
+    }
+    panic!("Cannot index {} with index range {:?}:{:?}", owned_element.unwrap().ion_type(), from, to)
+}
+
+fn as_index(ion_sequence: &OwnedSequence, index: i64) -> usize {
+    if index < 0 {
+        ion_sequence.len() - i64::abs(index) as usize
+    } else {
+        index as usize
+    }
 }
 
 //TODO: add a switch to get_all/get OwnedElements
@@ -195,9 +231,9 @@ fn path(input: &str) -> IResult<&str, Path<Token>> {
 }
 
 fn path_trail(input: &str) -> IResult<&str, Path<Token>> {
-    fold_many0(alt((field, range)),
-                        Vec::new,
-                            |mut acc, part| {
+    fold_many0(alt((field, path_part)),
+               Vec::new,
+               |mut acc, part| {
                                 acc.push(part);
                                 acc
                             }
@@ -208,11 +244,28 @@ fn path_trail(input: &str) -> IResult<&str, Path<Token>> {
 // a["foo"]
 // a[1:]
 // a[1:10]
-// ["foo"]["bar"]?[baz]
+// a[]
+// a[:b]
 // TODO: Handle non-index ranges, e.g. [a:b] instead of [a]
+fn path_part(input: &str) -> IResult<&str, Part<Token>> {
+    // Token (Token, Token)
+    delimited(char('['), alt((range, index)), char(']'))(input)
+}
+
+fn index(input: &str) -> IResult<&str, Part<Token>> {
+    map(expression, |t| Part::Index(t))(input)
+}
+
 fn range(input: &str) -> IResult<&str, Part<Token>> {
-    map(delimited(char('['), expression, char(']')),
-        |expr| Part::Index(expr))(input)
+    // (Token, Token)
+    map(separated_pair(expression,char(':'), expression), |(from, to)| match (&from ,&to) {
+        (&Token::Number(_), &Token::Number(_)) => {
+           Part::Range(Some(from), Some(to))
+        },
+        _ => {
+            panic!("Can not use range {:?}:{:?}", from, to)
+        }
+    })(input)
 }
 
 fn field_or_dot(input: &str) -> IResult<&str, Part<Token>> {
