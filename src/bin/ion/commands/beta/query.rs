@@ -5,13 +5,16 @@ use nom::*;
 use std::io::{Read};
 use ion_rs::value::reader::{ElementReader, element_reader};
 use ion_rs::value::owned::{OwnedElement};
-use ion_rs::value::{Element, Struct};
+use ion_rs::value::{Element, Struct, Sequence};
 use ion_rs::value::writer::{ElementWriter, Format, TextKind};
 use nom::combinator::*;
 use nom::sequence::*;
 use nom::branch::*;
 use nom::multi::*;
 use nom::character::complete::*;
+use nom::bytes::complete::take_until;
+
+type IonIterator<'a> = Box<dyn Iterator<Item=Option<&'a OwnedElement>> + 'a>;
 
 const ABOUT: &str =
     "A command-line processor for Ion.";
@@ -83,7 +86,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
 
     println!("Output: ");
 
-    ion_iter = select_term(Box::new(jq_term), ion_iter);
+    ion_iter = filter(path, ion_iter);
 
     // print query results
     ion_iter.for_each(|oe| print(oe).unwrap());
@@ -91,29 +94,41 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     Ok(())
 }
 
-fn select_term<'a>(jq_term: Box<JqTerm>, ion_iter: Box<dyn Iterator<Item=Option<&'a OwnedElement>> + 'a>) -> Box<dyn Iterator<Item=Option<&'a OwnedElement>> + 'a> {
-    // TODO: remove usage of move here
-    match *jq_term {
-        JqTerm::Dot => {
-            // identity, do nothing
-            ion_iter
+// .["foo"]
+// .[0]
+// [1, 2 ,3]
+// Path: [Part::Index(Token::Dot), Part::Index(Token::String("foo"))]
+fn filter(path: Path<Token>, ion_iter: IonIterator) -> IonIterator {
+    path.into_iter().fold(ion_iter, |acc, part| match part {
+        Part::Index(index) => {
+            match index {
+                Token::Number(number) => {
+                    Box::new(acc.map(move |oe| select_element(number, oe)).into_iter())
+                }
+                Token::String(field_name) => {
+                    Box::new(acc.map(move |oe| select_field(field_name.to_owned(), oe)).into_iter())
+                }
+                Token::Dot => {
+                    acc.into_iter()
+                }
+            }
         }
-        JqTerm::Field(name) => {
-            // select field for the given field name
-            Box::new(ion_iter.map(move |oe| select_field(name.value.to_owned(), oe)).into_iter())
+        Part::Range(_, _) => {
+            panic!("Ranges are unsupported!")
         }
-        JqTerm::TermField(jq_recursive_term, jq_field) => {
-            // Recursive call to select term
-            select_term(jq_recursive_term, select_term(Box::new(JqTerm::Field(jq_field.to_owned())), ion_iter))
-        }
-        // TODO: Understand ownership and lifetimes
-        // JqTerm::Literal(literal) => {
-        //     Box::new(ion_iter.map(move |oe| Some(&OwnedElement::new_i64(literal))).into_iter())
-        // }
-        _ => {
-            panic!("Don't know how to handle jq term")
-        }
+    } )
+}
+
+fn select_element(index: i64, owned_element: Option<&OwnedElement>) -> Option<&OwnedElement> {
+    if let Some(ion_sequence) = owned_element.unwrap().as_sequence() {
+        let idx = if index < 0 {
+           ion_sequence.len() - i64::abs(index) as usize
+        } else {
+            index as usize
+        };
+        return ion_sequence.get(idx);
     }
+    panic!("Cannot index {} with index {}", owned_element.unwrap().ion_type(), index)
 }
 
 //TODO: add a switch to get_all/get OwnedElements
@@ -156,7 +171,7 @@ fn print(ion_element: Option<&OwnedElement>) -> Result<()> {
 //     ))(input)
 // }
 
-fn expression<T>(input: &str) -> IResult<&str, T> {
+fn expression(input: &str) -> IResult<&str, Token> {
     alt((number, string))(input)
 }
 
@@ -167,19 +182,19 @@ fn expression<T>(input: &str) -> IResult<&str, T> {
 
 // .["foo"]
 // .identifier(.part|[range])*
-fn path<T>(input: &str) -> IResult<&str, Path<T>> {
+fn path(input: &str) -> IResult<&str, Path<Token>> {
     map(
-        tuple((field, path_trail)),
+        tuple((field_or_dot, path_trail)),
         |(head, tail)| {
             let mut path = Vec::new();
             path.push(head);
             path.extend(tail);
             path
         }
-    )
+    )(input)
 }
 
-fn path_trail<T>(input: &str) -> IResult<&str, Path<T>> {
+fn path_trail(input: &str) -> IResult<&str, Path<Token>> {
     fold_many0(alt((field, range)),
                         Vec::new,
                             |mut acc, part| {
@@ -195,24 +210,25 @@ fn path_trail<T>(input: &str) -> IResult<&str, Path<T>> {
 // a[1:10]
 // ["foo"]["bar"]?[baz]
 // TODO: Handle non-index ranges, e.g. [a:b] instead of [a]
-fn range<T>(input: &str) -> IResult<&str, Part<T>> {
+fn range(input: &str) -> IResult<&str, Part<Token>> {
     map(delimited(char('['), expression, char(']')),
-        |name| match typeof name {
-            // Part::Index(name.to_string())
-        })(input)
+        |expr| Part::Index(expr))(input)
 }
 
-fn field<T>(input: &str) -> IResult<&str, Part<T>> {
+fn field_or_dot(input: &str) -> IResult<&str, Part<Token>> {
+   alt((field, dot))(input)
+}
+
+fn field(input: &str) -> IResult<&str, Part<Token>> {
     map(preceded(dot, identifier),
-        |name| Part::Index(name.to_string()))(input)
+        |name| Part::Index(Token::String(name.to_string())))(input)
 }
 
 // "foo bar"
-//TODO: Fixme, this is yielding a string including quotes
-fn string(input: &str) -> IResult<&str, &str> {
-    delimited(char('"'),
-              recognize(many0_count(not(char('"')))),
-              char('"'))(input)
+fn string(input: &str) -> IResult<&str, Token> {
+    map(delimited(char('"'),
+recognize(take_until("\"")),
+              char('"')), |s: &str| Token::String(s.to_string()))(input)
 }
 
 #[cfg(test)]
@@ -221,7 +237,7 @@ mod string_tests {
 
     #[test]
     fn test_string() {
-        assert_eq!(string(r#""foo bar""#), Ok(("", "foo bar")));
+        assert_eq!(string(r#""foo bar""#), Ok(("", Token::String("foo bar".to_owned()))));
     }
 }
 
@@ -258,16 +274,14 @@ fn identifier_trailing_characters(input: &str) -> IResult<&str, &str> {
 
 // "123b" => Ok("b", 123)
 //TODO: Fixme - we're discarding/truncating
-fn number(input: &str) -> IResult<&str, i64> {
+fn number(input: &str) -> IResult<&str, Token> {
     map(
-        map_res(digit1, str::parse::<i64>), // Result<(&str, i64)>
-        |(_, i)| i)(input)
+        map_res(recognize(tuple((opt(one_of("+-")), digit1))), str::parse::<i64>), // Result<(&str, i64)>
+        |i| Token::Number(i))(input)
 }
 
-// map_res(digit1, str::parse)(input)
-
-fn dot(input:&str) -> IResult<&str, JqTerm> {
-    map(char('.'), |_| JqTerm::Dot)(input)
+fn dot(input:&str) -> IResult<&str, Part<Token>> {
+    map(char('.'), |_| Part::Index(Token::Dot))(input)
 }
 
 // Term:
@@ -303,32 +317,17 @@ fn dot(input:&str) -> IResult<&str, JqTerm> {
 //         '$' IDENT       |
 //         IDENT           |
 //         IDENT '(' Args ')'
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum JqTerm {
-    Literal(i64),
-    Dot,
-    Field(FieldToken),
-    //TODO: change to FieldTerm
-    TermField(Box<JqTerm>, FieldToken)
-}
-
-impl JqTerm {
-    pub fn field(&self) -> Option<FieldToken> {
-        match self {
-            JqTerm::Field(field) => {Some(field.to_owned())}
-            _ => None
-        }
-    }
-}
-#[derive(Debug, Clone, PartialEq)]
-pub struct FieldToken {
-    value: String
-}
-
 type Path<T> = Vec<Part<T>>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Part<I> {
     Index(I),
     Range(Option<I>, Option<I>)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Token {
+    Number(i64),
+    String(String),
+    Dot
 }
