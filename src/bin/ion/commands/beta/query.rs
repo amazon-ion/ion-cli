@@ -1,5 +1,6 @@
 use clap::{App, Arg, ArgMatches};
 use anyhow::{Result, Context};
+use thiserror::Error;
 use std::{fs, io};
 use nom::*;
 use std::io::{Read};
@@ -15,7 +16,16 @@ use nom::character::complete::*;
 use nom::bytes::complete::take_until;
 use ion_rs::IonType;
 
-type IonIterator = Box<dyn Iterator<Item=Option< OwnedElement>>>;
+type IonIterator = Box<dyn Iterator<Item = IonQueryResult>>;
+type IonQueryResult = Result<Option<OwnedElement>, IonQueryError>;
+
+#[derive(Debug, Clone, Error)]
+enum IonQueryError {
+    #[error(
+    "Illegal query operation: {operation}"
+    )]
+    IllegalOperation { operation: String },
+}
 
 const ABOUT: &str =
     "A command-line processor for Ion.";
@@ -86,7 +96,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
         .read_all(&ion_buffer)
         .with_context(|| "Could not parse Ion file")?;
 
-    let mut ion_iter: Box<dyn Iterator<Item = Option<OwnedElement>>> = Box::new(ion_elements.into_iter().map(|oe| Some(oe)).into_iter());
+    let mut ion_iter: IonIterator = Box::new(ion_elements.into_iter().map(|oe| Ok(Some(oe))).into_iter());
 
     println!("Output: ");
 
@@ -132,44 +142,51 @@ fn filter(path: Path<Token>, ion_iter: IonIterator) -> IonIterator {
     })
 }
 
-fn select_element(index: i64, owned_element: Option<OwnedElement>) -> Option<OwnedElement> {
-    owned_element.and_then(|oe| {
-        if let Some(ion_sequence) = oe.as_sequence() {
-            let idx = as_index(&ion_sequence, index);
-            return ion_sequence.get(idx).map(|i| i.to_owned());
+fn select_element(index: i64, result: IonQueryResult) -> IonQueryResult {
+    result.map(|opt| match opt {
+        None => Ok(None),
+        Some(oe) => {
+            if let Some(ion_sequence) = oe.as_sequence() {
+                let idx = as_index(&ion_sequence, index);
+                return Ok(ion_sequence.get(idx).map(|i| i.to_owned()));
+            }
+            return Err(IonQueryError::IllegalOperation { operation: format!("Cannot index {} with index {}", oe.ion_type(), index)});
         }
-        panic!("Cannot index {} with index {}", oe.ion_type(), index)
-    })
-
+    })?
 }
 
-fn select_range(from: Option<i64>, to: Option<i64>, owned_element: Option<OwnedElement>) -> Option<OwnedElement> {
-    owned_element.map(|oe| {
-        if let Some(ion_sequence) = oe.as_sequence() {
-            let from_idx: usize = from.map(|i| as_index(ion_sequence, i)).unwrap_or(0);
-            let to_idx: usize = to.map(|i| as_index(ion_sequence, i)).unwrap_or(ion_sequence.len());
+fn select_range(from: Option<i64>, to: Option<i64>, result: IonQueryResult) -> IonQueryResult {
+    result.map(|opt| {
+        match opt {
+            None => Ok(None),
+            Some(oe) => {
+                if let Some(ion_sequence) = oe.as_sequence() {
+                    let from_idx: usize = from.map(|i| as_index(ion_sequence, i)).unwrap_or(0);
+                    let to_idx: usize = to.map(|i| as_index(ion_sequence, i)).unwrap_or(ion_sequence.len());
 
-            let run = if from_idx > to_idx {
-                0
-            } else {
-                to_idx - from_idx
-            };
+                    let run = if from_idx > to_idx {
+                        0
+                    } else {
+                        to_idx - from_idx
+                    };
 
-            let generator = match oe.ion_type() {
-                IonType::List => OwnedElement::new_list,
-                IonType::SExpression => OwnedElement::new_sexp,
-                _ => unreachable!("We know that owned_element is a sequence")
-            };
+                    let generator = match oe.ion_type() {
+                        IonType::List => OwnedElement::new_list,
+                        IonType::SExpression => OwnedElement::new_sexp,
+                        _ => unreachable!("We know that owned_element is a sequence")
+                    };
 
-            let partial: Box<dyn Iterator<Item=OwnedElement>> = Box::new(ion_sequence.iter()
-                .skip(from_idx)
-                .take(run)
-                .map(|e| e.to_owned()).into_iter());
-            return generator(partial);
+                    let partial: Box<dyn Iterator<Item=OwnedElement>> = Box::new(ion_sequence.iter()
+                        .skip(from_idx)
+                        .take(run)
+                        .map(|e| e.to_owned()).into_iter());
+                    return Ok(Some(generator(partial)));
+                }
+                return Err(IonQueryError::IllegalOperation { operation: format!("Cannot index {} with index range [{:?}: {:?}]", oe.ion_type(), from, to)});
+            }
         }
-        panic!("Cannot index {} with index range {:?}:{:?}", oe.ion_type(), from, to)
-    }
-    )
+        }
+    )?
 }
 
 fn as_index(ion_sequence: &OwnedSequence, index: i64) -> usize {
@@ -181,22 +198,30 @@ fn as_index(ion_sequence: &OwnedSequence, index: i64) -> usize {
 }
 
 //TODO: add a switch to get_all/get OwnedElements
-fn select_field(field_name: String, owned_element: Option<OwnedElement>) -> Option<OwnedElement> {
-    owned_element.and_then(|oe| {
-        if let Some(ion_struct) = oe.as_struct() {
-            return ion_struct.get(field_name).map(|i| i.to_owned());
+fn select_field(field_name: String, result: IonQueryResult) -> IonQueryResult {
+    result.map(|opt| {
+        match opt {
+            None => Ok(None),
+            Some(oe) => {
+                if let Some(ion_struct) = oe.as_struct() {
+                    return Ok(ion_struct.get(field_name).map(|i| i.to_owned()));
+                }
+                return Err(IonQueryError::IllegalOperation { operation: format!("Cannot index {} with string {}", oe.ion_type(), field_name) });
+            }
         }
-        panic!("Cannot index {} with string {}", oe.ion_type(), field_name)
     }
-    )
+    )?
 }
 
-fn print(ion_element: Option<OwnedElement>) -> Result<()> {
+fn print(ion_element: IonQueryResult) -> Result<()> {
     match ion_element {
-        None => {
+        Err(err) => {
+            println!("ERROR: {}", err);
+        }
+        Ok(None) => {
             println!("null");
         }
-        Some(element) => {
+        Ok(Some(element)) => {
             //TODO: Handle arbitrarily-sized output objects, or at least larger ones
             let mut buf = vec![0u8; 4096];
             let mut writer = Format::Text(TextKind::Pretty).element_writer_for_slice(&mut buf)?;
