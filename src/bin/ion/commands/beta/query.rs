@@ -119,17 +119,13 @@ fn filter(path: Path<Token>, ion_iter: IonIterator) -> IonIterator {
             }
         }
         Part::Range(from, to) => {
-            match (from.to_owned(), to.to_owned()) {
-                (Some(Token::Number(from_number)), Some(Token::Number(to_number))) => {
-                    Box::new(acc.map(move |oe| select_range(Some(from_number), Some(to_number), oe)).into_iter())
+            let fr = from.as_ref().map(|f| f.as_int()).transpose();
+            let tr = to.as_ref().map(|t| t.as_int()).transpose();
+            match (fr, tr) {
+                (Ok(None), Ok(None)) => todo!("implement explode"), // explode!
+                (Ok(fo), Ok(to)) => { // Any other permutation of indexing where both sides are None or Some(i64)
+                            Box::new(acc.map(move |oe| select_range(fo, to, oe)).into_iter())
                 },
-                (None, Some(Token::Number(to_number))) => {
-                    Box::new(acc.map(move |oe| select_range(None, Some(to_number), oe)).into_iter())
-                },
-                (Some(Token::Number(from_number)), None) => {
-                    Box::new(acc.map(move |oe| select_range(Some(from_number), None, oe)).into_iter())
-                },
-                (None, None) => todo!("implement explode"), // explode!
                 _ => panic!("Cannot handle this range {:?}:{:?}", from, to),
             }
         }
@@ -391,4 +387,14 @@ pub enum Token {
     Number(i64),
     String(String),
     Dot
+}
+
+impl Token {
+    /// If the value is integer, return it, else fail.
+    pub fn as_int(&self) -> Result<i64, Token> {
+        match self {
+            Self::Number(i) => Ok(*i),
+            _ => Err(self.clone()),
+        }
+    }
 }
