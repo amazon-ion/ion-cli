@@ -5,7 +5,7 @@ use nom::*;
 use std::io::{Read};
 use ion_rs::value::reader::{ElementReader, element_reader};
 use ion_rs::value::owned::{OwnedElement, OwnedSequence};
-use ion_rs::value::{Element, Struct, Sequence};
+use ion_rs::value::{Element, Struct, Sequence, Builder};
 use ion_rs::value::writer::{ElementWriter, Format, TextKind};
 use nom::combinator::*;
 use nom::sequence::*;
@@ -13,8 +13,9 @@ use nom::branch::*;
 use nom::multi::*;
 use nom::character::complete::*;
 use nom::bytes::complete::take_until;
+use ion_rs::IonType;
 
-type IonIterator<'a> = Box<dyn Iterator<Item=Option<&'a OwnedElement>> + 'a>;
+type IonIterator = Box<dyn Iterator<Item=Option< OwnedElement>>>;
 
 const ABOUT: &str =
     "A command-line processor for Ion.";
@@ -66,9 +67,12 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     };
 
     // get the identifier from given query
-    let (_remaining, path) = path(query).unwrap();
+    let (remaining, path) = path(query).unwrap();
 
-    println!("_remaining: {:?}", _remaining);
+    if !remaining.is_empty() {
+        panic!("Could not parse entire expression, remaining: {:?}", remaining);
+    }
+
     println!("path: {:?}", path);
 
     println!("Reading in Ion data...");
@@ -82,7 +86,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
         .read_all(&ion_buffer)
         .with_context(|| "Could not parse Ion file")?;
 
-    let mut ion_iter: Box<dyn Iterator<Item = Option<&OwnedElement>>> = Box::new(ion_elements.iter().map(|oe| Some(oe)).into_iter());
+    let mut ion_iter: Box<dyn Iterator<Item = Option<OwnedElement>>> = Box::new(ion_elements.into_iter().map(|oe| Some(oe)).into_iter());
 
     println!("Output: ");
 
@@ -115,48 +119,61 @@ fn filter(path: Path<Token>, ion_iter: IonIterator) -> IonIterator {
             }
         }
         Part::Range(from, to) => {
-            match (from, to) {
-                (Some(from_token), Some(to_token)) => {
-                    match (from_token, to_token) {
-                        (Token::Number(from_number), Token::Number(to_number)) => {
-                            Box::new(acc.map(move |oe| select_range(Some(from_number), Some(to_number), oe)).flatten().into_iter())
-                        },
-                        _ => todo!()
-                    }
-                }
-                _ => todo!()
+            match (from.to_owned(), to.to_owned()) {
+                (Some(Token::Number(from_number)), Some(Token::Number(to_number))) => {
+                    Box::new(acc.map(move |oe| select_range(Some(from_number), Some(to_number), oe)).into_iter())
+                },
+                (None, Some(Token::Number(to_number))) => {
+                    Box::new(acc.map(move |oe| select_range(None, Some(to_number), oe)).into_iter())
+                },
+                (Some(Token::Number(from_number)), None) => {
+                    Box::new(acc.map(move |oe| select_range(Some(from_number), None, oe)).into_iter())
+                },
+                (None, None) => todo!("implement explode"), // explode!
+                _ => panic!("Cannot handle this range {:?}:{:?}", from, to),
             }
         }
-    } )
+    })
 }
 
-fn select_element(index: i64, owned_element: Option<&OwnedElement>) -> Option<&OwnedElement> {
-    if let Some(ion_sequence) = owned_element.unwrap().as_sequence() {
-        let idx = if index < 0 {
-           ion_sequence.len() - i64::abs(index) as usize
-        } else {
-            index as usize
-        };
-        return ion_sequence.get(idx);
-    }
-    panic!("Cannot index {} with index {}", owned_element.unwrap().ion_type(), index)
+fn select_element(index: i64, owned_element: Option<OwnedElement>) -> Option<OwnedElement> {
+    owned_element.and_then(|oe| {
+        if let Some(ion_sequence) = oe.as_sequence() {
+            let idx = as_index(&ion_sequence, index);
+            return ion_sequence.get(idx).map(|i| i.to_owned());
+        }
+        panic!("Cannot index {} with index {}", oe.ion_type(), index)
+    })
+
 }
 
-fn select_range(from: Option<i64>, to: Option<i64>, owned_element: Option<&OwnedElement>) -> Vec<Option<&OwnedElement>> {
-    if let Some(ion_sequence) = owned_element.unwrap().as_sequence() {
-        let (from_idx, to_idx) = match (from ,to) {
-            (Some(from_index), Some(to_index)) => {
-                (as_index(ion_sequence, from_index), as_index(ion_sequence, to_index))
-            }
-            _ => todo!()
-        };
+fn select_range(from: Option<i64>, to: Option<i64>, owned_element: Option<OwnedElement>) -> Option<OwnedElement> {
+    owned_element.map(|oe| {
+        if let Some(ion_sequence) = oe.as_sequence() {
+            let from_idx: usize = from.map(|i| as_index(ion_sequence, i)).unwrap_or(0);
+            let to_idx: usize = to.map(|i| as_index(ion_sequence, i)).unwrap_or(ion_sequence.len());
 
-        // TODO: check if both from and to are in bound and from < to
-        let itr = ion_sequence.iter();
-        let result: Vec<Option<&OwnedElement>> = itr.skip(from_idx).take(to_idx - from_idx + 1).map(|oe| Some(oe)).collect();
-        return result;
+            let run = if from_idx > to_idx {
+                0
+            } else {
+                to_idx - from_idx
+            };
+
+            let generator = match oe.ion_type() {
+                IonType::List => OwnedElement::new_list,
+                IonType::SExpression => OwnedElement::new_sexp,
+                _ => unreachable!("We know that owned_element is a sequence")
+            };
+
+            let partial: Box<dyn Iterator<Item=OwnedElement>> = Box::new(ion_sequence.iter()
+                .skip(from_idx)
+                .take(run)
+                .map(|e| e.to_owned()).into_iter());
+            return generator(partial);
+        }
+        panic!("Cannot index {} with index range {:?}:{:?}", oe.ion_type(), from, to)
     }
-    panic!("Cannot index {} with index range {:?}:{:?}", owned_element.unwrap().ion_type(), from, to)
+    )
 }
 
 fn as_index(ion_sequence: &OwnedSequence, index: i64) -> usize {
@@ -168,14 +185,17 @@ fn as_index(ion_sequence: &OwnedSequence, index: i64) -> usize {
 }
 
 //TODO: add a switch to get_all/get OwnedElements
-fn select_field(field_name: String, owned_element: Option<&OwnedElement>) -> Option<&OwnedElement> {
-    if let Some(ion_struct) = owned_element.unwrap().as_struct() {
-        return ion_struct.get(field_name);
+fn select_field(field_name: String, owned_element: Option<OwnedElement>) -> Option<OwnedElement> {
+    owned_element.and_then(|oe| {
+        if let Some(ion_struct) = oe.as_struct() {
+            return ion_struct.get(field_name).map(|i| i.to_owned());
+        }
+        panic!("Cannot index {} with string {}", oe.ion_type(), field_name)
     }
-    panic!("Cannot index {} with string {}", owned_element.unwrap().ion_type(), field_name)
+    )
 }
 
-fn print(ion_element: Option<&OwnedElement>) -> Result<()> {
+fn print(ion_element: Option<OwnedElement>) -> Result<()> {
     match ion_element {
         None => {
             println!("null");
@@ -185,7 +205,7 @@ fn print(ion_element: Option<&OwnedElement>) -> Result<()> {
             let mut buf = vec![0u8; 4096];
             let mut writer = Format::Text(TextKind::Pretty).element_writer_for_slice(&mut buf)?;
 
-            writer.write(element)?;
+            writer.write(&element)?;
             let result = writer.finish()?;
             println!("{}", String::from_utf8_lossy(result).to_string());
         }
@@ -239,14 +259,7 @@ fn path_trail(input: &str) -> IResult<&str, Path<Token>> {
                             }
     )(input)
 }
-// a[0]
-// a[1+2]
-// a["foo"]
-// a[1:]
-// a[1:10]
-// a[]
-// a[:b]
-// TODO: Handle non-index ranges, e.g. [a:b] instead of [a]
+
 fn path_part(input: &str) -> IResult<&str, Part<Token>> {
     // Token (Token, Token)
     delimited(char('['), alt((range, index)), char(']'))(input)
@@ -258,14 +271,9 @@ fn index(input: &str) -> IResult<&str, Part<Token>> {
 
 fn range(input: &str) -> IResult<&str, Part<Token>> {
     // (Token, Token)
-    map(separated_pair(expression,char(':'), expression), |(from, to)| match (&from ,&to) {
-        (&Token::Number(_), &Token::Number(_)) => {
-           Part::Range(Some(from), Some(to))
-        },
-        _ => {
-            panic!("Can not use range {:?}:{:?}", from, to)
-        }
-    })(input)
+    map(separated_pair(opt(expression), char(':'), opt(expression)),
+        |(from, to)| Part::Range(from, to)
+    )(input)
 }
 
 fn field_or_dot(input: &str) -> IResult<&str, Part<Token>> {
@@ -275,6 +283,17 @@ fn field_or_dot(input: &str) -> IResult<&str, Part<Token>> {
 fn field(input: &str) -> IResult<&str, Part<Token>> {
     map(preceded(dot, identifier),
         |name| Part::Index(Token::String(name.to_string())))(input)
+}
+
+// "123b" => Ok("b", 123)
+fn number(input: &str) -> IResult<&str, Token> {
+    map(
+        map_res(recognize(tuple((opt(one_of("+-")), digit1))), str::parse::<i64>), // Result<(&str, i64)>
+        |i: i64| Token::Number(i))(input)
+}
+
+fn dot(input:&str) -> IResult<&str, Part<Token>> {
+    map(char('.'), |_| Part::Index(Token::Dot))(input)
 }
 
 // "foo bar"
@@ -325,17 +344,6 @@ fn identifier_trailing_characters(input: &str) -> IResult<&str, &str> {
     recognize(many0_count(identifier_trailing_character))(input)
 }
 
-// "123b" => Ok("b", 123)
-//TODO: Fixme - we're discarding/truncating
-fn number(input: &str) -> IResult<&str, Token> {
-    map(
-        map_res(recognize(tuple((opt(one_of("+-")), digit1))), str::parse::<i64>), // Result<(&str, i64)>
-        |i| Token::Number(i))(input)
-}
-
-fn dot(input:&str) -> IResult<&str, Part<Token>> {
-    map(char('.'), |_| Part::Index(Token::Dot))(input)
-}
 
 // Term:
 //         '.'   |
