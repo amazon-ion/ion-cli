@@ -9,6 +9,7 @@ use std::str::{from_utf8_unchecked, FromStr};
 use anyhow::{bail, Context, Result};
 use clap::{App, Arg, ArgMatches};
 use colored::Colorize;
+use ion_rs::result::{decoding_error, IonResult};
 use ion_rs::*;
 use memmap::MmapOptions;
 
@@ -101,22 +102,16 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
         limit_bytes = usize::MAX
     }
 
-    let mut output: OutputRef;
     // If the user has specified an output file, use it.
-    if let Some(file_name) = matches.value_of("output") {
+    let mut output: OutputRef = if let Some(file_name) = matches.value_of("output") {
         let output_file =
             File::create(file_name).with_context(|| format!("Could not open '{}'", file_name))?;
         let buf_writer = BufWriter::new(output_file);
-        output = Box::new(buf_writer);
+        Box::new(buf_writer)
     } else {
         // Otherwise, write to STDOUT.
-        // TODO: Using io::stdout() isn't ideal as each write to stdout requires acquiring the
-        //       STDOUT lock. Some research is required to see if there's a different handle we
-        //       could use to avoid that. `io::stdout().lock()` won't work because io::stdout()
-        //       (to which it refers) has a limited lifetime.
-        let buf_writer = BufWriter::new(io::stdout());
-        output = Box::new(buf_writer);
-    }
+        Box::new(io::stdout().lock())
+    };
 
     // Run the inspector on each input file that was specified.
     if let Some(input_file_iter) = matches.values_of("input") {
@@ -190,7 +185,7 @@ fn inspect_file(
         // Pattern match the byte array to verify it starts with an IVM
         [0xE0, 0x01, 0x00, 0xEA, ..] => {
             write_header(output)?;
-            let mut inspector = IonInspector::new(ion_data, output, bytes_to_skip, limit_bytes);
+            let mut inspector = IonInspector::new(ion_data, output, bytes_to_skip, limit_bytes)?;
             // This inspects all values at the top level, recursing as necessary.
             inspector.inspect_level()?;
         }
@@ -235,11 +230,11 @@ impl<'a> IonInspector<'a> {
         out: &'b mut OutputRef,
         bytes_to_skip: usize,
         limit_bytes: usize,
-    ) -> IonInspector<'b> {
+    ) -> IonResult<IonInspector<'b>> {
         let reader = SystemReader::new(RawBinaryReader::new(io::Cursor::new(input)));
-        let text_ion_writer =
-            RawTextWriter::new(Vec::with_capacity(TEXT_WRITER_INITIAL_BUFFER_SIZE));
-        IonInspector {
+        let text_ion_writer = RawTextWriterBuilder::new()
+            .build(Vec::with_capacity(TEXT_WRITER_INITIAL_BUFFER_SIZE))?;
+        let inspector = IonInspector {
             output: out,
             reader,
             bytes_to_skip,
@@ -249,7 +244,8 @@ impl<'a> IonInspector<'a> {
             color_buffer: String::new(),
             indentation_buffer: String::new(),
             text_ion_writer,
-        }
+        };
+        Ok(inspector)
     }
 
     // Returns the offset of the first byte that pertains to the value on which the reader is
@@ -419,12 +415,14 @@ impl<'a> IonInspector<'a> {
             self.reader.raw_field_id_bytes().unwrap(),
         );
 
-        let field_name = self
-            .reader
-            .field_name()
-            .expect("Field ID present, name missing.");
+        let field_name_result = self.reader.field_name();
+        let field_name: &str = if let Ok(ref symbol) = field_name_result {
+            symbol.as_ref()
+        } else {
+            "<UNKNOWN>"
+        };
         self.text_buffer.clear();
-        write!(&mut self.text_buffer, "'{:?}':", field_name)?;
+        write!(&mut self.text_buffer, "'{}':", field_name)?;
 
         self.color_buffer.clear();
         write!(&mut self.color_buffer, " // ${}:", field_id)?;
@@ -437,6 +435,15 @@ impl<'a> IonInspector<'a> {
             &self.hex_buffer,
             &self.text_buffer,
         )?;
+
+        if field_name_result.is_err() {
+            // If we had to write <UNKNOWN> for the field name above, return a fatal error now.
+            return decoding_error(format!(
+                "Encountered a field ID (${}) with unknown text.",
+                field_id
+            ));
+        }
+
         Ok(())
     }
 
@@ -498,7 +505,7 @@ impl<'a> IonInspector<'a> {
         // If it is a container, `inspect_level` will handle stepping into it and writing any
         // nested values.
         if !self.reader.ion_type().unwrap().is_container() {
-            self.hex_buffer.push_str(" ");
+            self.hex_buffer.push(' ');
             to_hex(&mut self.hex_buffer, self.reader.raw_value_bytes().unwrap());
         }
 
@@ -683,7 +690,7 @@ fn output<T: Display>(
         write!(output, "{:9}{}", "", COLUMN_DELIMITER)?;
         // Padding for length column
         write!(output, "{:9}{}", "", COLUMN_DELIMITER)?;
-        let remaining_bytes = &hex_column.len() - col_1_written;
+        let remaining_bytes = hex_column.len() - col_1_written;
         let bytes_to_write = min(remaining_bytes, HEX_COLUMN_SIZE);
         let next_slice_to_write = &hex_column[col_1_written..(col_1_written + bytes_to_write)];
         write!(output, "{}", next_slice_to_write)?;
@@ -707,7 +714,7 @@ fn closing_delimiter_for(container_type: IonType) -> &'static str {
 }
 
 fn to_hex(buffer: &mut String, bytes: &[u8]) {
-    if bytes.len() == 0 {
+    if bytes.is_empty() {
         return;
     }
     write!(buffer, "{:02x}", bytes[0]).unwrap();
@@ -724,7 +731,7 @@ fn join_into<T: Display>(
     if let Some(first) = values.next() {
         write!(buffer, "{}", first).unwrap();
     }
-    while let Some(value) = values.next() {
+    for value in values {
         write!(buffer, "{}{}", delimiter, value).unwrap();
     }
 }

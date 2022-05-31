@@ -10,17 +10,14 @@ use clap::{App, ArgMatches};
 
 // Creates a Vec of CLI configurations for all of the available built-in subcommands for schema
 pub fn schema_subcommands() -> Vec<CommandConfig> {
-    vec![
-        load::app(),
-        validate::app()
-    ]
+    vec![load::app(), validate::app()]
 }
 
 pub fn runner_for_schema_subcommand(command_name: &str) -> Option<CommandRunner> {
     let runner = match command_name {
         "load" => load::run,
         "validate" => validate::run,
-        _ => return None
+        _ => return None,
     };
     Some(runner)
 }

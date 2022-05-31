@@ -1,15 +1,15 @@
-
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use clap::{App, Arg, ArgMatches};
+use ion_rs::value::native_writer::NativeElementWriter;
+use ion_rs::{IonResult, TextWriterBuilder, Writer};
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
-use std::path::Path;
-use ion_schema::system::SchemaSystem;
-use ion_schema::external::ion_rs::value::reader::{element_reader, ElementReader};
-use std::fs;
 use ion_schema::external::ion_rs::value::owned::OwnedElement;
-use ion_schema::external::ion_rs::text::writer::TextWriter;
+use ion_schema::external::ion_rs::value::reader::{element_reader, ElementReader};
+use ion_schema::external::ion_rs::value::writer::ElementWriter;
 use ion_schema::external::ion_rs::IonType;
-use ion_schema::external::ion_rs::value::writer::{TextKind, Format, ElementWriter};
+use ion_schema::system::SchemaSystem;
+use std::fs;
+use std::path::Path;
 use std::str::from_utf8;
 
 const ABOUT: &str = "validates an Ion Value based on given Ion Schema Type";
@@ -98,11 +98,13 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     let schema = schema_system.load_schema(schema_id);
 
     // get the type provided by user from the schema file
-    let type_ref = schema?.get_type(schema_type).with_context(|| format!("Schema {} does not have type {}", schema_id, schema_type))?;
+    let type_ref = schema?
+        .get_type(schema_type)
+        .with_context(|| format!("Schema {} does not have type {}", schema_id, schema_type))?;
 
     // create a text writer to make the output
     let mut output = vec![];
-    let mut writer = TextWriter::new(&mut output);
+    let mut writer = TextWriterBuilder::new().build(&mut output)?;
 
     // validate owned_elements according to type_ref
     for owned_element in owned_elements {
@@ -114,14 +116,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
             Ok(_) => {
                 writer.write_string("Valid")?;
                 writer.set_field_name("value");
-                const BUF_LEN: usize = 4 * 1024 * 1024;
-                let mut buf = vec![0u8; BUF_LEN];
-                let mut element_writer =
-                    Format::Text(TextKind::Pretty).element_writer_for_slice(&mut buf)?;
-                element_writer.write(&owned_element)?;
-                let slice = element_writer.finish()?;
-                let slice = String::from_utf8_lossy(slice);
-                writer.write_string(slice)?;
+                writer.write_string(element_to_string(&owned_element)?)?;
                 writer.set_field_name("schema");
                 writer.write_string(schema_id)?;
             }
@@ -139,4 +134,15 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     Ok(())
 }
 
-
+// TODO: this will be provided by OwnedElement's implementation of `Display` in a future
+//       release of ion-rs.
+fn element_to_string(element: &OwnedElement) -> IonResult<String> {
+    let mut buffer = Vec::new();
+    let text_writer = TextWriterBuilder::new().build(std::io::Cursor::new(&mut buffer))?;
+    let mut element_writer = NativeElementWriter::new(text_writer);
+    element_writer.write(element)?;
+    let mut text_writer = element_writer.finish()?;
+    text_writer.flush()?;
+    drop(text_writer);
+    Ok(from_utf8(buffer.as_slice()).unwrap().to_string())
+}
