@@ -11,9 +11,7 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != 'amzn/ion-cli'
     strategy:
       matrix:
-        # TODO: add windows after fixing cmake version error issues
-        # see for example Windows build workflow: https://github.com/amzn/ion-rust/blob/a4b154cc0a5b5b661a45ac14d3719a501573d8f2/.github/workflows/rust.yml#L13-L28
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-2019]
 
     steps:
       - name: Git Checkout
@@ -35,10 +33,9 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --verbose --workspace -- --test-threads=1
-      # TODO: run rustfmt and enable check
-      # - name: Rustfmt Check
-      #   uses: actions-rs/cargo@v1
-      #   with:
-      #     command: fmt
-      #     args: --verbose -- --check
+          args: --verbose --workspace
+      - name: Rustfmt Check
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --verbose -- --check

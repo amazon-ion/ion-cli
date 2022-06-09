@@ -7,9 +7,8 @@ and the API is subject to change._
 
 1. Clone the repository
    ```
-   git clone --recursive https://github.com/amzn/ion-cli.git
+   git clone https://github.com/amzn/ion-cli.git
    ```
-   (If you had already cloned it, but the `ion-c` directory is missing or empty, run `git submodule update --init --recursive`.)
 
 2. Step into the newly created directory
    ```
@@ -23,8 +22,6 @@ and the API is subject to change._
    cargo install --path .
    ```
    This will put a copy of the `ion` executable in `~/.cargo/bin`.
-
-   **If this step fails:** You're likely missing one of `ion-c`'s dependencies. Make sure you have `cmake`, `gcc`, `g++` and `clang` installed. On Debian-based Linux distributions, the only required dependencies are `cmake` and `clang`.
 
 5. Confirm that `~/.cargo/bin` is on your `$PATH`. `rustup` will probably take care of this for you.
 
