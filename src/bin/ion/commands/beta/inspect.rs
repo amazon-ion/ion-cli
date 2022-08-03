@@ -367,6 +367,11 @@ impl<'a> IonInspector<'a> {
                     self.inspect_level()?;
                     self.reader.step_out()?;
                     // Print the container's closing delimiter: }, ), or ]
+                    self.text_buffer.clear();
+                    self.text_buffer.push_str(&closing_delimiter_for(ion_type));
+                    if ion_type != IonType::SExpression {
+                        self.text_buffer.push_str(",");
+                    }
                     // FIXME: This should also print a trailing `,` if the parent context is
                     //        a list or struct. See this issue for details:
                     //        https://github.com/amzn/ion-cli/issues/17
@@ -376,7 +381,7 @@ impl<'a> IonInspector<'a> {
                         None,
                         &self.indentation_buffer,
                         "",
-                        &closing_delimiter_for(ion_type),
+                        &self.text_buffer,
                     )?;
                 }
                 _ => {}
@@ -509,9 +514,7 @@ impl<'a> IonInspector<'a> {
             to_hex(&mut self.hex_buffer, self.reader.raw_value_bytes().unwrap());
         }
 
-        const TYPE_DESCRIPTOR_SIZE: usize = 1;
-        let length =
-            TYPE_DESCRIPTOR_SIZE + self.reader.header_length() + self.reader.value_length();
+        let length = self.reader.header_length() + self.reader.value_length();
         output(
             self.output,
             Some(self.reader.header_offset()),

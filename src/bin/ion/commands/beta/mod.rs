@@ -1,4 +1,6 @@
+pub mod count;
 pub mod inspect;
+pub mod primitive;
 pub mod schema;
 
 use crate::commands::{CommandConfig, CommandRunner};
@@ -10,12 +12,19 @@ use clap::{App, ArgMatches};
 
 // Creates a Vec of CLI configurations for all of the available built-in commands
 pub fn beta_subcommands() -> Vec<CommandConfig> {
-    vec![inspect::app(), schema::app()]
+    vec![
+        count::app(),
+        inspect::app(),
+        primitive::app(),
+        schema::app(),
+    ]
 }
 
 pub fn runner_for_beta_subcommand(command_name: &str) -> Option<CommandRunner> {
     let runner = match command_name {
+        "count" => count::run,
         "inspect" => inspect::run,
+        "primitive" => primitive::run,
         "schema" => schema::run,
         _ => return None,
     };
