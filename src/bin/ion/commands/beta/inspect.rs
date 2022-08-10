@@ -369,12 +369,9 @@ impl<'a> IonInspector<'a> {
                     // Print the container's closing delimiter: }, ), or ]
                     self.text_buffer.clear();
                     self.text_buffer.push_str(&closing_delimiter_for(ion_type));
-                    if ion_type != IonType::SExpression {
+                    if ion_type != IonType::SExpression && self.reader.depth() > 0 {
                         self.text_buffer.push_str(",");
                     }
-                    // FIXME: This should also print a trailing `,` if the parent context is
-                    //        a list or struct. See this issue for details:
-                    //        https://github.com/amzn/ion-cli/issues/17
                     output(
                         self.output,
                         None,
