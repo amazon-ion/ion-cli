@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use clap::{App, Arg, ArgMatches};
 use ion_rs::*;
 use std::fs::File;
-use std::io::{stdin, stdout, BufReader, StdinLock, Write};
+use std::io::{stdin, stdout, StdinLock, Write};
 
 pub fn app() -> CommandConfig {
     App::new("dump")
@@ -63,10 +63,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
         }
     } else {
         let input: StdinLock = stdin().lock();
-        // TODO: This `BufReader` is only required because StdInLock doesn't yet implement
-        //       ToIonDataSource. It's probably unnecessary overhead.
-        let buf_reader = BufReader::new(input);
-        let mut reader = ReaderBuilder::new().build(buf_reader)?;
+        let mut reader = ReaderBuilder::new().build(input)?;
         write_all_in_format(&mut reader, &mut output, format)?;
     }
 
@@ -108,7 +105,7 @@ fn write_all_values<W: Writer>(reader: &mut Reader, writer: &mut W) -> IonResult
     let mut annotations = vec![];
     loop {
         match reader.next()? {
-            StreamItem::Value(ion_type) => {
+            StreamItem::Value(ion_type) | StreamItem::Null(ion_type) => {
                 if reader.has_annotations() {
                     annotations.clear();
                     for annotation in reader.annotations() {
@@ -121,12 +118,26 @@ fn write_all_values<W: Writer>(reader: &mut Reader, writer: &mut W) -> IonResult
                     writer.set_field_name(reader.field_name()?);
                 }
 
+                if reader.is_null() {
+                    writer.write_null(ion_type)?;
+                    continue;
+                }
+
                 use IonType::*;
                 match ion_type {
-                    Null => unreachable!("StreamItem::Value(_) never contains a null"),
+                    Null => unreachable!("null values are handled prior to this match"),
                     Boolean => writer.write_bool(reader.read_bool()?)?,
                     Integer => writer.write_integer(&reader.read_integer()?)?,
-                    Float => writer.write_f64(reader.read_f64()?)?,
+                    Float => {
+                        let float64 = reader.read_f64()?;
+                        let float32 = float64 as f32;
+                        if float32 as f64 == float64 {
+                            // No data lost during cast; write it as an f32
+                            writer.write_f32(float32)?;
+                        } else {
+                            writer.write_f64(float64)?;
+                        }
+                    }
                     Decimal => writer.write_decimal(&reader.read_decimal()?)?,
                     Timestamp => writer.write_timestamp(&reader.read_timestamp()?)?,
                     Symbol => writer.write_symbol(reader.read_symbol()?.as_ref())?,
@@ -135,19 +146,18 @@ fn write_all_values<W: Writer>(reader: &mut Reader, writer: &mut W) -> IonResult
                     Blob => writer.write_blob(reader.read_blob()?)?,
                     List => {
                         reader.step_in()?;
-                        writer.step_in(IonType::List)?;
+                        writer.step_in(List)?;
                     }
                     SExpression => {
                         reader.step_in()?;
-                        writer.step_in(IonType::SExpression)?;
+                        writer.step_in(SExpression)?;
                     }
                     Struct => {
                         reader.step_in()?;
-                        writer.step_in(IonType::Struct)?;
+                        writer.step_in(Struct)?;
                     }
                 }
             }
-            StreamItem::Null(ion_type) => writer.write_null(ion_type)?,
             StreamItem::Nothing if reader.depth() > 0 => {
                 reader.step_out()?;
                 writer.step_out()?;
