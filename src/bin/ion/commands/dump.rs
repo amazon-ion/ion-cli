@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use clap::{App, Arg, ArgMatches};
 use ion_rs::*;
 use std::fs::File;
-use std::io::{stdin, stdout, BufReader, StdinLock, Write};
+use std::io::{stdin, stdout, StdinLock, Write};
 
 pub fn app() -> CommandConfig {
     App::new("dump")
@@ -63,8 +63,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
         }
     } else {
         let input: StdinLock = stdin().lock();
-        let buf_reader = BufReader::new(input);
-        let mut reader = ReaderBuilder::new().build(buf_reader)?;
+        let mut reader = ReaderBuilder::new().build(input)?;
         write_all_in_format(&mut reader, &mut output, format)?;
     }
 
