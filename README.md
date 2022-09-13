@@ -2,6 +2,17 @@
 This repository is home to the `ion` command line tool, which provides subcommands
 for working with [the Ion data format](https://amzn.github.io/ion-docs/docs/spec.html).
 
+## Table of contents
+* [Examples](#examples)
+   * [Converting between formats with `dump`](#converting-between-formats-with-dump)
+   * [Analyzing binary Ion file encodings with `inspect`](#analyzing-binary-ion-file-encodings-with-inspect)
+* [Installation](#installation)
+   * [via `brew`](#via-brew)
+   * [via `cargo`](#via-cargo)
+* [Build Instructions](#build-instructions)
+   * [From source](#from-source)
+   * [Using Docker](#using-docker)
+
 ## Examples
 
 These examples use the `.ion` file extension for text Ion and the `.10n` file
@@ -118,9 +129,22 @@ ion beta inspect --skip-bytes 30 --limit-bytes 2 my_file.10n
 
 ## Installation
 
-The `ion-cli` is written in Rust. The easiest way to install it on your machine is
-by using Rust's package manager, `cargo`. If you don't already have `cargo`, you
-can install it by visiting [rustup.rs](https://rustup.rs/).
+### via `brew`
+
+The easiest way to install the `ion-cli` is via [Homebrew](https://brew.sh/).
+
+Once the `brew` command is available, run:
+
+```bash
+brew tap amazon-ion/ion-cli
+brew install ion-cli
+```
+
+### via `cargo`
+
+The `ion-cli` can also be installed by using Rust's package manager, `cargo`.
+If you don't already have `cargo`, you can install it by visiting
+[rustup.rs](https://rustup.rs/).
 
 To install `ion-cli`, run the following command:
 
@@ -155,7 +179,9 @@ SUBCOMMANDS:
     help    Prints this message or the help of the given subcommand(s)
 ```
 
-## Developer build instructions
+## Build instructions
+
+### From source
 
 1. Clone the repository:
    ```
@@ -182,7 +208,7 @@ SUBCOMMANDS:
    ion help
    ```
 
-### Docker Instructions
+### Using Docker
 
 1. Install Docker (see OS specific instructions on the [Docker website](https://docs.docker.com/get-docker/))
 2. Clone the repository (recursive clone not necessary)
