@@ -1,6 +1,6 @@
 use anyhow::Result;
 use assert_cmd::Command;
-use ion_rs::value::owned::OwnedElement;
+use ion_rs::value::owned::Element;
 use ion_rs::value::reader::*;
 use rstest::*;
 use std::fs::File;
@@ -19,7 +19,7 @@ struct TestCase<S: AsRef<str>> {
     /// The text of the ion payload to test
     ion_text: S,
     /// The expected Ion
-    expected_ion: OwnedElement,
+    expected_ion: Element,
 }
 
 impl From<(&'static str, &'static str)> for TestCase<&'static str> {

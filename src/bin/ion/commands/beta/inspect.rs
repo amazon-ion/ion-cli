@@ -418,11 +418,12 @@ impl<'a> IonInspector<'a> {
         );
 
         let field_name_result = self.reader.field_name();
-        let field_name: &str = if let Ok(ref symbol) = field_name_result {
-            symbol.as_ref()
-        } else {
-            "<UNKNOWN>"
-        };
+        let field_name = field_name_result
+            .as_ref()
+            .ok()
+            .and_then(|name| name.text())
+            .unwrap_or("<UNKNOWN>");
+
         self.text_buffer.clear();
         write!(&mut self.text_buffer, "'{}':", field_name)?;
 
