@@ -1,6 +1,6 @@
 [package]
 name = "ion-cli"
-version = "0.4.1"
+version = "0.4.2"
 authors = ["The Ion Team <ion-team@amazon.com>"]
 edition = "2021"
 description = "Command line tool for working with the Ion data format."
@@ -15,7 +15,7 @@ keywords = ["format", "parse", "encode"]
 anyhow = "1.0"
 clap = "~2.27.0"
 colored = "2.0.0"
-ion-rs = "0.12.0"
+ion-rs = "0.14.0"
 memmap = "0.7.0"
 tempfile = "3.2.0"
 ion-schema = "0.4.0"

@@ -14,7 +14,7 @@ pub fn app() -> CommandConfig {
                 .short("f")
                 .takes_value(true)
                 .default_value("pretty")
-                .possible_values(&["binary", "text", "pretty"])
+                .possible_values(&["binary", "text", "pretty", "lines"])
                 .help("Output format"),
         )
         .arg(
@@ -35,7 +35,7 @@ pub fn app() -> CommandConfig {
 }
 
 pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
-    // --format pretty|text|binary
+    // --format pretty|text|lines|binary
     // `clap` validates the specified format and provides a default otherwise.
     let format = matches
         .value_of("format")
@@ -84,7 +84,11 @@ fn write_all_in_format(
             write_all_values(reader, &mut writer)
         }
         "text" => {
-            let mut writer = TextWriterBuilder::new().build(output)?;
+            let mut writer = TextWriterBuilder::default().build(output)?;
+            write_all_values(reader, &mut writer)
+        }
+        "lines" => {
+            let mut writer = TextWriterBuilder::lines().build(output)?;
             write_all_values(reader, &mut writer)
         }
         "binary" => {
@@ -92,14 +96,14 @@ fn write_all_in_format(
             write_all_values(reader, &mut writer)
         }
         unrecognized => unreachable!(
-            "'format' was '{}' instead of 'pretty', 'text', or 'binary'",
+            "'format' was '{}' instead of 'pretty', 'text', 'lines', or 'binary'",
             unrecognized
         ),
     }
 }
 
-/// Writes each value encountered in the Reader to the provided Writer.
-fn write_all_values<W: Writer>(reader: &mut Reader, writer: &mut W) -> IonResult<()> {
+/// Writes each value encountered in the Reader to the provided IonWriter.
+fn write_all_values<W: IonWriter>(reader: &mut Reader, writer: &mut W) -> IonResult<()> {
     const FLUSH_EVERY_N: usize = 100;
     let mut values_since_flush: usize = 0;
     let mut annotations = vec![];
@@ -140,7 +144,7 @@ fn write_all_values<W: Writer>(reader: &mut Reader, writer: &mut W) -> IonResult
                     }
                     Decimal => writer.write_decimal(&reader.read_decimal()?)?,
                     Timestamp => writer.write_timestamp(&reader.read_timestamp()?)?,
-                    Symbol => writer.write_symbol(reader.read_symbol()?.as_ref())?,
+                    Symbol => writer.write_symbol(reader.read_symbol()?)?,
                     String => writer.write_string(reader.read_string()?)?,
                     Clob => writer.write_clob(reader.read_clob()?)?,
                     Blob => writer.write_blob(reader.read_blob()?)?,
