@@ -1,25 +1,25 @@
-use crate::commands::CommandConfig;
 use anyhow::{Context, Result};
-use clap::{App, Arg, ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_rs::*;
 use std::fs::File;
 use std::io::{stdin, BufReader, StdinLock};
 
-pub fn app() -> CommandConfig {
-    App::new("count")
+pub fn app() -> Command {
+    Command::new("count")
         .about("Prints the number of top-level values found in the input stream.")
         .arg(
             // All argv entries after the program name (argv[0])
             // and any `clap`-managed options are considered input files.
-            Arg::with_name("input")
+            Arg::new("input")
                 .index(1)
-                .multiple(true)
-                .help("Input file [default: STDIN]"),
+                .help("Input file [default: STDIN]")
+                .action(ArgAction::Append)
+                .trailing_var_arg(true),
         )
 }
 
-pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
-    if let Some(input_file_iter) = matches.values_of("input") {
+pub fn run(_command_name: &str, matches: &ArgMatches) -> Result<()> {
+    if let Some(input_file_iter) = matches.get_many::<String>("input") {
         for input_file in input_file_iter {
             let file = File::open(input_file)
                 .with_context(|| format!("Could not open file '{}'", input_file))?;
