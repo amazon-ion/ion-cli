@@ -1,48 +1,47 @@
-use crate::commands::CommandConfig;
 use anyhow::{Context, Result};
-use clap::{App, Arg, ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_rs::*;
 use std::fs::File;
 use std::io::{stdin, stdout, StdinLock, Write};
 
-pub fn app() -> CommandConfig {
-    App::new("dump")
+pub fn app() -> Command {
+    Command::new("dump")
         .about("Prints Ion in the requested format")
         .arg(
-            Arg::with_name("format")
+            Arg::new("format")
                 .long("format")
-                .short("f")
-                .takes_value(true)
+                .short('f')
                 .default_value("pretty")
-                .possible_values(&["binary", "text", "pretty", "lines"])
+                .value_parser(["binary", "text", "pretty", "lines"])
                 .help("Output format"),
         )
         .arg(
-            Arg::with_name("output")
+            Arg::new("output")
                 .long("output")
-                .short("o")
-                .takes_value(true)
+                .short('o')
                 .help("Output file [default: STDOUT]"),
         )
         .arg(
             // All argv entries after the program name (argv[0])
             // and any `clap`-managed options are considered input files.
-            Arg::with_name("input")
+            Arg::new("input")
                 .index(1)
-                .multiple(true)
-                .help("Input file [default: STDIN]"),
+                .help("Input file [default: STDIN]")
+                .action(ArgAction::Append)
+                .trailing_var_arg(true),
         )
 }
 
-pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
+pub fn run(_command_name: &str, matches: &ArgMatches) -> Result<()> {
     // --format pretty|text|lines|binary
     // `clap` validates the specified format and provides a default otherwise.
     let format = matches
-        .value_of("format")
+        .get_one::<String>("format")
         .expect("`format` did not have a value");
 
     // -o filename
-    let mut output: Box<dyn Write> = if let Some(output_file) = matches.value_of("output") {
+    let mut output: Box<dyn Write> = if let Some(output_file) = matches.get_one::<String>("output")
+    {
         let file = File::create(output_file).with_context(|| {
             format!(
                 "could not open file output file '{}' for writing",
@@ -54,7 +53,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
         Box::new(stdout().lock())
     };
 
-    if let Some(input_file_iter) = matches.values_of("input") {
+    if let Some(input_file_iter) = matches.get_many::<String>("input") {
         for input_file in input_file_iter {
             let file = File::open(input_file)
                 .with_context(|| format!("Could not open file '{}'", input_file))?;

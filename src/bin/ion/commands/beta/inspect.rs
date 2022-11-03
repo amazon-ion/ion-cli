@@ -7,7 +7,7 @@ use std::ops::Range;
 use std::str::{from_utf8_unchecked, FromStr};
 
 use anyhow::{bail, Context, Result};
-use clap::{App, Arg, ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 use colored::Colorize;
 use ion_rs::result::{decoding_error, IonResult};
 use ion_rs::*;
@@ -19,31 +19,31 @@ const ABOUT: &str =
 // Creates a `clap` (Command Line Arguments Parser) configuration for the `inspect` command.
 // This function is invoked by the `inspect` command's parent, `beta`, so it can describe its
 // child commands.
-pub fn app() -> App<'static, 'static> {
-    App::new("inspect")
+pub fn app() -> Command {
+    Command::new("inspect")
         .about(ABOUT)
         .arg(
-            Arg::with_name("output")
+            Arg::new("output")
                 .long("output")
-                .short("o")
-                .takes_value(true)
+                .short('o')
                 .help("Output file [default: STDOUT]"),
         )
         .arg(
             // Any number of input files can be specified by repeating the "-i" or "--input" flags.
             // Unlabeled positional arguments will also be considered input file names.
-            Arg::with_name("input")
+            Arg::new("input")
                 .long("input")
-                .short("i")
+                .short('i')
                 .index(1)
-                .multiple(true)
+                .trailing_var_arg(true)
+                .action(ArgAction::Append)
                 .help("Input file"),
         )
         .arg(
             // This is named `skip-bytes` instead of `skip` to accommodate a future `skip-values` option.
-            Arg::with_name("skip-bytes")
+            Arg::new("skip-bytes")
                 .long("skip-bytes")
-                .short("-s")
+                .short('s')
                 .default_value("0")
                 .hide_default_value(true)
                 .help("Do not display any user values for the first `n` bytes of Ion data.")
@@ -59,9 +59,9 @@ in one or more containers, those containers will be displayed too.",
         )
         .arg(
             // This is named `limit-bytes` instead of `limit` to accommodate a future `limit-values` option.
-            Arg::with_name("limit-bytes")
+            Arg::new("limit-bytes")
                 .long("limit-bytes")
-                .short("-l")
+                .short('l')
                 .default_value("0")
                 .hide_default_value(true)
                 .help("Only display the next 'n' bytes of Ion data.")
@@ -81,9 +81,9 @@ type OutputRef = Box<dyn io::Write>;
 //   is dropped, so we don't need to do that manually.
 
 // This function is invoked by the `inspect` command's parent, `beta`.
-pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
+pub fn run(_command_name: &str, matches: &ArgMatches) -> Result<()> {
     // --skip-bytes has a default value, so we can unwrap this safely.
-    let skip_bytes_arg = matches.value_of("skip-bytes").unwrap();
+    let skip_bytes_arg = matches.get_one::<String>("skip-bytes").unwrap().as_str();
 
     let bytes_to_skip = usize::from_str(skip_bytes_arg)
         // The `anyhow` crate allows us to augment a given Result with some arbitrary context that
@@ -91,7 +91,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
         .with_context(|| format!("Invalid value for '--skip-bytes': '{}'", skip_bytes_arg))?;
 
     // --limit-bytes has a default value, so we can unwrap this safely.
-    let limit_bytes_arg = matches.value_of("limit-bytes").unwrap();
+    let limit_bytes_arg = matches.get_one::<String>("limit-bytes").unwrap().as_str();
 
     let mut limit_bytes = usize::from_str(limit_bytes_arg)
         .with_context(|| format!("Invalid value for '--limit-bytes': '{}'", limit_bytes_arg))?;
@@ -103,7 +103,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     }
 
     // If the user has specified an output file, use it.
-    let mut output: OutputRef = if let Some(file_name) = matches.value_of("output") {
+    let mut output: OutputRef = if let Some(file_name) = matches.get_one::<String>("output") {
         let output_file =
             File::create(file_name).with_context(|| format!("Could not open '{}'", file_name))?;
         let buf_writer = BufWriter::new(output_file);
@@ -114,7 +114,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
     };
 
     // Run the inspector on each input file that was specified.
-    if let Some(input_file_iter) = matches.values_of("input") {
+    if let Some(input_file_iter) = matches.get_many::<String>("input") {
         for input_file_name in input_file_iter {
             let input_file = File::open(input_file_name)
                 .with_context(|| format!("Could not open '{}'", input_file_name))?;

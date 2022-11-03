@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::{App, Arg, ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
 use ion_schema::system::SchemaSystem;
 use std::path::Path;
@@ -9,27 +9,25 @@ const ABOUT: &str = "Loads an Ion Schema file using user provided schema id and 
 // Creates a `clap` (Command Line Arguments Parser) configuration for the `load` command.
 // This function is invoked by the `load` command's parent `schema`, so it can describe its
 // child commands.
-pub fn app() -> App<'static, 'static> {
-    App::new("load")
+pub fn app() -> Command {
+    Command::new("load")
         .about(ABOUT)
         .arg(
             // Input file can be specified by the "-s" or "--schema" flags.
-            Arg::with_name("schema")
+            Arg::new("schema")
                 .long("schema")
-                .short("s")
+                .short('s')
                 .required(true)
-                .takes_value(true)
                 .value_name("SCHEMA")
                 .help("The Ion Schema file to load"),
         )
         .arg(
             // Directory(s) that will be used as authority(s) for schema system
-            Arg::with_name("directories")
+            Arg::new("directories")
                 .long("directory")
-                .short("d")
-                .min_values(1)
-                .takes_value(true)
-                .multiple(true)
+                .short('d')
+                // If this appears more than once, collect all values
+                .action(ArgAction::Append)
                 .value_name("DIRECTORY")
                 .required(true)
                 .help("One or more directories that will be searched for the requested schema"),
@@ -37,12 +35,12 @@ pub fn app() -> App<'static, 'static> {
 }
 
 // This function is invoked by the `load` command's parent `schema`.
-pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
+pub fn run(_command_name: &str, matches: &ArgMatches) -> Result<()> {
     // Extract the user provided document authorities/ directories
-    let authorities: Vec<_> = matches.values_of("directories").unwrap().collect();
+    let authorities: Vec<&String> = matches.get_many("directories").unwrap().collect();
 
     // Extract schema file provided by user
-    let schema_id = matches.value_of("schema").unwrap();
+    let schema_id = matches.get_one::<String>("schema").unwrap();
 
     // Set up document authorities vector
     let mut document_authorities: Vec<Box<dyn DocumentAuthority>> = vec![];

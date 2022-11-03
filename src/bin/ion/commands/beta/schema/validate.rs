@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use clap::{App, Arg, ArgMatches};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
 use ion_schema::external::ion_rs::value::native_writer::NativeElementWriter;
 use ion_schema::external::ion_rs::value::owned::OwnedElement;
@@ -17,66 +17,61 @@ const ABOUT: &str = "validates an Ion Value based on given Ion Schema Type";
 // Creates a `clap` (Command Line Arguments Parser) configuration for the `load` command.
 // This function is invoked by the `load` command's parent `schema`, so it can describe its
 // child commands.
-pub fn app() -> App<'static, 'static> {
-    App::new("validate")
+pub fn app() -> Command {
+    Command::new("validate")
         .about(ABOUT)
         .arg(
             // Schema file can be specified by the "-s" or "--schema" flags.
-            Arg::with_name("schema")
+            Arg::new("schema")
                 .long("schema")
-                .short("s")
+                .short('s')
                 .required(true)
-                .takes_value(true)
                 .value_name("SCHEMA")
                 .help("The Ion Schema file to load"),
         )
         .arg(
             // Directory(s) that will be used as authority(s) for schema system
-            Arg::with_name("directories")
+            Arg::new("directories")
                 .long("directory")
-                .short("d")
-                .min_values(1)
-                .takes_value(true)
-                .multiple(true)
+                .short('d')
+                .action(ArgAction::Append)
                 .value_name("DIRECTORY")
                 .required(true)
                 .help("One or more directories that will be searched for the requested schema"),
         )
         .arg(
             // Input ion file can be specified by the "-i" or "--input" flags.
-            Arg::with_name("input")
+            Arg::new("input")
                 .long("input")
-                .short("i")
+                .short('i')
                 .required(true)
-                .takes_value(true)
                 .value_name("INPUT_FILE")
                 .help("Input file containing the Ion values to be validated"),
         )
         .arg(
             // Schema Type can be specified by the "-t" or "--type" flags.
-            Arg::with_name("type")
+            Arg::new("type")
                 .long("type")
-                .short("t")
+                .short('t')
                 .required(true)
-                .takes_value(true)
                 .value_name("TYPE")
                 .help("Name of schema type from given schema that needs to be used for validation"),
         )
 }
 
 // This function is invoked by the `load` command's parent `schema`.
-pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> Result<()> {
+pub fn run(_command_name: &str, matches: &ArgMatches) -> Result<()> {
     // Extract the user provided document authorities/ directories
-    let authorities: Vec<_> = matches.values_of("directories").unwrap().collect();
+    let authorities: Vec<&String> = matches.get_many("directories").unwrap().collect();
 
     // Extract schema file provided by user
-    let schema_id = matches.value_of("schema").unwrap();
+    let schema_id = matches.get_one::<String>("schema").unwrap();
 
     // Extract the schema type provided by user
-    let schema_type = matches.value_of("type").unwrap();
+    let schema_type = matches.get_one::<String>("type").unwrap();
 
     // Extract Ion value provided by user
-    let input_file = matches.value_of("input").unwrap();
+    let input_file = matches.get_one::<String>("input").unwrap();
     let value = fs::read(input_file).with_context(|| format!("Could not open '{}'", schema_id))?;
     let owned_elements: Vec<OwnedElement> = element_reader()
         .read_all(&value)

@@ -1,34 +1,31 @@
-use crate::commands::CommandConfig;
 use anyhow::{Context, Result};
-use clap::{App, Arg, ArgMatches};
+use clap::{Arg, ArgMatches, Command};
 use ion_rs::binary::var_int::VarInt;
 use ion_rs::binary::var_uint::VarUInt;
 
-pub fn app() -> CommandConfig {
-    App::new("primitive")
+pub fn app() -> Command {
+    Command::new("primitive")
         .about("Prints the binary representation of an Ion encoding primitive.")
         .arg(
-            Arg::with_name("type")
-                .short("t")
+            Arg::new("type")
+                .short('t')
                 .required(true)
-                .takes_value(true)
                 .help("The Ion primitive encoding type. (Names are case insensitive.)")
-                .possible_values(&["VarInt", "varint", "VarUInt", "varuint"]),
+                .value_parser(["VarInt", "varint", "VarUInt", "varuint"]),
         )
         .arg(
-            Arg::with_name("value")
-                .short("v")
+            Arg::new("value")
+                .short('v')
                 .required(true)
                 .allow_hyphen_values(true)
-                .takes_value(true)
                 .help("The value to encode as the specified primitive."),
         )
 }
 
-pub fn run(_command_name: &str, matches: &ArgMatches<'static>) -> anyhow::Result<()> {
+pub fn run(_command_name: &str, matches: &ArgMatches) -> anyhow::Result<()> {
     let mut buffer = Vec::new();
-    let value_text = matches.value_of("value").unwrap();
-    match matches.value_of("type").unwrap() {
+    let value_text = matches.get_one::<String>("value").unwrap().as_str();
+    match matches.get_one::<String>("type").unwrap().as_str() {
         "varuint" | "VarUInt" => {
             let value = integer_from_text(value_text)? as u64;
             VarUInt::write_u64(&mut buffer, value).unwrap();

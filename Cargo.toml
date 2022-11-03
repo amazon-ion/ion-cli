@@ -13,7 +13,7 @@ keywords = ["format", "parse", "encode"]
 
 [dependencies]
 anyhow = "1.0"
-clap = "~2.27.0"
+clap = { version = "4.0.17", features = ["cargo"] }
 colored = "2.0.0"
 ion-rs = "0.14.0"
 memmap = "0.7.0"
