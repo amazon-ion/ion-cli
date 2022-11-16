@@ -127,6 +127,24 @@ ion beta inspect --skip-bytes 30 --limit-bytes 2 my_file.10n
           |           |                          |  }
 ```
 
+### Schema subcommands
+All the subcommand to load or validate schema are under the `beta schema` subcommand.
+
+To load a schema:
+```bash
+ion beta schema load --directory <DIRECTORY> --schema <SCHEMA_FILE> 
+```
+
+To validate an ion value against a schema type:
+```bash
+ion beta schema validate --directory <DIRECTORY> --schema <SCHEMA_FILE> --input <INPUT_FILE> --type <TYPE>
+```
+
+For more information on how to use the schema subcommands using CLI, run the following command:
+```bash
+ion beta schema help  
+```
+
 ## Installation
 
 ### via `brew`
