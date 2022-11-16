@@ -350,30 +350,11 @@ dependencies = [
  "assert_cmd",
  "clap",
  "colored",
- "ion-rs 0.14.0",
+ "ion-rs",
  "ion-schema",
  "memmap",
  "rstest",
  "tempfile",
-]
-
-[[package]]
-name = "ion-rs"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcdb581b7c70b45d3bd3dcedb0c0717c8c88ce853b78bc2788e2d2cd7689c9dc"
-dependencies = [
- "arrayvec",
- "base64",
- "bigdecimal",
- "bytes",
- "chrono",
- "delegate",
- "nom",
- "num-bigint",
- "num-integer",
- "num-traits",
- "thiserror",
 ]
 
 [[package]]
@@ -399,12 +380,12 @@ dependencies = [
 
 [[package]]
 name = "ion-schema"
-version = "0.4.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "375e2c2a58a2abbea4659982a96f3efc132dad573ca02beaa8f37ad7e8eb58d1"
+checksum = "4b81d377f1df2b98a3ce41d7154d74bfc1ac13b9e0a78c752d377a86f05477cb"
 dependencies = [
  "chrono",
- "ion-rs 0.12.0",
+ "ion-rs",
  "num-bigint",
  "num-traits",
  "regex",

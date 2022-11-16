@@ -2,12 +2,13 @@ use anyhow::{Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
 use ion_schema::external::ion_rs::value::native_writer::NativeElementWriter;
-use ion_schema::external::ion_rs::value::owned::OwnedElement;
+use ion_schema::external::ion_rs::value::owned::Element;
 use ion_schema::external::ion_rs::value::reader::{element_reader, ElementReader};
 use ion_schema::external::ion_rs::value::writer::ElementWriter;
 use ion_schema::external::ion_rs::IonType;
-use ion_schema::external::ion_rs::{IonResult, TextWriterBuilder, Writer};
+use ion_schema::external::ion_rs::{IonResult, TextWriterBuilder};
 use ion_schema::system::SchemaSystem;
+use ion_rs::IonWriter;
 use std::fs;
 use std::path::Path;
 use std::str::from_utf8;
@@ -73,7 +74,7 @@ pub fn run(_command_name: &str, matches: &ArgMatches) -> Result<()> {
     // Extract Ion value provided by user
     let input_file = matches.get_one::<String>("input").unwrap();
     let value = fs::read(input_file).with_context(|| format!("Could not open '{}'", schema_id))?;
-    let owned_elements: Vec<OwnedElement> = element_reader()
+    let owned_elements: Vec<Element> = element_reader()
         .read_all(&value)
         .with_context(|| format!("Could not parse Ion file: '{}'", schema_id))?;
 
@@ -129,9 +130,9 @@ pub fn run(_command_name: &str, matches: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
-// TODO: this will be provided by OwnedElement's implementation of `Display` in a future
+// TODO: this will be provided by Element's implementation of `Display` in a future
 //       release of ion-rs.
-fn element_to_string(element: &OwnedElement) -> IonResult<String> {
+fn element_to_string(element: &Element) -> IonResult<String> {
     let mut buffer = Vec::new();
     let text_writer = TextWriterBuilder::new().build(std::io::Cursor::new(&mut buffer))?;
     let mut element_writer = NativeElementWriter::new(text_writer);
