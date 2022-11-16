@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
+use ion_rs::IonWriter;
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
 use ion_schema::external::ion_rs::value::native_writer::NativeElementWriter;
 use ion_schema::external::ion_rs::value::owned::Element;
@@ -8,7 +9,6 @@ use ion_schema::external::ion_rs::value::writer::ElementWriter;
 use ion_schema::external::ion_rs::IonType;
 use ion_schema::external::ion_rs::{IonResult, TextWriterBuilder};
 use ion_schema::system::SchemaSystem;
-use ion_rs::IonWriter;
 use std::fs;
 use std::path::Path;
 use std::str::from_utf8;
