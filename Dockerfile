@@ -1,4 +1,4 @@
-FROM rust:1.61-slim-buster as builder
+FROM rust:1.64-slim-buster as builder
 WORKDIR /usr/src/ion-cli
 COPY . .
 RUN cargo install --verbose --path .
