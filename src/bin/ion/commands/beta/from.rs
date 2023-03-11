@@ -1,12 +1,11 @@
-use anyhow::Result;
-use clap::{Arg, ArgAction, ArgMatches, Command};
 use crate::commands::dump;
+use anyhow::{Context, Result};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 
-const ABOUT: &str =
-    "Converts data from a particular format into Ion.";
+const ABOUT: &str = "Converts data from a particular format into Ion. Currently supports json.";
 
-// Creates a `clap` (Command Line Arguments Parser) configuration for the `inspect` command.
-// This function is invoked by the `inspect` command's parent, `beta`, so it can describe its
+// Creates a `clap` (Command Line Arguments Parser) configuration for the `from` command.
+// This function is invoked by the `from` command's parent, `beta`, so it can describe its
 // child commands.
 pub fn app() -> Command {
     Command::new("from")
@@ -45,13 +44,19 @@ pub fn app() -> Command {
 
 // This function is invoked by the `from` command's parent, `beta`.
 pub fn run(_command_name: &str, matches: &ArgMatches) -> Result<()> {
-    match matches.get_one::<String>("source_format").expect("Format not found").as_str() {
+    let result = match matches
+        .get_one::<String>("source_format")
+        .with_context(|| "No `source_format` was specified.")?
+        .as_str()
+    {
         "json" => {
             // Because JSON data is valid Ion, the `dump` command may be reused for converting JSON.
+            // TODO ideally, this would perform some smarter "up-conversion".
             dump::run("from", matches)
         }
-        _ => { unimplemented!("Unsupported format.") }
-    }.expect("Cannot convert.");
-
-    Ok(())
+        _ => {
+            unimplemented!("Unsupported format.")
+        }
+    };
+    result
 }

@@ -19,6 +19,7 @@ ion-rs = "0.14.0"
 memmap = "0.7.0"
 tempfile = "3.2.0"
 ion-schema = "0.6.0"
+serde_json = { version = "1.0.81", features = [ "arbitrary_precision", "preserve_order" ] }
 
 [dev-dependencies]
 rstest = "~0.10.0"

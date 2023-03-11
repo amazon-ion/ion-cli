@@ -5,6 +5,7 @@ for working with [the Ion data format](https://amzn.github.io/ion-docs/docs/spec
 ## Table of contents
 * [Examples](#examples)
    * [Converting between formats with `dump`](#converting-between-formats-with-dump)
+   * [Converting between Ion and other formats with `to` and `from`](#converting-between-ion-and-other-formats-with-to-and-from)
    * [Analyzing binary Ion file encodings with `inspect`](#analyzing-binary-ion-file-encodings-with-inspect)
 * [Installation](#installation)
    * [via `brew`](#via-brew)
@@ -36,6 +37,21 @@ ion dump --format pretty my_file.10n
 Convert Ion binary to minimally-spaced, compact text:
 ```shell
 ion dump --format text my_file.10n
+```
+
+### Converting between Ion and other formats with `to` and `from`
+
+The `beta to` and `beta from` commands can convert Ion to and from other formats.
+Currently, JSON is supported.
+
+Convert Ion to JSON:
+```shell
+ion beta to json my_file.10n
+```
+
+Convert JSON to Ion:
+```shell
+ion beta from json my_file.json
 ```
 
 ### Analyzing binary Ion file encodings with `inspect`
