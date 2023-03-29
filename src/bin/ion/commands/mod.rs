@@ -1,6 +1,5 @@
 use anyhow::Result;
 use clap::{ArgMatches, Command};
-
 pub mod beta;
 pub mod dump;
 
