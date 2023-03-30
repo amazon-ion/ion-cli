@@ -1,5 +1,6 @@
 pub mod count;
 pub mod from;
+pub mod head;
 pub mod inspect;
 pub mod primitive;
 pub mod schema;
@@ -19,6 +20,7 @@ pub fn beta_subcommands() -> Vec<Command> {
         inspect::app(),
         primitive::app(),
         schema::app(),
+        head::app(),
         from::app(),
         to::app(),
     ]
@@ -32,6 +34,7 @@ pub fn runner_for_beta_subcommand(command_name: &str) -> Option<CommandRunner> {
         "schema" => schema::run,
         "from" => from::run,
         "to" => to::run,
+        "head" => head::run,
         _ => return None,
     };
     Some(runner)
