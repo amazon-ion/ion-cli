@@ -9,10 +9,10 @@ use std::str::{from_utf8_unchecked, FromStr};
 use anyhow::{bail, Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use colored::Colorize;
-use ion_rs::result::{decoding_error, IonResult};
-use ion_rs::*;
 use ion_rs::binary::non_blocking::raw_binary_reader::RawBinaryReader;
 use ion_rs::element::writer::TextKind;
+use ion_rs::result::{decoding_error, IonResult};
+use ion_rs::*;
 use memmap::MmapOptions;
 
 const ABOUT: &str =
@@ -211,6 +211,9 @@ const TEXT_WRITER_INITIAL_BUFFER_SIZE: usize = 128;
 
 struct IonInspector<'a> {
     output: &'a mut OutputRef,
+    // XXX: It's still a bit awkward to get at the raw bytes of the values that the reader visits.
+    //      This has to be solved in ion-rs.
+    #[allow(clippy::type_complexity)]
     reader: SystemReader<BlockingRawReader<RawBinaryReader<Vec<u8>>, io::Cursor<&'a [u8]>>>,
     bytes_to_skip: usize,
     limit_bytes: usize,
@@ -370,9 +373,9 @@ impl<'a> IonInspector<'a> {
                     self.reader.step_out()?;
                     // Print the container's closing delimiter: }, ), or ]
                     self.text_buffer.clear();
-                    self.text_buffer.push_str(&closing_delimiter_for(ion_type));
+                    self.text_buffer.push_str(closing_delimiter_for(ion_type));
                     if ion_type != IonType::SExp && self.reader.depth() > 0 {
-                        self.text_buffer.push_str(",");
+                        self.text_buffer.push(',');
                     }
                     output(
                         self.output,

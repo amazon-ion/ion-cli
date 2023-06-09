@@ -1,14 +1,14 @@
 use anyhow::{Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use ion_rs::{ReaderBuilder};
+use ion_rs::element::reader::ElementReader;
+use ion_rs::element::Element;
+use ion_rs::ReaderBuilder;
 use memmap::MmapOptions;
 use serde_json::{Map, Number, Value as JsonValue};
 use std::fs::File;
 use std::io;
 use std::io::{stdout, BufWriter, Write};
 use std::str::FromStr;
-use ion_rs::element::{Element};
-use ion_rs::element::reader::ElementReader;
 
 const ABOUT: &str = "Converts data from Ion into a requested format. Currently supports json.";
 
@@ -106,7 +106,7 @@ pub fn convert(file: &mut File, output: &mut Box<dyn Write>, format: &str) -> Re
     // problems could arise.
     let mmap = unsafe {
         MmapOptions::new()
-            .map(&file)
+            .map(file)
             .with_context(|| "Could not mmap ")?
     };
 
@@ -119,7 +119,7 @@ pub fn convert(file: &mut File, output: &mut Box<dyn Write>, format: &str) -> Re
         "json" => {
             for result in reader.elements() {
                 let element = result.with_context(|| "invalid input")?;
-                write!(output, "{}\n", to_json_value(&element)?.to_string())?
+                writeln!(output, "{}", to_json_value(&element)?)?
             }
         }
         _ => {
@@ -156,38 +156,28 @@ fn to_json_value(element: &Element) -> Result<JsonValue> {
                 }
             }
             Decimal(d) => JsonValue::Number(
-                Number::from_str(
-                    d.to_string()
-                        .replace("d", "e")
-                        .as_str(),
-                )
-                .with_context(|| format!("{element} could not be turned into a Number"))?,
+                Number::from_str(d.to_string().replace('d', "e").as_str())
+                    .with_context(|| format!("{element} could not be turned into a Number"))?,
             ),
             Timestamp(t) => JsonValue::String(t.to_string()),
-            Symbol(s) =>
-                s.text()
-                    .map(|text| JsonValue::String(text.to_owned()))
-                    .unwrap_or_else(|| JsonValue::Null),
+            Symbol(s) => s
+                .text()
+                .map(|text| JsonValue::String(text.to_owned()))
+                .unwrap_or_else(|| JsonValue::Null),
             String(s) => JsonValue::String(s.text().to_owned()),
             Blob(b) | Clob(b) => {
-                use base64::{Engine as _, engine::general_purpose as base64_encoder};
+                use base64::{engine::general_purpose as base64_encoder, Engine as _};
                 let base64_text = base64_encoder::STANDARD.encode(b.as_ref());
                 JsonValue::String(base64_text)
-            },
+            }
             List(s) | SExp(s) => {
-                let result: Result<Vec<JsonValue>> = s
-                    .elements()
-                    .map(|element| to_json_value(element))
-                    .collect();
+                let result: Result<Vec<JsonValue>> = s.elements().map(to_json_value).collect();
                 JsonValue::Array(result?)
             }
             Struct(s) => {
                 let result: Result<Map<std::string::String, JsonValue>> = s
                     .fields()
-                    .map(|(k, v)| {
-                        to_json_value(v)
-                            .map(|value| (k.text().unwrap().into(), value))
-                    })
+                    .map(|(k, v)| to_json_value(v).map(|value| (k.text().unwrap().into(), value)))
                     .collect();
                 JsonValue::Object(result?)
             }

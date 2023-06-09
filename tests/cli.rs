@@ -1,7 +1,6 @@
 use anyhow::Result;
 use assert_cmd::Command;
-use ion_rs::value::owned::Element;
-use ion_rs::value::reader::*;
+use ion_rs::element::Element;
 use rstest::*;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -25,7 +24,7 @@ struct TestCase<S: AsRef<str>> {
 impl From<(&'static str, &'static str)> for TestCase<&'static str> {
     /// Simple conversion for static `str` slices into a test case
     fn from((ion_text, expected_ion): (&'static str, &'static str)) -> Self {
-        let expected_ion = element_reader().read_one(expected_ion.as_bytes()).unwrap();
+        let expected_ion = Element::read_one(expected_ion.as_bytes()).unwrap();
         Self {
             ion_text,
             expected_ion,
@@ -91,7 +90,7 @@ fn run_it<S: AsRef<str>>(
 
     let mut cmd = Command::cargo_bin("ion")?;
     cmd.arg("dump").timeout(Duration::new(5, 0));
-    if format_flag != "" {
+    if !format_flag.is_empty() {
         cmd.arg("-f");
         cmd.arg(format_flag);
     }
@@ -129,13 +128,13 @@ fn run_it<S: AsRef<str>>(
     let actual_ion = match output_mode {
         FileMode::Default => {
             let output = assert.get_output();
-            element_reader().read_one(&output.stdout)?
+            Element::read_one(&output.stdout)?
         }
         FileMode::Named => {
             let mut output_file = File::open(output_path)?;
             let mut output_buffer = vec![];
             output_file.read_to_end(&mut output_buffer)?;
-            element_reader().read_one(&output_buffer)?
+            Element::read_one(&output_buffer)?
         }
     };
 
@@ -147,7 +146,7 @@ fn run_it<S: AsRef<str>>(
 
 #[rstest]
 #[case(0, "")]
-#[case(2, "{foo: bar, abc: [123, 456]}\n{foo: baz, abc: [420d-1, 4.3e1]}")]
+#[case(2, "{foo: bar, abc: [123, 456]}\n{foo: baz, abc: [42.0, 4.3e1]}")]
 ///Calls ion-cli beta head with different requested number. Pass the test if the return value equals to the expected value.
 fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> Result<()> {
     let mut cmd = Command::cargo_bin("ion")?;
@@ -174,7 +173,7 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     let mut input_file = File::create(&input_path)?;
     input_file.write(test_data.as_bytes())?;
     input_file.flush()?;
-    cmd.args(&[
+    cmd.args([
         "beta",
         "head",
         "--values",

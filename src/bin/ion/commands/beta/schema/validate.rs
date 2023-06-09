@@ -3,13 +3,13 @@ use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
 use ion_schema::external::ion_rs::element::reader::ElementReader;
 use ion_schema::external::ion_rs::element::writer::ElementWriter;
-use ion_schema::external::ion_rs::{IonType, IonWriter, ReaderBuilder};
+use ion_schema::external::ion_rs::element::Element;
 use ion_schema::external::ion_rs::{IonResult, TextWriterBuilder};
+use ion_schema::external::ion_rs::{IonType, IonWriter, ReaderBuilder};
 use ion_schema::system::SchemaSystem;
 use std::fs;
 use std::path::Path;
 use std::str::from_utf8;
-use ion_schema::external::ion_rs::element::Element;
 
 const ABOUT: &str = "validates an Ion Value based on given Ion Schema Type";
 
@@ -72,7 +72,8 @@ pub fn run(_command_name: &str, matches: &ArgMatches) -> Result<()> {
     // Extract Ion value provided by user
     let input_file = matches.get_one::<String>("input").unwrap();
     let value = fs::read(input_file).with_context(|| format!("Could not open '{}'", schema_id))?;
-    let owned_elements: Vec<Element> = ReaderBuilder::new().build(value.as_slice())?
+    let owned_elements: Vec<Element> = ReaderBuilder::new()
+        .build(value.as_slice())?
         .read_all_elements()
         .with_context(|| format!("Could not parse Ion file: '{}'", schema_id))?;
 
@@ -135,5 +136,7 @@ fn element_to_string(element: &Element) -> IonResult<String> {
     let mut text_writer = TextWriterBuilder::new().build(&mut buffer)?;
     text_writer.write_element(element)?;
     text_writer.flush()?;
-    Ok(from_utf8(text_writer.output().as_slice()).expect("Invalid UTF-8 output").to_string())
+    Ok(from_utf8(text_writer.output().as_slice())
+        .expect("Invalid UTF-8 output")
+        .to_string())
 }
