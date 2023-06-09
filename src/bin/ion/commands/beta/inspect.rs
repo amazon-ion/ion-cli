@@ -9,6 +9,8 @@ use std::str::{from_utf8_unchecked, FromStr};
 use anyhow::{bail, Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use colored::Colorize;
+use ion_rs::binary::non_blocking::raw_binary_reader::RawBinaryReader;
+use ion_rs::element::writer::TextKind;
 use ion_rs::result::{decoding_error, IonResult};
 use ion_rs::*;
 use memmap::MmapOptions;
@@ -209,7 +211,10 @@ const TEXT_WRITER_INITIAL_BUFFER_SIZE: usize = 128;
 
 struct IonInspector<'a> {
     output: &'a mut OutputRef,
-    reader: SystemReader<RawBinaryReader<io::Cursor<&'a [u8]>>>,
+    // XXX: It's still a bit awkward to get at the raw bytes of the values that the reader visits.
+    //      This has to be solved in ion-rs.
+    #[allow(clippy::type_complexity)]
+    reader: SystemReader<BlockingRawReader<RawBinaryReader<Vec<u8>>, io::Cursor<&'a [u8]>>>,
     bytes_to_skip: usize,
     limit_bytes: usize,
     // Reusable buffer for formatting bytes as hex
@@ -231,8 +236,8 @@ impl<'a> IonInspector<'a> {
         bytes_to_skip: usize,
         limit_bytes: usize,
     ) -> IonResult<IonInspector<'b>> {
-        let reader = SystemReader::new(RawBinaryReader::new(io::Cursor::new(input)));
-        let text_ion_writer = RawTextWriterBuilder::new()
+        let reader = SystemReader::new(BlockingRawBinaryReader::new(io::Cursor::new(input))?);
+        let text_ion_writer = RawTextWriterBuilder::new(TextKind::Compact)
             .build(Vec::with_capacity(TEXT_WRITER_INITIAL_BUFFER_SIZE))?;
         let inspector = IonInspector {
             output: out,
@@ -362,15 +367,15 @@ impl<'a> IonInspector<'a> {
 
             // If the current value is a container, step into it and inspect its contents.
             match ion_type {
-                IonType::List | IonType::SExpression | IonType::Struct => {
+                IonType::List | IonType::SExp | IonType::Struct => {
                     self.reader.step_in()?;
                     self.inspect_level()?;
                     self.reader.step_out()?;
                     // Print the container's closing delimiter: }, ), or ]
                     self.text_buffer.clear();
-                    self.text_buffer.push_str(&closing_delimiter_for(ion_type));
-                    if ion_type != IonType::SExpression && self.reader.depth() > 0 {
-                        self.text_buffer.push_str(",");
+                    self.text_buffer.push_str(closing_delimiter_for(ion_type));
+                    if ion_type != IonType::SExp && self.reader.depth() > 0 {
+                        self.text_buffer.push(',');
                     }
                     output(
                         self.output,
@@ -550,8 +555,8 @@ impl<'a> IonInspector<'a> {
         } else {
             match ion_type {
                 Null => writer.write_null(ion_type),
-                Boolean => writer.write_bool(reader.read_bool()?),
-                Integer => writer.write_i64(reader.read_i64()?),
+                Bool => writer.write_bool(reader.read_bool()?),
+                Int => writer.write_i64(reader.read_i64()?),
                 Float => writer.write_f64(reader.read_f64()?),
                 Decimal => writer.write_decimal(&reader.read_decimal()?),
                 Timestamp => writer.write_timestamp(&reader.read_timestamp()?),
@@ -566,16 +571,16 @@ impl<'a> IonInspector<'a> {
                     write!(comment_buffer, " // ${}", sid)?;
                     writer.write_symbol(text)
                 }
-                String => reader.map_string(|s| writer.write_string(s))?,
-                Clob => reader.map_clob(|c| writer.write_clob(c))?,
-                Blob => reader.map_blob(|b| writer.write_blob(b))?,
+                String => writer.write_string(reader.read_str()?),
+                Clob => writer.write_clob(reader.read_clob()?),
+                Blob => writer.write_blob(reader.read_blob()?),
                 // The containers don't use the RawTextWriter to format anything. They simply write
                 // the appropriate opening delimiter.
                 List => {
                     write!(text_buffer, "[")?;
                     return Ok(());
                 }
-                SExpression => {
+                SExp => {
                     write!(text_buffer, "(")?;
                     return Ok(());
                 }
@@ -708,7 +713,7 @@ fn output<T: Display>(
 fn closing_delimiter_for(container_type: IonType) -> &'static str {
     match container_type {
         IonType::List => "]",
-        IonType::SExpression => ")",
+        IonType::SExp => ")",
         IonType::Struct => "}",
         _ => panic!("Attempted to close non-container type {:?}", container_type),
     }

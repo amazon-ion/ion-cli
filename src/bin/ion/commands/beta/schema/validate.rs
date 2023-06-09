@@ -1,13 +1,11 @@
 use anyhow::{Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use ion_rs::IonWriter;
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
-use ion_schema::external::ion_rs::value::native_writer::NativeElementWriter;
-use ion_schema::external::ion_rs::value::owned::Element;
-use ion_schema::external::ion_rs::value::reader::{element_reader, ElementReader};
-use ion_schema::external::ion_rs::value::writer::ElementWriter;
-use ion_schema::external::ion_rs::IonType;
+use ion_schema::external::ion_rs::element::reader::ElementReader;
+use ion_schema::external::ion_rs::element::writer::ElementWriter;
+use ion_schema::external::ion_rs::element::Element;
 use ion_schema::external::ion_rs::{IonResult, TextWriterBuilder};
+use ion_schema::external::ion_rs::{IonType, IonWriter, ReaderBuilder};
 use ion_schema::system::SchemaSystem;
 use std::fs;
 use std::path::Path;
@@ -74,8 +72,9 @@ pub fn run(_command_name: &str, matches: &ArgMatches) -> Result<()> {
     // Extract Ion value provided by user
     let input_file = matches.get_one::<String>("input").unwrap();
     let value = fs::read(input_file).with_context(|| format!("Could not open '{}'", schema_id))?;
-    let owned_elements: Vec<Element> = element_reader()
-        .read_all(&value)
+    let owned_elements: Vec<Element> = ReaderBuilder::new()
+        .build(value.as_slice())?
+        .read_all_elements()
         .with_context(|| format!("Could not parse Ion file: '{}'", schema_id))?;
 
     // Set up document authorities vector
@@ -134,11 +133,10 @@ pub fn run(_command_name: &str, matches: &ArgMatches) -> Result<()> {
 //       release of ion-rs.
 fn element_to_string(element: &Element) -> IonResult<String> {
     let mut buffer = Vec::new();
-    let text_writer = TextWriterBuilder::new().build(std::io::Cursor::new(&mut buffer))?;
-    let mut element_writer = NativeElementWriter::new(text_writer);
-    element_writer.write(element)?;
-    let mut text_writer = element_writer.finish()?;
+    let mut text_writer = TextWriterBuilder::new().build(&mut buffer)?;
+    text_writer.write_element(element)?;
     text_writer.flush()?;
-    drop(text_writer);
-    Ok(from_utf8(buffer.as_slice()).unwrap().to_string())
+    Ok(from_utf8(text_writer.output().as_slice())
+        .expect("Invalid UTF-8 output")
+        .to_string())
 }
