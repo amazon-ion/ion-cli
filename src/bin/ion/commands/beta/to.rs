@@ -1,15 +1,14 @@
 use anyhow::{Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use ion_rs::value::owned::Element;
-use ion_rs::value::reader::{element_reader, ElementReader};
-use ion_rs::value::{IonElement, IonSequence};
-use ion_rs::IonType;
+use ion_rs::{ReaderBuilder};
 use memmap::MmapOptions;
 use serde_json::{Map, Number, Value as JsonValue};
 use std::fs::File;
 use std::io;
 use std::io::{stdout, BufWriter, Write};
 use std::str::FromStr;
+use ion_rs::element::{Element};
+use ion_rs::element::reader::ElementReader;
 
 const ABOUT: &str = "Converts data from Ion into a requested format. Currently supports json.";
 
@@ -113,14 +112,14 @@ pub fn convert(file: &mut File, output: &mut Box<dyn Write>, format: &str) -> Re
 
     // Treat the mmap as a byte array.
     let ion_data: &[u8] = &mmap[..];
-    let iter = element_reader()
-        .iterate_over(ion_data)
+    let mut reader = ReaderBuilder::new()
+        .build(ion_data)
         .with_context(|| "No `source_format` was specified.")?;
     match format {
         "json" => {
-            for result in iter {
-                let element = result.with_context(|| format!("invalid input"))?;
-                write!(output, "{}\n", to_json_value(element)?.to_string())?
+            for result in reader.elements() {
+                let element = result.with_context(|| "invalid input")?;
+                write!(output, "{}\n", to_json_value(&element)?.to_string())?
             }
         }
         _ => {
@@ -130,19 +129,20 @@ pub fn convert(file: &mut File, output: &mut Box<dyn Write>, format: &str) -> Re
     Ok(())
 }
 
-fn to_json_value(element: Element) -> Result<JsonValue> {
+fn to_json_value(element: &Element) -> Result<JsonValue> {
     if element.is_null() {
         Ok(JsonValue::Null)
     } else {
-        let value = match element.ion_type() {
-            IonType::Null => JsonValue::Null,
-            IonType::Boolean => JsonValue::Bool(element.as_bool().unwrap()),
-            IonType::Integer => JsonValue::Number(
-                Number::from_str(&*element.as_integer().unwrap().to_string())
+        use ion_rs::element::Value::*;
+        let value = match element.value() {
+            Null(_ion_type) => JsonValue::Null,
+            Bool(b) => JsonValue::Bool(*b),
+            Int(i) => JsonValue::Number(
+                Number::from_str(&(*i).to_string())
                     .with_context(|| format!("{element} could not be turned into a Number"))?,
             ),
-            IonType::Float => {
-                let value = element.as_f64().unwrap();
+            Float(f) => {
+                let value = *f;
                 if value.is_finite() {
                     JsonValue::Number(
                         Number::from_f64(value).with_context(|| {
@@ -155,46 +155,37 @@ fn to_json_value(element: Element) -> Result<JsonValue> {
                     JsonValue::Null
                 }
             }
-            IonType::Decimal => JsonValue::Number(
+            Decimal(d) => JsonValue::Number(
                 Number::from_str(
-                    element
-                        .as_decimal()
-                        .unwrap()
-                        .to_string()
+                    d.to_string()
                         .replace("d", "e")
                         .as_str(),
                 )
                 .with_context(|| format!("{element} could not be turned into a Number"))?,
             ),
-            IonType::Timestamp => JsonValue::String(element.as_timestamp().unwrap().to_string()),
-            IonType::Symbol | IonType::String => JsonValue::String(
-                element
-                    .as_str()
-                    .with_context(|| format!("{element} could not be turned into a String"))?
-                    .into(),
-            ),
-            IonType::Clob => {
-                JsonValue::String(element.to_string().replace("{{\"", "").replace("\"}}", ""))
-            }
-            IonType::Blob => {
-                JsonValue::String(element.to_string().replace("{{", "").replace("}}", ""))
-            }
-            IonType::List | IonType::SExpression => {
-                let result: Result<Vec<JsonValue>> = element
-                    .as_sequence()
-                    .unwrap()
-                    .iter()
-                    .map(|x| to_json_value(x.clone()))
+            Timestamp(t) => JsonValue::String(t.to_string()),
+            Symbol(s) =>
+                s.text()
+                    .map(|text| JsonValue::String(text.to_owned()))
+                    .unwrap_or_else(|| JsonValue::Null),
+            String(s) => JsonValue::String(s.text().to_owned()),
+            Blob(b) | Clob(b) => {
+                use base64::{Engine as _, engine::general_purpose as base64_encoder};
+                let base64_text = base64_encoder::STANDARD.encode(b.as_ref());
+                JsonValue::String(base64_text)
+            },
+            List(s) | SExp(s) => {
+                let result: Result<Vec<JsonValue>> = s
+                    .elements()
+                    .map(|element| to_json_value(element))
                     .collect();
                 JsonValue::Array(result?)
             }
-            IonType::Struct => {
-                let result: Result<Map<String, JsonValue>> = element
-                    .as_struct()
-                    .unwrap()
+            Struct(s) => {
+                let result: Result<Map<std::string::String, JsonValue>> = s
                     .fields()
                     .map(|(k, v)| {
-                        to_json_value(v.clone().into())
+                        to_json_value(v)
                             .map(|value| (k.text().unwrap().into(), value))
                     })
                     .collect();

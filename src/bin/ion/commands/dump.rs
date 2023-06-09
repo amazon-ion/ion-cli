@@ -158,8 +158,8 @@ fn transcribe_n_values<W: IonWriter>(
                 use IonType::*;
                 match ion_type {
                     Null => unreachable!("null values are handled prior to this match"),
-                    Boolean => writer.write_bool(reader.read_bool()?)?,
-                    Integer => writer.write_integer(&reader.read_integer()?)?,
+                    Bool => writer.write_bool(reader.read_bool()?)?,
+                    Int => writer.write_int(&reader.read_int()?)?,
                     Float => {
                         let float64 = reader.read_f64()?;
                         let float32 = float64 as f32;
@@ -180,9 +180,9 @@ fn transcribe_n_values<W: IonWriter>(
                         reader.step_in()?;
                         writer.step_in(List)?;
                     }
-                    SExpression => {
+                    SExp => {
                         reader.step_in()?;
-                        writer.step_in(SExpression)?;
+                        writer.step_in(SExp)?;
                     }
                     Struct => {
                         reader.step_in()?;
