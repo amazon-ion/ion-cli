@@ -484,7 +484,7 @@ dependencies = [
  "base64 0.21.2",
  "clap",
  "colored",
- "ion-rs 0.18.0",
+ "ion-rs 0.18.1",
  "ion-schema",
  "memmap",
  "rstest",
@@ -514,9 +514,9 @@ dependencies = [
 
 [[package]]
 name = "ion-rs"
-version = "0.18.0"
+version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27af4be256e55b7bb11dcceb727a1c754f4f74653781489ed7c4901d3bee5d6e"
+checksum = "7434986c985887a9da57b80429e02225cc561d0a9351fcd39aa309f08abea7db"
 dependencies = [
  "arrayvec",
  "base64 0.12.3",
