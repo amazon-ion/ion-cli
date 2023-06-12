@@ -15,7 +15,7 @@ keywords = ["format", "parse", "encode"]
 anyhow = "1.0"
 clap = { version = "4.0.17", features = ["cargo"] }
 colored = "2.0.0"
-ion-rs = "0.18.0"
+ion-rs = "0.18.1"
 memmap = "0.7.0"
 tempfile = "3.2.0"
 ion-schema = "0.7.0"

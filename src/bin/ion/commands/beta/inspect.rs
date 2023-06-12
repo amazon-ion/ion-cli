@@ -211,10 +211,7 @@ const TEXT_WRITER_INITIAL_BUFFER_SIZE: usize = 128;
 
 struct IonInspector<'a> {
     output: &'a mut OutputRef,
-    // XXX: It's still a bit awkward to get at the raw bytes of the values that the reader visits.
-    //      This has to be solved in ion-rs.
-    #[allow(clippy::type_complexity)]
-    reader: SystemReader<BlockingRawReader<RawBinaryReader<Vec<u8>>, io::Cursor<&'a [u8]>>>,
+    reader: SystemReader<RawBinaryReader<&'a [u8]>>,
     bytes_to_skip: usize,
     limit_bytes: usize,
     // Reusable buffer for formatting bytes as hex
@@ -236,7 +233,7 @@ impl<'a> IonInspector<'a> {
         bytes_to_skip: usize,
         limit_bytes: usize,
     ) -> IonResult<IonInspector<'b>> {
-        let reader = SystemReader::new(BlockingRawBinaryReader::new(io::Cursor::new(input))?);
+        let reader = SystemReader::new(RawBinaryReader::new(input));
         let text_ion_writer = RawTextWriterBuilder::new(TextKind::Compact)
             .build(Vec::with_capacity(TEXT_WRITER_INITIAL_BUFFER_SIZE))?;
         let inspector = IonInspector {
@@ -465,13 +462,12 @@ impl<'a> IonInspector<'a> {
             );
 
             self.text_buffer.clear();
-            write!(&mut self.text_buffer, "'")?;
             join_into(
                 &mut self.text_buffer,
-                "'::'",
+                "::",
                 self.reader.annotations().map(|o| o.unwrap()),
             );
-            write!(&mut self.text_buffer, "'::")?;
+            write!(&mut self.text_buffer, "::")?;
 
             self.color_buffer.clear();
             write!(&mut self.color_buffer, " // $")?;
