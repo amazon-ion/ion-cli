@@ -5,7 +5,6 @@ pub mod inspect;
 pub mod primitive;
 pub mod schema;
 pub mod to;
-// pub mod from;
 
 use crate::commands::CommandRunner;
 use anyhow::Result;
