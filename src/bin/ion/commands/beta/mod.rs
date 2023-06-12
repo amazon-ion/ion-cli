@@ -1,10 +1,11 @@
 pub mod count;
+pub mod from;
 pub mod head;
 pub mod inspect;
 pub mod primitive;
 pub mod schema;
 pub mod to;
-pub mod from;
+// pub mod from;
 
 use crate::commands::CommandRunner;
 use anyhow::Result;
@@ -21,7 +22,7 @@ pub fn beta_subcommands() -> Vec<Command> {
         primitive::app(),
         schema::app(),
         head::app(),
-        orig_from::app(),
+        from::app(),
         to::app(),
     ]
 }
@@ -32,7 +33,7 @@ pub fn runner_for_beta_subcommand(command_name: &str) -> Option<CommandRunner> {
         "inspect" => inspect::run,
         "primitive" => primitive::run,
         "schema" => schema::run,
-        "from" => orig_from::run,
+        "from" => from::run,
         "to" => to::run,
         "head" => head::run,
         _ => return None,
