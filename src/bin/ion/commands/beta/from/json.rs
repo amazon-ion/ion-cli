@@ -1,7 +1,7 @@
 use crate::commands::dump;
+use crate::IonCliCommand;
 use anyhow::Result;
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use crate::IonCliCommand;
 
 pub struct FromJsonCommand;
 

@@ -1,9 +1,8 @@
 mod commands;
 
-
-use anyhow::{anyhow, Result};
-use clap::{ArgMatches, Command as ClapCommand, crate_authors, crate_version};
 use crate::commands::beta::BetaNamespace;
+use anyhow::{anyhow, Result};
+use clap::{crate_authors, crate_version, ArgMatches, Command as ClapCommand};
 
 use crate::commands::dump::DumpCommand;
 
@@ -14,15 +13,21 @@ fn main() -> Result<()> {
     root_command.run(&mut command_path, &args)
 }
 
-pub type CommandRunner = fn(&str, &ArgMatches) -> Result<()>;
-
 pub trait IonCliCommand {
     fn name(&self) -> &'static str;
 
     fn about(&self) -> &'static str;
 
+    fn configure_args(&self, command: &mut ClapCommand) {
+        // Does nothing by default
+    }
+
     fn clap_command(&self) -> ClapCommand {
-        let clap_subcommands: Vec<_> = self.subcommands().iter().map(|s| s.clap_command()).collect();
+        let clap_subcommands: Vec<_> = self
+            .subcommands()
+            .iter()
+            .map(|s| s.clap_command())
+            .collect();
         ClapCommand::new(self.name())
             .about(self.about())
             .version(crate_version!())
@@ -47,11 +52,17 @@ pub trait IonCliCommand {
     // The default implementation assumes this command is a namespace (i.e. a group of subcommands).
     // It looks for a subcommand in the arguments, then looks up and runs that subcommand.
     fn run(&self, command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
-        let (subcommand_name, subcommand_args) = args.subcommand()
+        let (subcommand_name, subcommand_args) = args
+            .subcommand()
             .ok_or_else(|| anyhow!("Command '{}' expects a subcommand.", self.name()))?;
 
-        let subcommand = self.get_subcommand(subcommand_name)
-            .ok_or_else(|| anyhow!("'{}' subcommand '{}' was not recognized.", self.name(), subcommand_name))?;
+        let subcommand = self.get_subcommand(subcommand_name).ok_or_else(|| {
+            anyhow!(
+                "'{}' subcommand '{}' was not recognized.",
+                self.name(),
+                subcommand_name
+            )
+        })?;
 
         command_path.push(subcommand_name.to_owned());
         subcommand.run(command_path, subcommand_args)
@@ -70,9 +81,6 @@ impl IonCliCommand for RootCommand {
     }
 
     fn subcommands(&self) -> Vec<Box<dyn IonCliCommand>> {
-        vec![
-            Box::new(BetaNamespace),
-            Box::new(DumpCommand),
-        ]
+        vec![Box::new(BetaNamespace), Box::new(DumpCommand)]
     }
 }

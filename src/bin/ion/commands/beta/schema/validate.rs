@@ -1,3 +1,4 @@
+use crate::IonCliCommand;
 use anyhow::{Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
@@ -10,7 +11,6 @@ use ion_schema::system::SchemaSystem;
 use std::fs;
 use std::path::Path;
 use std::str::from_utf8;
-use crate::IonCliCommand;
 
 pub struct ValidateCommand;
 
@@ -77,7 +77,8 @@ impl IonCliCommand for ValidateCommand {
 
         // Extract Ion value provided by user
         let input_file = args.get_one::<String>("input").unwrap();
-        let value = fs::read(input_file).with_context(|| format!("Could not open '{}'", schema_id))?;
+        let value =
+            fs::read(input_file).with_context(|| format!("Could not open '{}'", schema_id))?;
         let owned_elements: Vec<Element> = ReaderBuilder::new()
             .build(value.as_slice())?
             .read_all_elements()

@@ -1,8 +1,7 @@
 pub mod load;
 pub mod validate;
 
-use crate::{IonCliCommand};
-
+use crate::IonCliCommand;
 
 use crate::commands::beta::schema::load::LoadCommand;
 use crate::commands::beta::schema::validate::ValidateCommand;
@@ -19,9 +18,6 @@ impl IonCliCommand for SchemaNamespace {
     }
 
     fn subcommands(&self) -> Vec<Box<dyn IonCliCommand>> {
-        vec![
-            Box::new(LoadCommand),
-            Box::new(ValidateCommand),
-        ]
+        vec![Box::new(LoadCommand), Box::new(ValidateCommand)]
     }
 }

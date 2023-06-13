@@ -1,5 +1,4 @@
-use crate::{IonCliCommand};
-
+use crate::IonCliCommand;
 
 use crate::commands::beta::from::json::FromJsonCommand;
 

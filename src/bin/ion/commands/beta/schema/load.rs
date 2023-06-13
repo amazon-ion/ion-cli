@@ -1,9 +1,9 @@
+use crate::IonCliCommand;
 use anyhow::Result;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
 use ion_schema::system::SchemaSystem;
 use std::path::Path;
-use crate::IonCliCommand;
 
 pub struct LoadCommand;
 

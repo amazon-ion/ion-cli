@@ -6,7 +6,6 @@ pub mod primitive;
 pub mod schema;
 pub mod to;
 
-use crate::{IonCliCommand};
 use crate::commands::beta::count::CountCommand;
 use crate::commands::beta::from::FromNamespace;
 use crate::commands::beta::head::HeadCommand;
@@ -14,7 +13,7 @@ use crate::commands::beta::inspect::InspectCommand;
 use crate::commands::beta::primitive::PrimitiveCommand;
 use crate::commands::beta::schema::SchemaNamespace;
 use crate::commands::beta::to::ToNamespace;
-
+use crate::IonCliCommand;
 
 pub struct BetaNamespace;
 

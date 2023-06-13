@@ -1,7 +1,7 @@
 use crate::commands::dump;
+use crate::IonCliCommand;
 use anyhow::Result;
 use clap::{value_parser, Arg, ArgAction, ArgMatches, Command};
-use crate::IonCliCommand;
 
 pub struct HeadCommand;
 
@@ -59,4 +59,3 @@ impl IonCliCommand for HeadCommand {
         dump::run(command_path.last().unwrap(), args)
     }
 }
-

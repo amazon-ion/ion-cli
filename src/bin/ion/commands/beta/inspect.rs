@@ -6,6 +6,7 @@ use std::io::BufWriter;
 use std::ops::Range;
 use std::str::{from_utf8_unchecked, FromStr};
 
+use crate::IonCliCommand;
 use anyhow::{bail, Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use colored::Colorize;
@@ -14,7 +15,6 @@ use ion_rs::element::writer::TextKind;
 use ion_rs::result::{decoding_error, IonResult};
 use ion_rs::*;
 use memmap::MmapOptions;
-use crate::IonCliCommand;
 
 pub struct InspectCommand;
 
@@ -100,8 +100,8 @@ complete value will be displayed.",
 
         // If the user has specified an output file, use it.
         let mut output: OutputRef = if let Some(file_name) = args.get_one::<String>("output") {
-            let output_file =
-                File::create(file_name).with_context(|| format!("Could not open '{}'", file_name))?;
+            let output_file = File::create(file_name)
+                .with_context(|| format!("Could not open '{}'", file_name))?;
             let buf_writer = BufWriter::new(output_file);
             Box::new(buf_writer)
         } else {
@@ -132,8 +132,8 @@ complete value will be displayed.",
             // Create a temporary file that will delete itself when the program ends.
             let mut input_file = tempfile::tempfile().with_context(|| {
                 concat!(
-                "Failed to create a temporary file to store STDIN.",
-                "Try passing an --input flag instead."
+                    "Failed to create a temporary file to store STDIN.",
+                    "Try passing an --input flag instead."
                 )
             })?;
 
@@ -157,8 +157,6 @@ complete value will be displayed.",
         Ok(())
     }
 }
-
-
 
 // Create a type alias to simplify working with a shared reference to our output stream.
 type OutputRef = Box<dyn io::Write>;

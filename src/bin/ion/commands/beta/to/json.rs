@@ -1,3 +1,4 @@
+use crate::IonCliCommand;
 use anyhow::{Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_rs::element::reader::ElementReader;
@@ -7,7 +8,6 @@ use serde_json::{Map, Number, Value as JsonValue};
 use std::fs::File;
 use std::io::{stdin, stdout, BufWriter, Write};
 use std::str::FromStr;
-use crate::IonCliCommand;
 
 pub struct ToJsonCommand;
 

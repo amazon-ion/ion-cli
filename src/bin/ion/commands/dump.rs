@@ -1,9 +1,9 @@
+use crate::IonCliCommand;
 use anyhow::{Context, Result};
 use clap::{value_parser, Arg, ArgAction, ArgMatches, Command};
 use ion_rs::*;
 use std::fs::File;
 use std::io::{stdin, stdout, StdinLock, Write};
-use crate::IonCliCommand;
 
 pub struct DumpCommand;
 
