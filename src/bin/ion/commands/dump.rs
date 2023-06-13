@@ -66,11 +66,6 @@ pub fn run(_command_name: &str, matches: &ArgMatches) -> Result<()> {
     };
 
     if let Some(input_file_iter) = matches.get_many::<String>("input") {
-        //TODO: Hack around newline issue, append newline after `pretty` and `lines`, single newline
-        // at the end of *all* `text` value output (if handling multiple files)
-        //TODO: Solve these newline issues, get rid of hack
-        // https://github.com/amazon-ion/ion-cli/issues/36
-        // https://github.com/amazon-ion/ion-rust/issues/437
         for input_file in input_file_iter {
             let file = File::open(input_file)
                 .with_context(|| format!("Could not open file '{}'", input_file))?;
@@ -95,18 +90,30 @@ pub(crate) fn write_in_format(
     format: &str,
     count: Option<usize>,
 ) -> IonResult<usize> {
-    match format {
+    // XXX: The text formats below each have additional logic to append a newline because the
+    //      ion-rs writer doesn't handle this automatically like it should.
+    //TODO: Solve these newline issues, get rid of hack
+    // https://github.com/amazon-ion/ion-cli/issues/36
+    // https://github.com/amazon-ion/ion-rust/issues/437
+    const NEWLINE: u8 = 0x0A;
+    let written = match format {
         "pretty" => {
             let mut writer = TextWriterBuilder::pretty().build(output)?;
-            transcribe_n_values(reader, &mut writer, count)
+            let values_written = transcribe_n_values(reader, &mut writer, count)?;
+            writer.output_mut().write_all(&[NEWLINE])?;
+            Ok(values_written)
         }
         "text" => {
             let mut writer = TextWriterBuilder::default().build(output)?;
-            transcribe_n_values(reader, &mut writer, count)
+            let values_written = transcribe_n_values(reader, &mut writer, count)?;
+            writer.output_mut().write_all(&[NEWLINE])?;
+            Ok(values_written)
         }
         "lines" => {
             let mut writer = TextWriterBuilder::lines().build(output)?;
-            transcribe_n_values(reader, &mut writer, count)
+            let values_written = transcribe_n_values(reader, &mut writer, count)?;
+            writer.output_mut().write_all(&[NEWLINE])?;
+            Ok(values_written)
         }
         "binary" => {
             let mut writer = BinaryWriterBuilder::new().build(output)?;
@@ -116,7 +123,8 @@ pub(crate) fn write_in_format(
             "'format' was '{}' instead of 'pretty', 'text', 'lines', or 'binary'",
             unrecognized
         ),
-    }
+    }?;
+    Ok(written)
 }
 
 /// Writes each value encountered in the Reader to the provided IonWriter. If `count` is specified
