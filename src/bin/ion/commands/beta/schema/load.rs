@@ -17,9 +17,8 @@ impl IonCliCommand for LoadCommand {
         Shows an error message if there were any invalid schema syntax found during the load process"#
     }
 
-    fn clap_command(&self) -> Command {
-        Command::new(self.name())
-            .about(self.about())
+    fn configure_args(&self, command: Command) -> Command {
+        command
             .arg(
                 // Input file can be specified by the "-s" or "--schema" flags.
                 Arg::new("schema")

@@ -1,6 +1,6 @@
-use crate::commands::IonCliCommand;
+use crate::commands::{IonCliCommand, WithIonCliArgument};
 use anyhow::{Context, Result};
-use clap::{value_parser, Arg, ArgAction, ArgMatches, Command};
+use clap::{value_parser, Arg, ArgMatches, Command};
 use ion_rs::*;
 use std::fs::File;
 use std::io::{stdin, stdout, StdinLock, Write};
@@ -16,10 +16,9 @@ impl IonCliCommand for DumpCommand {
         "Prints Ion in the requested format"
     }
 
-    fn clap_command(&self) -> Command {
-        Command::new(self.name())
-            .about(self.about())
-            //TODO: Remove `values` after https://github.com/amazon-ion/ion-cli/issues/49
+    fn configure_args(&self, command: Command) -> Command {
+        //TODO: Remove `values` after https://github.com/amazon-ion/ion-cli/issues/49
+        command
             .arg(
                 Arg::new("values")
                     .long("values")
@@ -29,29 +28,9 @@ impl IonCliCommand for DumpCommand {
                     .hide(true)
                     .help("Specifies the number of output top-level values."),
             )
-            .arg(
-                Arg::new("format")
-                    .long("format")
-                    .short('f')
-                    .default_value("pretty")
-                    .value_parser(["binary", "text", "pretty", "lines"])
-                    .help("Output format"),
-            )
-            .arg(
-                Arg::new("output")
-                    .long("output")
-                    .short('o')
-                    .help("Output file [default: STDOUT]"),
-            )
-            .arg(
-                // All argv entries after the program name (argv[0])
-                // and any `clap`-managed options are considered input files.
-                Arg::new("input")
-                    .index(1)
-                    .help("Input file [default: STDIN]")
-                    .action(ArgAction::Append)
-                    .trailing_var_arg(true),
-            )
+            .with_input()
+            .with_output()
+            .with_format()
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {

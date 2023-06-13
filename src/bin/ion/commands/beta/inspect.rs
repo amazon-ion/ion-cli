@@ -6,9 +6,9 @@ use std::io::BufWriter;
 use std::ops::Range;
 use std::str::{from_utf8_unchecked, FromStr};
 
-use crate::commands::IonCliCommand;
+use crate::commands::{IonCliCommand, WithIonCliArgument};
 use anyhow::{bail, Context, Result};
-use clap::{Arg, ArgAction, ArgMatches, Command};
+use clap::{Arg, ArgMatches, Command};
 use colored::Colorize;
 use ion_rs::binary::non_blocking::raw_binary_reader::RawBinaryReader;
 use ion_rs::element::writer::TextKind;
@@ -27,22 +27,10 @@ impl IonCliCommand for InspectCommand {
         "Displays hex-encoded binary Ion alongside its equivalent text for human-friendly debugging."
     }
 
-    fn clap_command(&self) -> Command {
-        Command::new(self.name())
-            .about(self.about())
-            .arg(
-                Arg::new("output")
-                    .long("output")
-                    .short('o')
-                    .help("Output file [default: STDOUT]"),
-            )
-            .arg(
-                Arg::new("input")
-                    .index(1)
-                    .trailing_var_arg(true)
-                    .action(ArgAction::Append)
-                    .help("Input file"),
-            )
+    fn configure_args(&self, command: Command) -> Command {
+        command
+            .with_input()
+            .with_output()
             .arg(
                 // This is named `skip-bytes` instead of `skip` to accommodate a future `skip-values` option.
                 Arg::new("skip-bytes")

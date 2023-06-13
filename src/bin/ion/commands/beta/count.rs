@@ -1,6 +1,6 @@
-use crate::commands::IonCliCommand;
+use crate::commands::{IonCliCommand, WithIonCliArgument};
 use anyhow::{Context, Result};
-use clap::{Arg, ArgAction, ArgMatches, Command};
+use clap::{ArgMatches, Command};
 use ion_rs::*;
 use std::fs::File;
 use std::io::{stdin, BufReader, StdinLock};
@@ -16,16 +16,8 @@ impl IonCliCommand for CountCommand {
         "Prints the number of top-level values found in the input stream."
     }
 
-    fn clap_command(&self) -> Command {
-        Command::new(self.name()).about(self.about()).arg(
-            // All argv entries after the program name (argv[0])
-            // and any `clap`-managed options are considered input files.
-            Arg::new("input")
-                .index(1)
-                .help("Input file [default: STDIN]")
-                .action(ArgAction::Append)
-                .trailing_var_arg(true),
-        )
+    fn configure_args(&self, command: Command) -> Command {
+        command.with_input()
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {

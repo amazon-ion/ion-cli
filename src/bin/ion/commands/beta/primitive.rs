@@ -15,9 +15,8 @@ impl IonCliCommand for PrimitiveCommand {
         "Prints the binary representation of an Ion encoding primitive."
     }
 
-    fn clap_command(&self) -> Command {
-        Command::new(self.name())
-            .about(self.about())
+    fn configure_args(&self, command: Command) -> Command {
+        command
             .arg(
                 Arg::new("type")
                     .short('t')

@@ -23,9 +23,17 @@ impl IonCliCommand for ValidateCommand {
         "Validates an Ion value based on a given Ion Schema type."
     }
 
-    fn clap_command(&self) -> Command {
-        Command::new(self.name())
-            .about(self.about())
+    fn configure_args(&self, command: Command) -> Command {
+        command
+            .arg(
+                // Input ion file can be specified by the "-i" or "--input" flags.
+                Arg::new("input")
+                    .long("input")
+                    .short('i')
+                    .required(true)
+                    .value_name("INPUT_FILE")
+                    .help("Input file containing the Ion values to be validated"),
+            )
             .arg(
                 // Schema file can be specified by the "-s" or "--schema" flags.
                 Arg::new("schema")
@@ -44,15 +52,6 @@ impl IonCliCommand for ValidateCommand {
                     .value_name("DIRECTORY")
                     .required(true)
                     .help("One or more directories that will be searched for the requested schema"),
-            )
-            .arg(
-                // Input ion file can be specified by the "-i" or "--input" flags.
-                Arg::new("input")
-                    .long("input")
-                    .short('i')
-                    .required(true)
-                    .value_name("INPUT_FILE")
-                    .help("Input file containing the Ion values to be validated"),
             )
             .arg(
                 // Schema Type can be specified by the "-t" or "--type" flags.

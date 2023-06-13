@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use clap::{crate_authors, crate_version, ArgMatches, Command as ClapCommand};
+use clap::{crate_authors, crate_version, Arg, ArgAction, ArgMatches, Command as ClapCommand};
 pub mod beta;
 pub mod dump;
 
@@ -8,22 +8,32 @@ pub trait IonCliCommand {
 
     fn about(&self) -> &'static str;
 
-    fn configure_args(&self, _command: &mut ClapCommand) {
-        // Does nothing by default
-    }
-
     fn clap_command(&self) -> ClapCommand {
         let clap_subcommands: Vec<_> = self
             .subcommands()
             .iter()
             .map(|s| s.clap_command())
             .collect();
-        ClapCommand::new(self.name())
+
+        let mut base_command = ClapCommand::new(self.name())
             .about(self.about())
             .version(crate_version!())
-            .author(crate_authors!())
-            .subcommand_required(true)
-            .subcommands(clap_subcommands)
+            .author(crate_authors!());
+
+        if !clap_subcommands.is_empty() {
+            base_command = base_command
+                .subcommand_required(true)
+                .subcommands(clap_subcommands);
+        }
+
+        self.configure_args(base_command)
+    }
+
+    /// After initializing a [`ClapCommand`] using [Self::clap_command], subcommands may customize
+    /// the `ClapCommand` further by overriding this default implementation.
+    fn configure_args(&self, command: ClapCommand) -> ClapCommand {
+        // Does nothing by default
+        command
     }
 
     fn subcommands(&self) -> Vec<Box<dyn IonCliCommand>> {
@@ -56,5 +66,43 @@ pub trait IonCliCommand {
 
         command_path.push(subcommand_name.to_owned());
         subcommand.run(command_path, subcommand_args)
+    }
+}
+
+pub trait WithIonCliArgument {
+    fn with_input(self) -> Self;
+    fn with_output(self) -> Self;
+    fn with_format(self) -> Self;
+}
+
+impl WithIonCliArgument for ClapCommand {
+    fn with_input(self) -> Self {
+        self.arg(
+            Arg::new("input")
+                .index(1)
+                .trailing_var_arg(true)
+                .action(ArgAction::Append)
+                .help("Input file"),
+        )
+    }
+
+    fn with_output(self) -> Self {
+        self.arg(
+            Arg::new("output")
+                .long("output")
+                .short('o')
+                .help("Output file [default: STDOUT]"),
+        )
+    }
+
+    fn with_format(self) -> Self {
+        self.arg(
+            Arg::new("format")
+                .long("format")
+                .short('f')
+                .default_value("pretty")
+                .value_parser(["binary", "text", "pretty", "lines"])
+                .help("Output format"),
+        )
     }
 }

@@ -1,6 +1,6 @@
-use crate::commands::IonCliCommand;
+use crate::commands::{IonCliCommand, WithIonCliArgument};
 use anyhow::{Context, Result};
-use clap::{Arg, ArgAction, ArgMatches, Command};
+use clap::{ArgMatches, Command};
 use ion_rs::element::reader::ElementReader;
 use ion_rs::element::Element;
 use ion_rs::{Reader, ReaderBuilder};
@@ -20,25 +20,10 @@ impl IonCliCommand for ToJsonCommand {
         "Converts Ion data to JSON."
     }
 
-    fn clap_command(&self) -> Command {
-        Command::new(self.name())
-            .about(self.about())
-            .arg(
-                Arg::new("output")
-                    .long("output")
-                    .short('o')
-                    .help("Output file [default: STDOUT]"),
-            )
-            .arg(
-                // Unlabeled positional arguments will also be considered input file names.
-                Arg::new("input")
-                    .index(1)
-                    .trailing_var_arg(true)
-                    .action(ArgAction::Append)
-                    .help("Input file name"),
-            )
+    fn configure_args(&self, command: Command) -> Command {
         // NOTE: it may be necessary to add format-specific options. For example, a "pretty" option
         // would make sense for JSON, but not binary formats like CBOR.
+        command.with_input().with_output()
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
