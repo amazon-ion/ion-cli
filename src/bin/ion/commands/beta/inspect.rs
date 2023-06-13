@@ -14,66 +14,151 @@ use ion_rs::element::writer::TextKind;
 use ion_rs::result::{decoding_error, IonResult};
 use ion_rs::*;
 use memmap::MmapOptions;
+use crate::IonCliCommand;
 
-const ABOUT: &str =
-    "Displays hex-encoded binary Ion alongside its equivalent text for human-friendly debugging.";
+pub struct InspectCommand;
 
-// Creates a `clap` (Command Line Arguments Parser) configuration for the `inspect` command.
-// This function is invoked by the `inspect` command's parent, `beta`, so it can describe its
-// child commands.
-pub fn app() -> Command {
-    Command::new("inspect")
-        .about(ABOUT)
-        .arg(
-            Arg::new("output")
-                .long("output")
-                .short('o')
-                .help("Output file [default: STDOUT]"),
-        )
-        .arg(
-            // Any number of input files can be specified by repeating the "-i" or "--input" flags.
-            // Unlabeled positional arguments will also be considered input file names.
-            Arg::new("input")
-                .long("input")
-                .short('i')
-                .index(1)
-                .trailing_var_arg(true)
-                .action(ArgAction::Append)
-                .help("Input file"),
-        )
-        .arg(
-            // This is named `skip-bytes` instead of `skip` to accommodate a future `skip-values` option.
-            Arg::new("skip-bytes")
-                .long("skip-bytes")
-                .short('s')
-                .default_value("0")
-                .hide_default_value(true)
-                .help("Do not display any user values for the first `n` bytes of Ion data.")
-                .long_help(
-                    "When specified, the inspector will skip ahead `n` bytes before
+impl IonCliCommand for InspectCommand {
+    fn name(&self) -> &'static str {
+        "inspect"
+    }
+
+    fn about(&self) -> &'static str {
+        "Displays hex-encoded binary Ion alongside its equivalent text for human-friendly debugging."
+    }
+
+    fn clap_command(&self) -> Command {
+        Command::new(self.name())
+            .about(self.about())
+            .arg(
+                Arg::new("output")
+                    .long("output")
+                    .short('o')
+                    .help("Output file [default: STDOUT]"),
+            )
+            .arg(
+                Arg::new("input")
+                    .index(1)
+                    .trailing_var_arg(true)
+                    .action(ArgAction::Append)
+                    .help("Input file"),
+            )
+            .arg(
+                // This is named `skip-bytes` instead of `skip` to accommodate a future `skip-values` option.
+                Arg::new("skip-bytes")
+                    .long("skip-bytes")
+                    .short('s')
+                    .default_value("0")
+                    .hide_default_value(true)
+                    .help("Do not display any user values for the first `n` bytes of Ion data.")
+                    .long_help(
+                        "When specified, the inspector will skip ahead `n` bytes before
 beginning to display the contents of the stream. System values like
 Ion version markers and symbol tables in the bytes being skipped will
 still be displayed. If the requested number of bytes falls in the
 middle of a value, the whole value (complete with field ID and
 annotations if applicable) will be displayed. If the value is nested
 in one or more containers, those containers will be displayed too.",
-                ),
-        )
-        .arg(
-            // This is named `limit-bytes` instead of `limit` to accommodate a future `limit-values` option.
-            Arg::new("limit-bytes")
-                .long("limit-bytes")
-                .short('l')
-                .default_value("0")
-                .hide_default_value(true)
-                .help("Only display the next 'n' bytes of Ion data.")
-                .long_help(
-                    "When specified, the inspector will stop printing values after
+                    ),
+            )
+            .arg(
+                // This is named `limit-bytes` instead of `limit` to accommodate a future `limit-values` option.
+                Arg::new("limit-bytes")
+                    .long("limit-bytes")
+                    .short('l')
+                    .default_value("0")
+                    .hide_default_value(true)
+                    .help("Only display the next 'n' bytes of Ion data.")
+                    .long_help(
+                        "When specified, the inspector will stop printing values after
 processing `n` bytes of Ion data. If `n` falls within a value, the
 complete value will be displayed.",
-                ),
-        )
+                    ),
+            )
+    }
+
+    fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
+        // --skip-bytes has a default value, so we can unwrap this safely.
+        let skip_bytes_arg = args.get_one::<String>("skip-bytes").unwrap().as_str();
+
+        let bytes_to_skip = usize::from_str(skip_bytes_arg)
+            // The `anyhow` crate allows us to augment a given Result with some arbitrary context that
+            // will be displayed if it bubbles up to the end user.
+            .with_context(|| format!("Invalid value for '--skip-bytes': '{}'", skip_bytes_arg))?;
+
+        // --limit-bytes has a default value, so we can unwrap this safely.
+        let limit_bytes_arg = args.get_one::<String>("limit-bytes").unwrap().as_str();
+
+        let mut limit_bytes = usize::from_str(limit_bytes_arg)
+            .with_context(|| format!("Invalid value for '--limit-bytes': '{}'", limit_bytes_arg))?;
+
+        // If unset, --limit-bytes is effectively usize::MAX. However, it's easier on users if we let
+        // them specify "0" on the command line to mean "no limit".
+        if limit_bytes == 0 {
+            limit_bytes = usize::MAX
+        }
+
+        // If the user has specified an output file, use it.
+        let mut output: OutputRef = if let Some(file_name) = args.get_one::<String>("output") {
+            let output_file =
+                File::create(file_name).with_context(|| format!("Could not open '{}'", file_name))?;
+            let buf_writer = BufWriter::new(output_file);
+            Box::new(buf_writer)
+        } else {
+            // Otherwise, write to STDOUT.
+            Box::new(io::stdout().lock())
+        };
+
+        // Run the inspector on each input file that was specified.
+        if let Some(input_file_iter) = args.get_many::<String>("input") {
+            for input_file_name in input_file_iter {
+                let input_file = File::open(input_file_name)
+                    .with_context(|| format!("Could not open '{}'", input_file_name))?;
+                inspect_file(
+                    input_file_name,
+                    input_file,
+                    &mut output,
+                    bytes_to_skip,
+                    limit_bytes,
+                )?;
+            }
+        } else {
+            // If no input file was specified, run the inspector on STDIN.
+
+            // The inspector expects its input to be a byte array or mmap()ed file acting as a byte
+            // array. If the user wishes to provide data on STDIN, we'll need to copy those bytes to
+            // a temporary file and then read from that.
+
+            // Create a temporary file that will delete itself when the program ends.
+            let mut input_file = tempfile::tempfile().with_context(|| {
+                concat!(
+                "Failed to create a temporary file to store STDIN.",
+                "Try passing an --input flag instead."
+                )
+            })?;
+
+            // Pipe the data from STDIN to the temporary file.
+            let mut writer = BufWriter::new(input_file);
+            io::copy(&mut io::stdin(), &mut writer)
+                .with_context(|| "Failed to copy STDIN to a temp file.")?;
+            // Get our file handle back from the BufWriter
+            input_file = writer
+                .into_inner()
+                .with_context(|| "Failed to read from temp file containing STDIN data.")?;
+            // Read from the now-populated temporary file.
+            inspect_file(
+                "STDIN temp file",
+                input_file,
+                &mut output,
+                bytes_to_skip,
+                limit_bytes,
+            )?;
+        }
+        Ok(())
+    }
 }
+
+
 
 // Create a type alias to simplify working with a shared reference to our output stream.
 type OutputRef = Box<dyn io::Write>;
@@ -81,87 +166,6 @@ type OutputRef = Box<dyn io::Write>;
 //   over the two implementations.
 // * The Drop implementation will ensure that the output stream is flushed when the last reference
 //   is dropped, so we don't need to do that manually.
-
-// This function is invoked by the `inspect` command's parent, `beta`.
-pub fn run(_command_name: &str, matches: &ArgMatches) -> Result<()> {
-    // --skip-bytes has a default value, so we can unwrap this safely.
-    let skip_bytes_arg = matches.get_one::<String>("skip-bytes").unwrap().as_str();
-
-    let bytes_to_skip = usize::from_str(skip_bytes_arg)
-        // The `anyhow` crate allows us to augment a given Result with some arbitrary context that
-        // will be displayed if it bubbles up to the end user.
-        .with_context(|| format!("Invalid value for '--skip-bytes': '{}'", skip_bytes_arg))?;
-
-    // --limit-bytes has a default value, so we can unwrap this safely.
-    let limit_bytes_arg = matches.get_one::<String>("limit-bytes").unwrap().as_str();
-
-    let mut limit_bytes = usize::from_str(limit_bytes_arg)
-        .with_context(|| format!("Invalid value for '--limit-bytes': '{}'", limit_bytes_arg))?;
-
-    // If unset, --limit-bytes is effectively usize::MAX. However, it's easier on users if we let
-    // them specify "0" on the command line to mean "no limit".
-    if limit_bytes == 0 {
-        limit_bytes = usize::MAX
-    }
-
-    // If the user has specified an output file, use it.
-    let mut output: OutputRef = if let Some(file_name) = matches.get_one::<String>("output") {
-        let output_file =
-            File::create(file_name).with_context(|| format!("Could not open '{}'", file_name))?;
-        let buf_writer = BufWriter::new(output_file);
-        Box::new(buf_writer)
-    } else {
-        // Otherwise, write to STDOUT.
-        Box::new(io::stdout().lock())
-    };
-
-    // Run the inspector on each input file that was specified.
-    if let Some(input_file_iter) = matches.get_many::<String>("input") {
-        for input_file_name in input_file_iter {
-            let input_file = File::open(input_file_name)
-                .with_context(|| format!("Could not open '{}'", input_file_name))?;
-            inspect_file(
-                input_file_name,
-                input_file,
-                &mut output,
-                bytes_to_skip,
-                limit_bytes,
-            )?;
-        }
-    } else {
-        // If no input file was specified, run the inspector on STDIN.
-
-        // The inspector expects its input to be a byte array or mmap()ed file acting as a byte
-        // array. If the user wishes to provide data on STDIN, we'll need to copy those bytes to
-        // a temporary file and then read from that.
-
-        // Create a temporary file that will delete itself when the program ends.
-        let mut input_file = tempfile::tempfile().with_context(|| {
-            concat!(
-                "Failed to create a temporary file to store STDIN.",
-                "Try passing an --input flag instead."
-            )
-        })?;
-
-        // Pipe the data from STDIN to the temporary file.
-        let mut writer = BufWriter::new(input_file);
-        io::copy(&mut io::stdin(), &mut writer)
-            .with_context(|| "Failed to copy STDIN to a temp file.")?;
-        // Get our file handle back from the BufWriter
-        input_file = writer
-            .into_inner()
-            .with_context(|| "Failed to read from temp file containing STDIN data.")?;
-        // Read from the now-populated temporary file.
-        inspect_file(
-            "STDIN temp file",
-            input_file,
-            &mut output,
-            bytes_to_skip,
-            limit_bytes,
-        )?;
-    }
-    Ok(())
-}
 
 // Given a file, try to mmap() it and run the inspector over the resulting byte array.
 fn inspect_file(

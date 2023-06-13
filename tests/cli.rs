@@ -113,7 +113,7 @@ fn run_it<S: AsRef<str>>(
         FileMode::Named => {
             // dump our test data to input file
             let mut input_file = File::create(&input_path)?;
-            input_file.write(ion_text.as_ref().as_bytes())?;
+            input_file.write_all(ion_text.as_ref().as_bytes())?;
             input_file.flush()?;
 
             // TODO: test multiple input files
@@ -171,7 +171,7 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     let temp_dir = TempDir::new()?;
     let input_path = temp_dir.path().join("test.ion");
     let mut input_file = File::create(&input_path)?;
-    input_file.write(test_data.as_bytes())?;
+    input_file.write_all(test_data.as_bytes())?;
     input_file.flush()?;
     cmd.args([
         "beta",
