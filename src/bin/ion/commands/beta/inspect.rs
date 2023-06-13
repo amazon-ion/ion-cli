@@ -6,7 +6,7 @@ use std::io::BufWriter;
 use std::ops::Range;
 use std::str::{from_utf8_unchecked, FromStr};
 
-use crate::IonCliCommand;
+use crate::commands::IonCliCommand;
 use anyhow::{bail, Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use colored::Colorize;

@@ -1,7 +1,7 @@
 pub mod load;
 pub mod validate;
 
-use crate::IonCliCommand;
+use crate::commands::IonCliCommand;
 
 use crate::commands::beta::schema::load::LoadCommand;
 use crate::commands::beta::schema::validate::ValidateCommand;

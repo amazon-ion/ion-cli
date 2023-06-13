@@ -13,7 +13,7 @@ use crate::commands::beta::inspect::InspectCommand;
 use crate::commands::beta::primitive::PrimitiveCommand;
 use crate::commands::beta::schema::SchemaNamespace;
 use crate::commands::beta::to::ToNamespace;
-use crate::IonCliCommand;
+use crate::commands::IonCliCommand;
 
 pub struct BetaNamespace;
 

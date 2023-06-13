@@ -1,5 +1,5 @@
 use crate::commands::dump;
-use crate::IonCliCommand;
+use crate::commands::IonCliCommand;
 use anyhow::Result;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 

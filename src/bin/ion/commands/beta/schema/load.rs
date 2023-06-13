@@ -1,4 +1,4 @@
-use crate::IonCliCommand;
+use crate::commands::IonCliCommand;
 use anyhow::Result;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
