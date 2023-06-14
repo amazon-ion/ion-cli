@@ -1,85 +1,85 @@
+use crate::commands::{IonCliCommand, WithIonCliArgument};
 use anyhow::{Context, Result};
-use clap::{value_parser, Arg, ArgAction, ArgMatches, Command};
+use clap::{value_parser, Arg, ArgMatches, Command};
 use ion_rs::*;
 use std::fs::File;
 use std::io::{stdin, stdout, StdinLock, Write};
 
-pub fn app() -> Command {
-    Command::new("dump")
-        .about("Prints Ion in the requested format")
-        //TODO: Remove `values` after https://github.com/amazon-ion/ion-cli/issues/49
-        .arg(
-            Arg::new("values")
-                .long("values")
-                .short('n')
-                .value_parser(value_parser!(usize))
-                .allow_negative_numbers(false)
-                .hide(true)
-                .help("Specifies the number of output top-level values."),
-        )
-        .arg(
-            Arg::new("format")
-                .long("format")
-                .short('f')
-                .default_value("pretty")
-                .value_parser(["binary", "text", "pretty", "lines"])
-                .help("Output format"),
-        )
-        .arg(
-            Arg::new("output")
-                .long("output")
-                .short('o')
-                .help("Output file [default: STDOUT]"),
-        )
-        .arg(
-            // All argv entries after the program name (argv[0])
-            // and any `clap`-managed options are considered input files.
-            Arg::new("input")
-                .index(1)
-                .help("Input file [default: STDIN]")
-                .action(ArgAction::Append)
-                .trailing_var_arg(true),
-        )
-}
+pub struct DumpCommand;
 
-pub fn run(_command_name: &str, matches: &ArgMatches) -> Result<()> {
-    // --format pretty|text|lines|binary
-    // `clap` validates the specified format and provides a default otherwise.
-    let format = matches.get_one::<String>("format").unwrap();
-
-    // --values <n>
-    // this value is supplied when `dump` is invoked as `head`
-    let values: Option<usize> = matches.get_one::<usize>("values").copied();
-
-    // -o filename
-    let mut output: Box<dyn Write> = if let Some(output_file) = matches.get_one::<String>("output")
-    {
-        let file = File::create(output_file).with_context(|| {
-            format!(
-                "could not open file output file '{}' for writing",
-                output_file
-            )
-        })?;
-        Box::new(file)
-    } else {
-        Box::new(stdout().lock())
-    };
-
-    if let Some(input_file_iter) = matches.get_many::<String>("input") {
-        for input_file in input_file_iter {
-            let file = File::open(input_file)
-                .with_context(|| format!("Could not open file '{}'", input_file))?;
-            let mut reader = ReaderBuilder::new().build(file)?;
-            write_in_format(&mut reader, &mut output, format, values)?;
-        }
-    } else {
-        let input: StdinLock = stdin().lock();
-        let mut reader = ReaderBuilder::new().build(input)?;
-        write_in_format(&mut reader, &mut output, format, values)?;
+impl IonCliCommand for DumpCommand {
+    fn name(&self) -> &'static str {
+        "dump"
     }
 
-    output.flush()?;
-    Ok(())
+    fn about(&self) -> &'static str {
+        "Prints Ion in the requested format."
+    }
+
+    fn configure_args(&self, command: Command) -> Command {
+        //TODO: Remove `values` after https://github.com/amazon-ion/ion-cli/issues/49
+        command
+            .arg(
+                Arg::new("values")
+                    .long("values")
+                    .short('n')
+                    .value_parser(value_parser!(usize))
+                    .allow_negative_numbers(false)
+                    .hide(true)
+                    .help("Specifies the number of output top-level values."),
+            )
+            .with_input()
+            .with_output()
+            .with_format()
+    }
+
+    fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
+        // --format pretty|text|lines|binary
+        // `clap` validates the specified format and provides a default otherwise.
+        let format = args.get_one::<String>("format").unwrap();
+
+        // --values <n>
+        // this value is supplied when `dump` is invoked as `head`
+        let values: Option<usize> = args.get_one::<usize>("values").copied();
+
+        // -o filename
+        let mut output: Box<dyn Write> = if let Some(output_file) = args.get_one::<String>("output")
+        {
+            let file = File::create(output_file).with_context(|| {
+                format!(
+                    "could not open file output file '{}' for writing",
+                    output_file
+                )
+            })?;
+            Box::new(file)
+        } else {
+            Box::new(stdout().lock())
+        };
+
+        if let Some(input_file_iter) = args.get_many::<String>("input") {
+            for input_file in input_file_iter {
+                let file = File::open(input_file)
+                    .with_context(|| format!("Could not open file '{}'", input_file))?;
+                let mut reader = ReaderBuilder::new().build(file)?;
+                write_in_format(&mut reader, &mut output, format, values)?;
+            }
+        } else {
+            let input: StdinLock = stdin().lock();
+            let mut reader = ReaderBuilder::new().build(input)?;
+            write_in_format(&mut reader, &mut output, format, values)?;
+        }
+
+        output.flush()?;
+        Ok(())
+    }
+}
+
+// TODO: This is a compatibility shim. Several commands refer to dump::run(); that functionality
+//       now lives in `dump`'s implementation of the IonCliCommand trait. These referents should
+//       be updated to refer to functionality in a common module so this can be removed.
+//       See: https://github.com/amazon-ion/ion-cli/issues/49
+pub(crate) fn run(_command: &str, args: &ArgMatches) -> Result<()> {
+    DumpCommand.run(&mut Vec::new(), args)
 }
 
 /// Constructs the appropriate writer for the given format, then writes all values found in the

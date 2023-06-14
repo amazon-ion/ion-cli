@@ -1,34 +1,30 @@
 mod commands;
 
-use crate::commands::{built_in_commands, runner_for_built_in_command};
+use crate::commands::beta::BetaNamespace;
 use anyhow::Result;
-use clap::{crate_authors, crate_version, Command};
+use commands::IonCliCommand;
 
-const PROGRAM_NAME: &str = "ion";
+use crate::commands::dump::DumpCommand;
 
 fn main() -> Result<()> {
-    let mut app = Command::new(PROGRAM_NAME)
-        .version(crate_version!())
-        .author(crate_authors!())
-        .subcommand_required(true);
+    let root_command = RootCommand;
+    let args = root_command.clap_command().get_matches();
+    let mut command_path: Vec<String> = vec![root_command.name().to_owned()];
+    root_command.run(&mut command_path, &args)
+}
 
-    for command in built_in_commands() {
-        app = app.subcommand(command);
+pub struct RootCommand;
+
+impl IonCliCommand for RootCommand {
+    fn name(&self) -> &'static str {
+        "ion"
     }
 
-    let args = app.get_matches();
-    let (command_name, command_args) = args.subcommand().unwrap();
-
-    if let Some(runner) = runner_for_built_in_command(command_name) {
-        // If a runner is registered for the given command name, command_args is guaranteed to
-        // be defined.
-        runner(command_name, command_args)?;
-    } else {
-        let message = format!(
-            "The requested command ('{}') is not supported and clap did not generate an error message.",
-            command_name
-        );
-        unreachable!("{}", message);
+    fn about(&self) -> &'static str {
+        "A collection of tools for working with Ion data."
     }
-    Ok(())
+
+    fn subcommands(&self) -> Vec<Box<dyn IonCliCommand>> {
+        vec![Box::new(BetaNamespace), Box::new(DumpCommand)]
+    }
 }

@@ -1,5 +1,6 @@
+use crate::commands::{IonCliCommand, WithIonCliArgument};
 use anyhow::{Context, Result};
-use clap::{Arg, ArgAction, ArgMatches, Command};
+use clap::{ArgMatches, Command};
 use ion_rs::element::reader::ElementReader;
 use ion_rs::element::Element;
 use ion_rs::{Reader, ReaderBuilder};
@@ -8,64 +9,59 @@ use std::fs::File;
 use std::io::{stdin, stdout, BufWriter, Write};
 use std::str::FromStr;
 
-const ABOUT: &str = "Converts Ion data to JSON.";
+pub struct ToJsonCommand;
 
-pub fn app() -> Command {
-    Command::new("json")
-        .about(ABOUT)
-        .arg(
-            Arg::new("output")
-                .long("output")
-                .short('o')
-                .help("Output file [default: STDOUT]"),
-        )
-        .arg(
-            // Unlabeled positional arguments will also be considered input file names.
-            Arg::new("input")
-                .index(1)
-                .trailing_var_arg(true)
-                .action(ArgAction::Append)
-                .help("Input file name"),
-        )
-    // NOTE: it may be necessary to add format-specific options. For example, a "pretty" option
-    // would make sense for JSON, but not binary formats like CBOR.
-}
-
-pub fn run(_command_name: &str, matches: &ArgMatches) -> Result<()> {
-    // Look for an output file name specified with `-o`
-    let mut output: Box<dyn Write> = if let Some(output_file) = matches.get_one::<String>("output")
-    {
-        let file = File::create(output_file).with_context(|| {
-            format!(
-                "could not open file output file '{}' for writing",
-                output_file
-            )
-        })?;
-        Box::new(BufWriter::new(file))
-    } else {
-        Box::new(stdout().lock())
-    };
-
-    if let Some(input_file_names) = matches.get_many::<String>("input") {
-        // Input files were specified, run the converter on each of them in turn
-        for input_file in input_file_names {
-            let file = File::open(input_file.as_str())
-                .with_context(|| format!("Could not open file '{}'", &input_file))?;
-            let mut reader = ReaderBuilder::new()
-                .build(file)
-                .with_context(|| format!("Input file {} was not valid Ion.", &input_file))?;
-            convert(&mut reader, &mut output)?;
-        }
-    } else {
-        // No input files were specified, run the converter on STDIN.
-        let mut reader = ReaderBuilder::new()
-            .build(stdin().lock())
-            .with_context(|| "Input was not valid Ion.")?;
-        convert(&mut reader, &mut output)?;
+impl IonCliCommand for ToJsonCommand {
+    fn name(&self) -> &'static str {
+        "json"
     }
 
-    output.flush()?;
-    Ok(())
+    fn about(&self) -> &'static str {
+        "Converts Ion data to JSON."
+    }
+
+    fn configure_args(&self, command: Command) -> Command {
+        // NOTE: it may be necessary to add format-specific options. For example, a "pretty" option
+        // would make sense for JSON, but not binary formats like CBOR.
+        command.with_input().with_output()
+    }
+
+    fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
+        // Look for an output file name specified with `-o`
+        let mut output: Box<dyn Write> = if let Some(output_file) = args.get_one::<String>("output")
+        {
+            let file = File::create(output_file).with_context(|| {
+                format!(
+                    "could not open file output file '{}' for writing",
+                    output_file
+                )
+            })?;
+            Box::new(BufWriter::new(file))
+        } else {
+            Box::new(stdout().lock())
+        };
+
+        if let Some(input_file_names) = args.get_many::<String>("input") {
+            // Input files were specified, run the converter on each of them in turn
+            for input_file in input_file_names {
+                let file = File::open(input_file.as_str())
+                    .with_context(|| format!("Could not open file '{}'", &input_file))?;
+                let mut reader = ReaderBuilder::new()
+                    .build(file)
+                    .with_context(|| format!("Input file {} was not valid Ion.", &input_file))?;
+                convert(&mut reader, &mut output)?;
+            }
+        } else {
+            // No input files were specified, run the converter on STDIN.
+            let mut reader = ReaderBuilder::new()
+                .build(stdin().lock())
+                .with_context(|| "Input was not valid Ion.")?;
+            convert(&mut reader, &mut output)?;
+        }
+
+        output.flush()?;
+        Ok(())
+    }
 }
 
 pub fn convert(reader: &mut Reader, output: &mut Box<dyn Write>) -> Result<()> {
