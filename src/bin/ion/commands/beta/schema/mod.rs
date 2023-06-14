@@ -14,7 +14,7 @@ impl IonCliCommand for SchemaNamespace {
     }
 
     fn about(&self) -> &'static str {
-        "The 'schema' command is a namespace for commands that are related to schema sandbox"
+        "The 'schema' command is a namespace for commands that are related to Ion Schema"
     }
 
     fn subcommands(&self) -> Vec<Box<dyn IonCliCommand>> {
