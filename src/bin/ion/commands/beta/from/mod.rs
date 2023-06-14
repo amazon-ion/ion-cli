@@ -12,7 +12,7 @@ impl IonCliCommand for FromNamespace {
     }
 
     fn about(&self) -> &'static str {
-        "'from' is a namespace for commands that converts other data formats to Ion."
+        "'from' is a namespace for commands that convert other data formats to Ion."
     }
 
     fn subcommands(&self) -> Vec<Box<dyn IonCliCommand>> {

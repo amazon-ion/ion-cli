@@ -13,7 +13,7 @@ impl IonCliCommand for DumpCommand {
     }
 
     fn about(&self) -> &'static str {
-        "Prints Ion in the requested format"
+        "Prints Ion in the requested format."
     }
 
     fn configure_args(&self, command: Command) -> Command {
