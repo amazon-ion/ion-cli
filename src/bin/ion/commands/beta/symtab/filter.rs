@@ -1,6 +1,6 @@
 use crate::commands::{IonCliCommand, WithIonCliArgument};
 use anyhow::{bail, Context, Result};
-use clap::{ArgMatches, Command};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_rs::binary::non_blocking::raw_binary_reader::RawBinaryReader;
 use ion_rs::{IonReader, IonResult, IonType, SystemReader, SystemStreamItem};
 use memmap::MmapOptions;
@@ -20,7 +20,15 @@ impl IonCliCommand for SymtabFilterCommand {
     }
 
     fn configure_args(&self, command: Command) -> Command {
-        command.with_input().with_output().with_format()
+        command.with_input()
+            .with_output()
+            .arg(Arg::new("lift")
+                .long("lift")
+                .short('l')
+                .required(false)
+                .action(ArgAction::SetTrue)
+                .help("Remove the `$ion_symbol_table` annotation from symtabs, turning them into visible user data")
+            )
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
@@ -36,6 +44,8 @@ impl IonCliCommand for SymtabFilterCommand {
         } else {
             Box::new(stdout().lock())
         };
+
+        let lift_requested = args.get_flag("lift");
 
         if let Some(input_file_names) = args.get_many::<String>("input") {
             // Input files were specified, run the converter on each of them in turn
@@ -53,7 +63,7 @@ impl IonCliCommand for SymtabFilterCommand {
                 let ion_data: &[u8] = &mmap[..];
                 let raw_reader = RawBinaryReader::new(ion_data);
                 let mut system_reader = SystemReader::new(raw_reader);
-                omit_user_data(ion_data, &mut system_reader, &mut output)?;
+                omit_user_data(ion_data, &mut system_reader, &mut output, lift_requested)?;
             }
         } else {
             bail!("this command does not yet support reading from STDIN")
@@ -68,6 +78,7 @@ pub fn omit_user_data(
     ion_data: &[u8],
     reader: &mut SystemReader<RawBinaryReader<&[u8]>>,
     output: &mut Box<dyn Write>,
+    lift_requested: bool,
 ) -> IonResult<()> {
     loop {
         match reader.next()? {
@@ -75,7 +86,9 @@ pub fn omit_user_data(
                 output.write_all(&[0xE0, major, minor, 0xEA])?;
             }
             SystemStreamItem::SymbolTableValue(IonType::Struct) => {
-                output.write_all(reader.raw_annotations_bytes().unwrap_or(&[]))?;
+                if !lift_requested {
+                    output.write_all(reader.raw_annotations_bytes().unwrap_or(&[]))?;
+                }
                 output.write_all(reader.raw_header_bytes().unwrap())?;
                 let body_range = reader.value_range();
                 let body_bytes = &ion_data[body_range];
