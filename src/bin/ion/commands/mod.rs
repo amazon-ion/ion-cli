@@ -1,5 +1,8 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use clap::{crate_authors, crate_version, Arg, ArgAction, ArgMatches, Command as ClapCommand};
+use std::fs::File;
+use std::io::{stdout, BufWriter, Write};
+
 pub mod beta;
 pub mod dump;
 
@@ -131,5 +134,44 @@ impl WithIonCliArgument for ClapCommand {
                 .value_parser(["binary", "text", "pretty", "lines"])
                 .help("Output format"),
         )
+    }
+}
+
+trait IoSupport {
+    fn for_each_input(
+        &self,
+        f: impl FnMut(&mut Box<dyn Write>, &str) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()>;
+}
+
+impl IoSupport for ArgMatches {
+    fn for_each_input(
+        &self,
+        mut f: impl FnMut(&mut Box<dyn Write>, &str) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
+        let mut output: Box<dyn Write> = if let Some(output_file) = self.get_one::<String>("output")
+        {
+            let file = File::create(output_file).with_context(|| {
+                format!(
+                    "could not open file output file '{}' for writing",
+                    output_file
+                )
+            })?;
+            Box::new(BufWriter::new(file))
+        } else {
+            Box::new(stdout().lock())
+        };
+
+        if let Some(input_file_names) = self.get_many::<String>("input") {
+            // Input files were specified, run the converter on each of them in turn
+            for input_file_name in input_file_names {
+                f(&mut output, input_file_name)?;
+            }
+        } else {
+            // -- is a sentinel value that indicates STDIN
+            f(&mut output, "--")?;
+        }
+        output.flush()?;
+        Ok(())
     }
 }
