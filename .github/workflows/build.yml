@@ -33,7 +33,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --verbose --workspace
+          args: --verbose --workspace --all-features
       - name: Rustfmt Check
         uses: actions-rs/cargo@v1
         with:

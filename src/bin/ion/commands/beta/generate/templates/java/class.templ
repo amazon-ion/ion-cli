@@ -1,0 +1,19 @@
+{% if import %}
+import ion_data_model.{{ import_type }};
+{% endif %}
+public final class {{ name }} {
+{% for field in fields -%}
+       private final {{ field.value }} {{ field.name }};
+{% endfor %}
+
+    public {{ name }}({% for field in fields -%}{{ field.value }} {{ field.name }},{% endfor %}) {
+        {% for field in fields -%}
+            this.{{ field.name }} = {{ field.name }};
+        {% endfor %}
+    }
+
+    {% for field in fields -%}public {{ field.value }} get{% filter upper_camel %}{{ field.name }}{% endfilter %}() {
+        return this.{{ field.name }};
+    }
+    {% endfor %}
+}

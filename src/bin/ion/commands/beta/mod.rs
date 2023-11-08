@@ -1,5 +1,6 @@
 pub mod count;
 pub mod from;
+pub mod generate;
 pub mod head;
 pub mod inspect;
 pub mod primitive;
@@ -9,6 +10,7 @@ pub mod to;
 
 use crate::commands::beta::count::CountCommand;
 use crate::commands::beta::from::FromNamespace;
+use crate::commands::beta::generate::GenerateCommand;
 use crate::commands::beta::head::HeadCommand;
 use crate::commands::beta::inspect::InspectCommand;
 use crate::commands::beta::primitive::PrimitiveCommand;
@@ -38,6 +40,7 @@ impl IonCliCommand for BetaNamespace {
             Box::new(FromNamespace),
             Box::new(ToNamespace),
             Box::new(SymtabNamespace),
+            Box::new(GenerateCommand),
         ]
     }
 }

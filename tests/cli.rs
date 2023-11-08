@@ -2,6 +2,7 @@ use anyhow::Result;
 use assert_cmd::Command;
 use ion_rs::element::Element;
 use rstest::*;
+use std::fs;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::time::Duration;
@@ -144,6 +145,7 @@ fn run_it<S: AsRef<str>>(
     Ok(())
 }
 
+#[cfg(feature = "beta-subcommands")]
 #[rstest]
 #[case(0, "")]
 #[case(2, "{foo: bar, abc: [123, 456]}\n{foo: baz, abc: [42.0, 4.3e1]}")]
@@ -186,5 +188,230 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     let output = command_assert.get_output();
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout.trim_end(), expected_output);
+    Ok(())
+}
+
+#[cfg(feature = "beta-subcommands")]
+#[rstest]
+#[case(
+    "simple_struct",
+    r#"
+        type::{
+         name: simple_struct,
+         fields: {
+            name: string,
+            id: int,
+         },
+        }
+    "#,
+    &["id: i64", "name: String"],
+    &["pub fn name(&self) -> &String {", "pub fn id(&self) -> &i64 {"]
+)]
+#[case(
+    "unit_struct",
+    r#"
+        type::{
+         name: unit_struct,
+         type: int // this will be a field in struct
+        }
+    "#,
+    &["value: i64"],
+    &["pub fn value(&self) -> &i64 {"]
+)]
+#[case(
+    "sequence_struct",
+    r#"
+        type::{
+         name: sequence_struct,
+         element: string // this will be a sequence field in struct
+        }
+    "#,
+    &["value: Vec<String>"],
+    &["pub fn value(&self) -> &Vec<String> {"]
+)]
+#[case(
+    "struct_with_reference_field",
+    r#"
+        type::{
+         name: struct_with_reference_field,
+         fields: {
+            reference: other_type
+         }
+        }
+        
+        type::{
+            name: other_type,
+            type: int
+        }
+    "#,
+    &["reference: OtherType"],
+    &["pub fn reference(&self) -> &OtherType {"]
+)]
+#[case(
+    "struct_with_anonymous_type",
+    r#"
+        type::{
+         name: struct_with_anonymous_type,
+         fields: {
+            anonymous_type: { type: int }
+         }
+        }
+    "#,
+    &["anonymous_type: AnonymousType1"],
+    &["pub fn anonymous_type(&self) -> &AnonymousType1 {"]
+)]
+/// Calls ion-cli beta generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
+fn test_code_generation_in_rust(
+    #[case] test_name: &str,
+    #[case] test_schema: &str,
+    #[case] expected_properties: &[&str],
+    #[case] expected_accessors: &[&str],
+) -> Result<()> {
+    let mut cmd = Command::cargo_bin("ion")?;
+    let temp_dir = TempDir::new()?;
+    let input_schema_path = temp_dir.path().join("test_schema.isl");
+    let mut input_schema_file = File::create(&input_schema_path)?;
+    input_schema_file.write(test_schema.as_bytes())?;
+    input_schema_file.flush()?;
+    cmd.args([
+        "beta",
+        "generate",
+        "--schema",
+        "test_schema.isl",
+        "--output",
+        temp_dir.path().to_str().unwrap(),
+        "--language",
+        "rust",
+        "--directory",
+        temp_dir.path().to_str().unwrap(),
+    ]);
+    let command_assert = cmd.assert();
+    let output_file_path = temp_dir
+        .path()
+        .join("ion_data_model")
+        .join(format!("{}.rs", test_name));
+    command_assert.success();
+    let contents =
+        fs::read_to_string(output_file_path).expect("Should have been able to read the file");
+    for expected_property in expected_properties {
+        assert!(contents.contains(expected_property));
+    }
+    for expected_accessor in expected_accessors {
+        assert!(contents.contains(expected_accessor));
+    }
+    // verify that it generates read-write APIs
+    assert!(contents.contains("pub fn read_from(reader: &mut Reader) -> IonResult<Self> {"));
+    assert!(contents
+        .contains("pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> IonResult<()> {"));
+    Ok(())
+}
+
+#[cfg(feature = "beta-subcommands")]
+#[rstest]
+#[case(
+    "SimpleStruct",
+    r#"
+        type::{
+         name: simple_struct,
+         fields: {
+            name: string,
+            id: int,
+         }
+        }
+    "#,
+    &["private final int id;", "private final String name;"],
+    &["public String getName() {", "public int getId() {"]
+)]
+#[case(
+    "UnitStruct",
+    r#"
+        type::{
+         name: unit_struct,
+         type: int // this will be a field in struct
+        }
+    "#,
+    &["private final int value;"],
+    &["public int getValue() {"]
+)]
+#[case(
+    "SequenceStruct",
+    r#"
+        type::{
+         name: sequence_struct,
+         element: string // this will be a sequence field in struct
+        }
+    "#,
+    &["private final ArrayList<String> value;"],
+    &["public ArrayList<String> getValue() {"]
+)]
+#[case(
+    "StructWithReferenceField",
+    r#"
+        type::{
+         name: struct_with_reference_field,
+         fields: {
+            reference: other_type
+         }
+        }
+        
+        type::{
+            name: other_type,
+            type: int
+        }
+    "#,
+    &["private final OtherType reference;"],
+    &["public OtherType getReference() {"]
+)]
+#[case(
+    "StructWithAnonymousType",
+    r#"
+        type::{
+         name: struct_with_anonymous_type,
+         fields: {
+            anonymous_type: { type: int }
+         }
+        }
+    "#,
+    &["private final AnonymousType1 anonymousType;"],
+    &["public AnonymousType1 getAnonymousType() {"]
+)]
+/// Calls ion-cli beta generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
+fn test_code_generation_in_java(
+    #[case] test_name: &str,
+    #[case] test_schema: &str,
+    #[case] expected_properties: &[&str],
+    #[case] expected_accessors: &[&str],
+) -> Result<()> {
+    let mut cmd = Command::cargo_bin("ion")?;
+    let temp_dir = TempDir::new()?;
+    let input_schema_path = temp_dir.path().join("test_schema.isl");
+    let mut input_schema_file = File::create(&input_schema_path)?;
+    input_schema_file.write(test_schema.as_bytes())?;
+    input_schema_file.flush()?;
+    cmd.args([
+        "beta",
+        "generate",
+        "--schema",
+        "test_schema.isl",
+        "--output",
+        temp_dir.path().to_str().unwrap(),
+        "--language",
+        "java",
+        "--directory",
+        temp_dir.path().to_str().unwrap(),
+    ]);
+    let command_assert = cmd.assert();
+    let output_file_path = temp_dir
+        .path()
+        .join("ion_data_model")
+        .join(format!("{}.java", test_name));
+    command_assert.success();
+    let contents = fs::read_to_string(output_file_path).expect("Can not read generated code file.");
+    for expected_property in expected_properties {
+        assert!(contents.contains(expected_property));
+    }
+    for expected_accessor in expected_accessors {
+        assert!(contents.contains(expected_accessor));
+    }
     Ok(())
 }

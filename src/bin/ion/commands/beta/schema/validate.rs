@@ -1,6 +1,7 @@
 use crate::commands::IonCliCommand;
 use anyhow::{Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
+use ion_rs::element::writer::TextKind;
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
 use ion_schema::external::ion_rs::element::reader::ElementReader;
 use ion_schema::external::ion_rs::element::writer::ElementWriter;
@@ -105,7 +106,7 @@ impl IonCliCommand for ValidateCommand {
 
         // create a text writer to make the output
         let mut output = vec![];
-        let mut writer = TextWriterBuilder::new().build(&mut output)?;
+        let mut writer = TextWriterBuilder::new(TextKind::Pretty).build(&mut output)?;
 
         // validate owned_elements according to type_ref
         for owned_element in owned_elements {
@@ -140,7 +141,7 @@ impl IonCliCommand for ValidateCommand {
 //       release of ion-rs.
 fn element_to_string(element: &Element) -> IonResult<String> {
     let mut buffer = Vec::new();
-    let mut text_writer = TextWriterBuilder::new().build(&mut buffer)?;
+    let mut text_writer = TextWriterBuilder::new(TextKind::Pretty).build(&mut buffer)?;
     text_writer.write_element(element)?;
     text_writer.flush()?;
     Ok(from_utf8(text_writer.output().as_slice())

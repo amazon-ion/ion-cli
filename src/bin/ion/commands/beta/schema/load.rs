@@ -13,8 +13,8 @@ impl IonCliCommand for LoadCommand {
     }
 
     fn about(&self) -> &'static str {
-        r#"Loads an Ion Schema file indicated by a user-provided schema ID and outputs a result message.\
-        Shows an error message if any invalid schema syntax was found during the load process."#
+        r"Loads an Ion Schema file indicated by a user-provided schema ID and outputs a result message.\
+        Shows an error message if any invalid schema syntax was found during the load process."
     }
 
     fn configure_args(&self, command: Command) -> Command {
