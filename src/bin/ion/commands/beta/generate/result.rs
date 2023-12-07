@@ -8,7 +8,7 @@ pub type CodeGenResult<T> = Result<T, CodeGenError>;
 #[derive(Debug, Error)]
 pub enum CodeGenError {
     #[error("{source:?}")]
-    IonError {
+    IonSchemaError {
         #[from]
         source: IonSchemaError,
     },

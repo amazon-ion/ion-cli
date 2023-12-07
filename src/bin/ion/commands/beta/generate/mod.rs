@@ -102,9 +102,7 @@ impl IonCliCommand for GenerateCommand {
         println!("Started generating code...");
 
         // generate code based on schema and programming language
-        CodeGenerator::new(language, output)
-            .generate(schema)
-            .unwrap();
+        CodeGenerator::new(language, output).generate(schema)?;
 
         println!("Code generation complete successfully!");
         println!("Path to generated code: {}", output.display());

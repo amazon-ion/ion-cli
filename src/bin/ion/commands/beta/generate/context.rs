@@ -21,8 +21,10 @@ impl CodeGenContext {
 /// Represents a data model type that can be used to determine which templates can be used for code generation.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum DataModel {
-    Value,    // a struct with a scalar value (used for `type` constraint)
-    Sequence, // a struct with a sequence value (used for `element` constraint)
+    Value, // a struct with a scalar value (used for `type` constraint)
+    // TODO: Make Sequence parameterized over data type.
+    //  add a data type for sequence here that can be used to read elements for that data type.
+    Sequence, // a struct with a sequence/collection value (used for `element` constraint)
     Struct,
 }
 

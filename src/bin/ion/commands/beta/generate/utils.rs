@@ -126,7 +126,7 @@ impl IonSchemaType {
             (Int, Java) => "int",
             (String | Symbol, _) => "String",
             (Float, Rust) => "f64",
-            (Float, Java) => "float",
+            (Float, Java) => "double",
             (Bool, Rust) => "bool",
             (Bool, Java) => "boolean",
             (Blob | Clob, Rust) => "Vec<u8>",

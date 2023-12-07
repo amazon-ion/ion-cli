@@ -208,10 +208,10 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     &["pub fn name(&self) -> &String {", "pub fn id(&self) -> &i64 {"]
 )]
 #[case(
-    "unit_struct",
+    "value_struct",
     r#"
         type::{
-         name: unit_struct,
+         name: value_struct,
          type: int // this will be a field in struct
         }
     "#,
@@ -323,10 +323,10 @@ fn test_code_generation_in_rust(
     &["public String getName() {", "public int getId() {"]
 )]
 #[case(
-    "UnitStruct",
+    "ValueStruct",
     r#"
         type::{
-         name: unit_struct,
+         name: value_struct,
          type: int // this will be a field in struct
         }
     "#,

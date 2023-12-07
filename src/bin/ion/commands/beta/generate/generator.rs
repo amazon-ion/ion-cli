@@ -13,7 +13,7 @@ use std::io::Write;
 use std::path::Path;
 use tera::{Context, Tera};
 
-// TODO: generator cna store language and output path as it doesn't change during code generation process
+// TODO: generator can store language and output path as it doesn't change during code generation process
 pub(crate) struct CodeGenerator<'a> {
     // Represents the templating engine - tera
     // more information: https://docs.rs/tera/latest/tera/
@@ -67,7 +67,7 @@ impl<'a> CodeGenerator<'a> {
 
     /// Generates code for given Ion Schema
     pub fn generate(&mut self, schema: IslSchema) -> CodeGenResult<()> {
-        // this will be used for Rust to create mod.rs which lists all the generates modules
+        // this will be used for Rust to create mod.rs which lists all the generated modules
         let mut modules = vec![];
         let mut module_context = tera::Context::new();
 
@@ -107,7 +107,10 @@ impl<'a> CodeGenerator<'a> {
         let mut code_gen_context = CodeGenContext::new();
 
         // Set the target kind name of the data model (i.e. enum/class)
-        context.insert("name", &data_model_name.to_case(Case::UpperCamel));
+        context.insert(
+            "target_kind_name",
+            &data_model_name.to_case(Case::UpperCamel),
+        );
 
         let constraints = isl_type.constraints();
         for constraint in constraints {
@@ -197,6 +200,21 @@ impl<'a> CodeGenerator<'a> {
     }
 
     /// Verify that the current data model is same as previously determined data model
+    /// This is referring to data model determined with each constraint that is verifies
+    /// that all the constraints map to a single data model and not different data models.
+    /// e.g.
+    /// ```
+    /// type::{
+    ///   name: foo,
+    ///   type: string,
+    ///   fields:{
+    ///      source: String,
+    ///      destination: String
+    ///   }
+    /// }
+    /// ```
+    /// For the above schema, both `fields` and `type` constraints map to different data models
+    /// respectively Struct(with given fields `source` and `destination`) and Value(with a single field that has String data type).
     fn verify_data_model_consistency(
         &mut self,
         current_data_model: DataModel,
@@ -274,7 +292,7 @@ impl<'a> CodeGenerator<'a> {
         })
     }
 
-    /// Generates field value in a struct which represents a sequence data type in codegen's programming language
+    /// Generates an appropriately typed sequence in the target programming language to use as a field value
     pub fn generate_sequence_field_value(
         &mut self,
         name: String,
@@ -293,8 +311,8 @@ impl<'a> CodeGenerator<'a> {
         name
     }
 
-    /// Generates read API for a data model
-    /// This adds statements for reading Ion value based on given data model that will be used by data model templates
+    /// Generates Generates a read API for an abstract data type.
+    /// This adds statements for reading each the Ion value(s) that collectively represent the given abstract data type.
     // TODO: add support for Java
     fn generate_read_api(
         &mut self,
@@ -302,7 +320,7 @@ impl<'a> CodeGenerator<'a> {
         tera_fields: &mut Vec<Field>,
         code_gen_context: &mut CodeGenContext,
     ) -> CodeGenResult<()> {
-        let mut statements = vec![];
+        let mut read_statements = vec![];
 
         if code_gen_context.data_model == Some(DataModel::Struct)
             || code_gen_context.data_model == Some(DataModel::Value)
@@ -320,11 +338,11 @@ impl<'a> CodeGenerator<'a> {
             for tera_field in tera_fields {
                 if !self.is_built_in_type(&tera_field.value) {
                     if code_gen_context.data_model == Some(DataModel::Sequence) {
-                        statements.push(format!(
+                        read_statements.push(format!(
                             "\"{}\" => {{ data_model.{} =",
                             &tera_field.name, &tera_field.name,
                         ));
-                        statements.push(
+                        read_statements.push(
                             r#"{
                 let mut values = vec![];
                 reader.step_in()?;
@@ -333,18 +351,18 @@ impl<'a> CodeGenerator<'a> {
                         );
                         let sequence_type = &tera_field.value.replace("Vec<", "").replace('>', "");
                         if !self.is_built_in_type(sequence_type) {
-                            statements.push(format!(
+                            read_statements.push(format!(
                                 "values.push({}::read_from(reader)?)",
                                 sequence_type
                             ));
                         } else {
-                            statements.push(format!(
+                            read_statements.push(format!(
                                 "values.push(reader.read_{}()?)",
                                 sequence_type.to_lowercase()
                             ));
                         }
 
-                        statements.push(
+                        read_statements.push(
                             r#"}
                 values }}"#
                                 .to_string(),
@@ -355,7 +373,7 @@ impl<'a> CodeGenerator<'a> {
                             &format!("{}::read_from(reader)?", &tera_field.value,),
                         );
                     } else {
-                        statements.push(format!(
+                        read_statements.push(format!(
                             "\"{}\" => {{ data_model.{} = {}::read_from(reader)?;}}",
                             &tera_field.name, &tera_field.name, &tera_field.value,
                         ));
@@ -367,7 +385,7 @@ impl<'a> CodeGenerator<'a> {
                             &format!("reader.read_{}()?", &tera_field.value.to_lowercase(),),
                         );
                     }
-                    statements.push(format!(
+                    read_statements.push(format!(
                         "\"{}\" => {{ data_model.{} = reader.read_{}()?;}}",
                         &tera_field.name,
                         &tera_field.name,
@@ -376,7 +394,7 @@ impl<'a> CodeGenerator<'a> {
                 }
             }
         }
-        context.insert("statements", &statements);
+        context.insert("statements", &read_statements);
         Ok(())
     }
 
