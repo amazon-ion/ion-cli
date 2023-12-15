@@ -1,0 +1,60 @@
+use ion_rs::{IonResult, IonReader, Reader, StreamItem};
+{% for import in imports %}
+use crate::ion_data_model::{{ import.module_name }}::{{ import.type_name }};
+{% endfor %}
+
+#[derive(Debug, Clone, Default)]
+pub struct {{ target_kind_name }} {
+{% for field in fields -%}
+         {{ field.name | indent(first = true) }}: {{ field.value }},
+{% endfor %}
+}
+
+impl {{ target_kind_name }} {
+    pub fn new({% for field in fields -%}{{ field.name }}: {{ field.value }},{% endfor %}) -> Self {
+        Self {
+            {% for field in fields -%}
+            {{ field.name }},
+            {% endfor %}
+        }
+    }
+
+
+    {% for field in fields -%}pub fn {{ field.name }}(&self) -> &{{ field.value }} {
+        &self.{{ field.name }}
+    }
+    {% endfor %}
+
+    {% if statements %}
+    pub fn read_from(reader: &mut Reader) -> IonResult<Self> {
+        reader.next()?;
+        {% if data_model == "UnitStruct"%}
+            let mut data_model = {{ target_kind_name }}::default();
+            data_model.value = {{ read_statement }};
+        {% else %}
+            {% if data_model == "Struct"%}reader.step_in()?;{% endif %}
+            let mut data_model = {{ target_kind_name }}::default();
+            while reader.next()? != StreamItem::Nothing {
+                if let Some(field_name) = reader.field_name()?.text() {
+                    match field_name {
+
+                     {% for statement in statements -%}
+                            {{ statement }}
+                     {% endfor %}
+                     _ => {}
+                    }
+                }
+            }
+            {% if data_model == "Struct"%}reader.step_out()?;{% endif %}
+        {% endif %}
+     Ok(data_model)
+    }
+    {% endif %}
+
+    pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> IonResult<()> {
+        {% for statement in write_statements -%}
+           {{ statement }}
+        {% endfor %}
+        Ok(())
+    }
+}
