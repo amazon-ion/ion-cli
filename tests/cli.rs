@@ -1,12 +1,31 @@
 use anyhow::Result;
 use assert_cmd::Command;
-use ion_rs::Element;
+use ion_rs::{BinaryWriterBuilder, Element, ElementReader, IonWriter, ReaderBuilder};
 use rstest::*;
 use std::fs;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::time::Duration;
 use tempfile::TempDir;
+
+const TEST_DATA: &str = r#"
+    {
+        foo: bar,
+        abc: [123, 456]
+    }
+    {
+        foo: baz,
+        abc: [42.0, 43e0]
+    }
+    {
+        foo: bar,
+        test: data
+    }
+    {
+        foo: baz,
+        type: struct
+    }
+    "#;
 
 enum FileMode {
     /// Use `STDIN` or `STDOUT`
@@ -178,28 +197,10 @@ fn run_it<S: AsRef<str>>(
 ///Calls ion-cli beta head with different requested number. Pass the test if the return value equals to the expected value.
 fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> Result<()> {
     let mut cmd = Command::cargo_bin("ion")?;
-    let test_data = r#"
-    {
-        foo: bar,
-        abc: [123, 456]
-    }
-    {
-        foo: baz,
-        abc: [42.0, 43e0]
-    }
-    {
-        foo: bar,
-        test: data
-    }
-    {
-        foo: baz,
-        type: struct
-    }
-    "#;
     let temp_dir = TempDir::new()?;
     let input_path = temp_dir.path().join("test.ion");
     let mut input_file = File::create(&input_path)?;
-    input_file.write_all(test_data.as_bytes())?;
+    input_file.write_all(TEST_DATA.as_bytes())?;
     input_file.flush()?;
     cmd.args([
         "beta",
@@ -214,6 +215,76 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     let output = command_assert.get_output();
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout.trim_end(), expected_output);
+    Ok(())
+}
+
+#[rstest]
+#[case("{foo: bar, abc: [123, 456]}", "The maximum depth is 2")]
+#[case("{foo: bar, abc: 123}", "The maximum depth is 1")]
+fn test_analyze_depth(#[case] test_data: &str, #[case] expected_output: &str) -> Result<()> {
+    let mut cmd = Command::cargo_bin("ion")?;
+    let temp_dir = TempDir::new()?;
+    let input_path = temp_dir.path().join("test.ion");
+    let mut input_file = File::create(&input_path)?;
+    input_file.write_all(test_data.as_bytes())?;
+    input_file.flush()?;
+    cmd.args(["beta", "analyze", "depth", input_path.to_str().unwrap()]);
+    let command_assert = cmd.assert();
+    let output = command_assert.get_output();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim_end(), expected_output);
+    Ok(())
+}
+
+#[rstest]
+#[case("[123, 456]", "The number of symbols is 0")]
+#[case("{foo: 123, abc: [123, 456]}", "The number of symbols is 2")]
+#[case("{foo: bar, abc: [123, 456]}", "The number of symbols is 3")]
+fn test_symbol_count(#[case] test_data: &str, #[case] expected_out: &str) -> Result<()> {
+    let mut cmd = Command::cargo_bin("ion")?;
+    let temp_dir = TempDir::new()?;
+    let input_path = temp_dir.path().join("test.10n");
+    let mut input_file = File::create(&input_path)?;
+    let mut writer = BinaryWriterBuilder::new().build(&mut input_file)?;
+    let test = Element::read_one(test_data);
+    test.unwrap().write_to(&mut writer)?;
+    writer.flush()?;
+    input_file.flush()?;
+    cmd.args([
+        "beta",
+        "symtab",
+        "symbol_count",
+        input_path.to_str().unwrap(),
+    ]);
+    let command_assert = cmd.assert();
+    let output = command_assert.get_output();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim_end(), expected_out);
+    Ok(())
+}
+
+#[rstest]
+fn test_symtab_count() -> Result<()> {
+    let mut cmd = Command::cargo_bin("ion")?;
+    let temp_dir = TempDir::new()?;
+    let input_path = temp_dir.path().join("test.10n");
+    let mut input_file = File::create(&input_path)?;
+    let expected_out = "The number of local symbol tables is 4";
+    let mut reader = ReaderBuilder::new().build(TEST_DATA.as_bytes())?;
+    let mut writer = BinaryWriterBuilder::new().build(&mut input_file)?;
+    let element_list = reader.elements();
+    for element in element_list {
+        element.unwrap().write_to(&mut writer).unwrap();
+        // Flush the writer after complete each top-level value to initialize a new local symbol table.
+        writer.flush()?
+    }
+    input_file.flush()?;
+    cmd.args(["beta", "symtab", "count", input_path.to_str().unwrap()]);
+    let command_assert = cmd.assert();
+    let output = command_assert.get_output();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    println!("{}", stdout.to_string());
+    assert_eq!(stdout.trim_end(), expected_out);
     Ok(())
 }
 

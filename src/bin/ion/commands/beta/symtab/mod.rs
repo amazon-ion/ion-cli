@@ -1,7 +1,11 @@
+use crate::commands::beta::symtab::count::SymbolTableCommand;
 use crate::commands::beta::symtab::filter::SymtabFilterCommand;
+use crate::commands::beta::symtab::symbol_count::SymbolNumberCommand;
 use crate::commands::IonCliCommand;
 
+pub mod count;
 pub mod filter;
+pub mod symbol_count;
 
 pub struct SymtabNamespace;
 
@@ -15,6 +19,10 @@ impl IonCliCommand for SymtabNamespace {
     }
 
     fn subcommands(&self) -> Vec<Box<dyn IonCliCommand>> {
-        vec![Box::new(SymtabFilterCommand)]
+        vec![
+            Box::new(SymtabFilterCommand),
+            Box::new(SymbolTableCommand),
+            Box::new(SymbolNumberCommand),
+        ]
     }
 }

@@ -12,6 +12,7 @@ keywords = ["format", "parse", "encode"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+lowcharts = "*"
 anyhow = "1.0"
 clap = { version = "4.0.17", features = ["cargo"] }
 colored = "2.0.0"
