@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use clap::{value_parser, Arg, ArgAction, ArgMatches, Command};
 use ion_rs::*;
 use std::fs::File;
-use std::io::{stdin, stdout, BufRead, BufReader, Chain, Cursor, Read, StdinLock, Write};
+use std::io::{self, stdin, stdout, BufRead, BufReader, Chain, Cursor, Read, StdinLock, Write};
 
 pub struct DumpCommand;
 
@@ -259,7 +259,7 @@ where
 {
     // read header
     let mut header_bytes = vec![0; header_len];
-    let nread = reader.read(&mut header_bytes)?;
+    let nread = read_reliably(&mut reader, &mut header_bytes)?;
     header_bytes.truncate(nread);
 
     // detect compression type and wrap reader in a decompressor
@@ -291,4 +291,17 @@ where
             Ok(header.chain(Box::new(reader)))
         }
     }
+}
+
+/// same as `Read` trait's read() method, but loops in case of fragmented reads
+fn read_reliably<R: Read>(reader: &mut R, buf: &mut [u8]) -> io::Result<usize> {
+    let mut nread = 0;
+    while nread < buf.len() {
+        match reader.read(&mut buf[nread..]) {
+            Ok(0) => break,
+            Ok(n) => nread += n,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(nread)
 }
