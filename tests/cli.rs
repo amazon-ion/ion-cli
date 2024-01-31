@@ -15,6 +15,15 @@ enum FileMode {
     Named,
 }
 
+enum InputCompress {
+    /// no compression
+    No,
+    /// gzip
+    Gz,
+    /// zstd
+    Zst,
+}
+
 struct TestCase<S: AsRef<str>> {
     /// The text of the ion payload to test
     ion_text: S,
@@ -79,6 +88,7 @@ fn run_it<S: AsRef<str>>(
     #[values("", "binary", "text", "pretty")] format_flag: &str,
     #[values(FileMode::Default, FileMode::Named)] input_mode: FileMode,
     #[values(FileMode::Default, FileMode::Named)] output_mode: FileMode,
+    #[values(InputCompress::No, InputCompress::Gz, InputCompress::Zst)] input_compress: InputCompress,
 ) -> Result<()> {
     let TestCase {
         ion_text,
@@ -106,15 +116,30 @@ fn run_it<S: AsRef<str>>(
         }
     };
 
+    // prepare input
+    let input_bytes = match input_compress {
+        InputCompress::Gz => {
+            let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            encoder.write_all(ion_text.as_ref().as_bytes())?;
+            encoder.finish()?
+        },
+        InputCompress::Zst => {
+            let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 1)?;
+            encoder.write_all(ion_text.as_ref().as_bytes())?;
+            encoder.finish()?
+        },
+        _ => ion_text.as_ref().as_bytes().to_vec()
+    };
+
     match input_mode {
         FileMode::Default => {
             // do nothing
-            cmd.write_stdin(ion_text.as_ref());
+            cmd.write_stdin(input_bytes);
         }
         FileMode::Named => {
             // dump our test data to input file
             let mut input_file = File::create(&input_path)?;
-            input_file.write_all(ion_text.as_ref().as_bytes())?;
+            input_file.write_all(&input_bytes)?;
             input_file.flush()?;
 
             // TODO: test multiple input files

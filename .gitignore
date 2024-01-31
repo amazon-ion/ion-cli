@@ -1,2 +1,5 @@
 /.idea
 /target
+*.swp
+*.swo
+*.swn
