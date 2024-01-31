@@ -14,7 +14,10 @@ impl IonCliCommand for HeadCommand {
     }
 
     fn configure_args(&self, command: Command) -> Command {
-        command.with_input().with_output().with_format()
+        command
+            .with_input()
+            .with_output()
+            .with_format()
             .arg(
                 Arg::new("values")
                     .long("values")
