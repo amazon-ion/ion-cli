@@ -1,11 +1,14 @@
 use crate::commands::{IonCliCommand, WithIonCliArgument};
 use anyhow::{Context, Result};
-use clap::{value_parser, Arg, ArgMatches, Command};
+use clap::{value_parser, Arg, ArgAction, ArgMatches, Command};
 use ion_rs::*;
 use std::fs::File;
-use std::io::{stdin, stdout, StdinLock, Write};
+use std::io::{self, stdin, stdout, BufRead, BufReader, Chain, Cursor, Read, StdinLock, Write};
 
 pub struct DumpCommand;
+
+const BUF_READER_CAPACITY: usize = 2 << 20; // 1 MiB
+const INFER_HEADER_LENGTH: usize = 8;
 
 impl IonCliCommand for DumpCommand {
     fn name(&self) -> &'static str {
@@ -31,6 +34,12 @@ impl IonCliCommand for DumpCommand {
             .with_input()
             .with_output()
             .with_format()
+            .arg(
+                Arg::new("no-auto-decompress")
+                    .long("no-auto-decompress")
+                    .action(ArgAction::SetTrue)
+                    .help("Turn off automatic decompression detection."),
+            )
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
@@ -60,12 +69,23 @@ impl IonCliCommand for DumpCommand {
             for input_file in input_file_iter {
                 let file = File::open(input_file)
                     .with_context(|| format!("Could not open file '{}'", input_file))?;
-                let mut reader = ReaderBuilder::new().build(file)?;
+                let mut reader = if let Some(true) = args.get_one::<bool>("no-auto-decompress") {
+                    ReaderBuilder::new().build(file)?
+                } else {
+                    let bfile = BufReader::with_capacity(BUF_READER_CAPACITY, file);
+                    let zfile = auto_decompressing_reader(bfile, INFER_HEADER_LENGTH)?;
+                    ReaderBuilder::new().build(zfile)?
+                };
                 write_in_format(&mut reader, &mut output, format, values)?;
             }
         } else {
             let input: StdinLock = stdin().lock();
-            let mut reader = ReaderBuilder::new().build(input)?;
+            let mut reader = if let Some(true) = args.get_one::<bool>("no-auto-decompress") {
+                ReaderBuilder::new().build(input)?
+            } else {
+                let zinput = auto_decompressing_reader(input, INFER_HEADER_LENGTH)?;
+                ReaderBuilder::new().build(zinput)?
+            };
             write_in_format(&mut reader, &mut output, format, values)?;
         }
 
@@ -215,4 +235,73 @@ fn transcribe_n_values<W: IonWriter>(
     }
     writer.flush()?;
     Ok(index)
+}
+
+/// Autodetects a compressed byte stream and wraps the original reader
+/// into a reader that transparently decompresses.
+///
+/// To support non-seekable readers like `Stdin`, we could have used a
+/// full-blown buffering wrapper with unlimited rewinds, but since we only
+/// need the first few magic bytes at offset 0, we cheat and instead make a
+/// `Chain` reader from the buffered header followed by the original reader.
+///
+/// The choice of `Chain` type here is not quite necessary: it could have
+/// been simply `dyn BufRead`, but there is no `ToIonDataSource` trait
+/// implementation for `dyn BufRead` at the moment.
+type AutoDecompressingReader = Chain<Box<dyn BufRead>, Box<dyn BufRead>>;
+
+fn auto_decompressing_reader<R>(
+    mut reader: R,
+    header_len: usize,
+) -> IonResult<AutoDecompressingReader>
+where
+    R: BufRead + 'static,
+{
+    // read header
+    let mut header_bytes = vec![0; header_len];
+    let nread = read_reliably(&mut reader, &mut header_bytes)?;
+    header_bytes.truncate(nread);
+
+    // detect compression type and wrap reader in a decompressor
+    match infer::get(&header_bytes) {
+        Some(t) => match t.extension() {
+            "gz" => {
+                // "rewind" to let the decompressor read magic bytes again
+                let header: Box<dyn BufRead> = Box::new(Cursor::new(header_bytes));
+                let chain = header.chain(reader);
+                let zreader = Box::new(BufReader::new(flate2::read::GzDecoder::new(chain)));
+                // must return a `Chain`, so prepend an empty buffer
+                let nothing: Box<dyn BufRead> = Box::new(Cursor::new(&[] as &[u8]));
+                Ok(nothing.chain(zreader))
+            }
+            "zst" => {
+                let header: Box<dyn BufRead> = Box::new(Cursor::new(header_bytes));
+                let chain = header.chain(reader);
+                let zreader = Box::new(BufReader::new(zstd::stream::read::Decoder::new(chain)?));
+                let nothing: Box<dyn BufRead> = Box::new(Cursor::new(&[] as &[u8]));
+                Ok(nothing.chain(zreader))
+            }
+            _ => {
+                let header: Box<dyn BufRead> = Box::new(Cursor::new(header_bytes));
+                Ok(header.chain(Box::new(reader)))
+            }
+        },
+        None => {
+            let header: Box<dyn BufRead> = Box::new(Cursor::new(header_bytes));
+            Ok(header.chain(Box::new(reader)))
+        }
+    }
+}
+
+/// same as `Read` trait's read() method, but loops in case of fragmented reads
+fn read_reliably<R: Read>(reader: &mut R, buf: &mut [u8]) -> io::Result<usize> {
+    let mut nread = 0;
+    while nread < buf.len() {
+        match reader.read(&mut buf[nread..]) {
+            Ok(0) => break,
+            Ok(n) => nread += n,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(nread)
 }
