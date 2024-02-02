@@ -1,5 +1,5 @@
-use crate::commands::beta::generate::context::DataModel;
-use crate::commands::beta::generate::result::{invalid_data_model_error, CodeGenError};
+use crate::commands::beta::generate::context::AbstractDataType;
+use crate::commands::beta::generate::result::{invalid_abstract_data_type_error, CodeGenError};
 use convert_case::{Case, Casing};
 use serde::Serialize;
 use std::fmt::{Display, Formatter};
@@ -86,15 +86,15 @@ impl Template {
     }
 }
 
-impl TryFrom<Option<&DataModel>> for Template {
+impl TryFrom<Option<&AbstractDataType>> for Template {
     type Error = CodeGenError;
 
-    fn try_from(value: Option<&DataModel>) -> Result<Self, Self::Error> {
+    fn try_from(value: Option<&AbstractDataType>) -> Result<Self, Self::Error> {
         match value {
-            Some(DataModel::Value) | Some(DataModel::Sequence) | Some(DataModel::Struct) => {
-                Ok(Template::Struct)
-            }
-            None => invalid_data_model_error(
+            Some(AbstractDataType::Value)
+            | Some(AbstractDataType::Sequence(_))
+            | Some(AbstractDataType::Struct) => Ok(Template::Struct),
+            None => invalid_abstract_data_type_error(
                 "Can not get a template without determining data model first.",
             ),
         }

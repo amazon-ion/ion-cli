@@ -28,7 +28,7 @@ pub enum CodeGenError {
 
 /// A convenience method for creating an CodeGen containing an CodeGenError::InvalidDataModel
 /// with the provided description text.
-pub fn invalid_data_model_error<T, S: AsRef<str>>(description: S) -> CodeGenResult<T> {
+pub fn invalid_abstract_data_type_error<T, S: AsRef<str>>(description: S) -> CodeGenResult<T> {
     Err(CodeGenError::InvalidDataModel {
         description: description.as_ref().to_string(),
     })

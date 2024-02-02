@@ -3,40 +3,43 @@ use std::fmt::{Display, Formatter};
 
 /// Represents a context that will be used for code generation
 pub struct CodeGenContext {
-    // Initially the data_model field is set to None.
-    // Once an ISL type definition is mapped to a data model this will have Some value.
-    pub(crate) data_model: Option<DataModel>,
+    // Initially the abstract_data_type field is set to None.
+    // Once an ISL type definition is mapped to an abstract data type this will have Some value.
+    pub(crate) abstract_data_type: Option<AbstractDataType>,
 }
 
 impl CodeGenContext {
     pub fn new() -> Self {
-        Self { data_model: None }
+        Self {
+            abstract_data_type: None,
+        }
     }
 
-    pub fn with_data_model(&mut self, data_model: DataModel) {
-        self.data_model = Some(data_model);
+    pub fn with_abstract_data_type(&mut self, abstract_data_type: AbstractDataType) {
+        self.abstract_data_type = Some(abstract_data_type);
     }
 }
 
-/// Represents a data model type that can be used to determine which templates can be used for code generation.
+/// Represents an abstract data type type that can be used to determine which templates can be used for code generation.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub enum DataModel {
-    Value, // a struct with a scalar value (used for `type` constraint)
-    // TODO: Make Sequence parameterized over data type.
-    //  add a data type for sequence here that can be used to read elements for that data type.
-    Sequence, // a struct with a sequence/collection value (used for `element` constraint)
+pub enum AbstractDataType {
+    // a struct with a scalar value (used for `type` constraint)
+    Value,
+    // a struct with a sequence/collection value (used for `element` constraint)
+    // the parameter string represents the data type of the sequence
+    Sequence(String),
     Struct,
 }
 
-impl Display for DataModel {
+impl Display for AbstractDataType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "{}",
             match self {
-                DataModel::Value => "single value struct",
-                DataModel::Sequence => "sequence value struct",
-                DataModel::Struct => "struct",
+                AbstractDataType::Value => "single value struct",
+                AbstractDataType::Sequence(_) => "sequence value struct",
+                AbstractDataType::Struct => "struct",
             }
         )
     }

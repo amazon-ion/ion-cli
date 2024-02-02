@@ -28,12 +28,12 @@ impl {{ target_kind_name }} {
     {% if statements %}
     pub fn read_from(reader: &mut Reader) -> IonResult<Self> {
         reader.next()?;
-        {% if data_model == "UnitStruct"%}
-            let mut data_model = {{ target_kind_name }}::default();
-            data_model.value = {{ read_statement }};
+        {% if abstract_data_type == "UnitStruct"%}
+            let mut abstract_data_type = {{ target_kind_name }}::default();
+            abstract_data_type.value = {{ read_statement }};
         {% else %}
-            {% if data_model == "Struct"%}reader.step_in()?;{% endif %}
-            let mut data_model = {{ target_kind_name }}::default();
+            {% if abstract_data_type == "Struct"%}reader.step_in()?;{% endif %}
+            let mut abstract_data_type = {{ target_kind_name }}::default();
             while reader.next()? != StreamItem::Nothing {
                 if let Some(field_name) = reader.field_name()?.text() {
                     match field_name {
@@ -45,9 +45,9 @@ impl {{ target_kind_name }} {
                     }
                 }
             }
-            {% if data_model == "Struct"%}reader.step_out()?;{% endif %}
+            {% if abstract_data_type == "Struct"%}reader.step_out()?;{% endif %}
         {% endif %}
-     Ok(data_model)
+     Ok(abstract_data_type)
     }
     {% endif %}
 
