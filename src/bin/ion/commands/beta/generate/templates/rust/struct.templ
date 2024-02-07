@@ -25,22 +25,44 @@ impl {{ target_kind_name }} {
     }
     {% endfor %}
 
-    {% if statements %}
+
     pub fn read_from(reader: &mut Reader) -> IonResult<Self> {
         reader.next()?;
-        {% if abstract_data_type == "UnitStruct"%}
+        {% if abstract_data_type == "Value"%}
             let mut abstract_data_type = {{ target_kind_name }}::default();
-            abstract_data_type.value = {{ read_statement }};
+            abstract_data_type.value = {% if target_kind_name | is_built_in_type == false %}
+                                            {{ target_kind_name }}::read_from(reader)?;
+                                        {% else %}
+                                            reader.read_{{ target_kind_name }}()?;
+                                        {% endif %}
         {% else %}
             {% if abstract_data_type == "Struct"%}reader.step_in()?;{% endif %}
             let mut abstract_data_type = {{ target_kind_name }}::default();
             while reader.next()? != StreamItem::Nothing {
                 if let Some(field_name) = reader.field_name()?.text() {
                     match field_name {
-
-                     {% for statement in statements -%}
-                            {{ statement }}
-                     {% endfor %}
+                        {% for field in fields -%}
+                            {% if field.value | is_built_in_type == false %}
+                                {% if abstract_data_type is object and abstract_data_type["Sequence"] | length != 0 %}
+                                 "{{ field.name }}" => { abstract_data_type.{{ field.name }} = {
+                                     let mut values = vec![];
+                                     reader.step_in()?;
+                                     while reader.next()? != StreamItem::Nothing {
+                                        {% if abstract_data_type["Sequence"] | is_built_in_type == false %}
+                                            values.push({{ abstract_data_type["Sequence"] }}::read_from(reader)?);
+                                        {% else %}
+                                            values.push(reader.read_{{ abstract_data_type["Sequence"] }}()?);
+                                        {% endif %}
+                                    }
+                                    values
+                                 };}
+                                 {% elif abstract_data_type == "Struct" %}
+                                 "{{ field.name }}" => { abstract_data_type.{{ field.name }} = {{ field.value }}::read_from(reader)?; }
+                                 {% endif %}
+                            {% else %}
+                            "{{ field.name }}" => { abstract_data_type.{{ field.name }} = reader.read_{{ field.value }}()?; }
+                            {% endif %}
+                        {% endfor %}
                      _ => {}
                     }
                 }
@@ -49,12 +71,38 @@ impl {{ target_kind_name }} {
         {% endif %}
      Ok(abstract_data_type)
     }
-    {% endif %}
 
     pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> IonResult<()> {
-        {% for statement in write_statements -%}
-           {{ statement }}
-        {% endfor %}
+        {% if abstract_data_type == "Value" %}
+            {% for field in fields %}
+                {% if field.value | is_built_in_type ==false  %}
+                    self.{{ field.name }}.write_to(writer)?;
+                {% else %}
+                    writer.write_{{ field.value | lower }}(self.value)?;
+                {% endif %}
+            {% endfor %}
+        {% elif abstract_data_type == "Struct"%}
+            writer.step_in(IonType::Struct)?;
+            {% for field in fields %}
+            writer.set_field_name("{{ field.name }}");
+                {% if field.value | is_built_in_type == false %}
+                    self.{{ field.name }}.write_to(writer)?;
+                {% else %}
+                    writer.write_{{ field.value | lower }}(self.{{ field.name }})?;
+                {% endif %}
+            {% endfor %}
+            writer.step_out()?;
+        {% elif abstract_data_type is object and abstract_data_type["Sequence"] | length != 0 %}
+            writer.step_in(IonType::List)?;
+            for value in self.value {
+                {% if abstract_data_type["Sequence"] | is_built_in_type  == false %}
+                    value.write_to(writer)?;
+                {% else %}
+                   writer.write_{{ abstract_data_type["Sequence"] | lower }}(value)?;
+                {% endif %}
+            }
+            writer.step_out()?;
+        {% endif %}
         Ok(())
     }
 }
