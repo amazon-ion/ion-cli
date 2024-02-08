@@ -10,9 +10,6 @@ use crate::commands::{IonCliCommand, WithIonCliArgument};
 use anyhow::{bail, Context, Result};
 use clap::{Arg, ArgMatches, Command};
 use colored::Colorize;
-use ion_rs::binary::non_blocking::raw_binary_reader::RawBinaryReader;
-use ion_rs::element::writer::TextKind;
-use ion_rs::result::{decoding_error, IonResult};
 use ion_rs::*;
 use memmap::MmapOptions;
 
@@ -396,7 +393,7 @@ impl<'a> IonInspector<'a> {
         }
     }
 
-    fn write_field_if_present(&mut self) -> IonResult<()> {
+    fn write_field_if_present(&mut self) -> Result<()> {
         if self.reader.parent_type() != Some(IonType::Struct) {
             // We're not in a struct; nothing to do.
             return Ok(());
@@ -433,10 +430,7 @@ impl<'a> IonInspector<'a> {
 
         if field_name_result.is_err() {
             // If we had to write <UNKNOWN> for the field name above, return a fatal error now.
-            return decoding_error(format!(
-                "Encountered a field ID (${}) with unknown text.",
-                field_id
-            ));
+            bail!("Encountered a field ID (${}) with unknown text.", field_id);
         }
 
         Ok(())
@@ -452,11 +446,7 @@ impl<'a> IonInspector<'a> {
             );
 
             self.text_buffer.clear();
-            join_into(
-                &mut self.text_buffer,
-                "::",
-                self.reader.annotations().map(|o| o.unwrap()),
-            );
+            join_into(&mut self.text_buffer, "::", self.reader.annotations())?;
             write!(&mut self.text_buffer, "::")?;
 
             self.color_buffer.clear();
@@ -466,8 +456,8 @@ impl<'a> IonInspector<'a> {
                 "::$",
                 self.reader
                     .raw_annotations()
-                    .map(|a| a.local_sid().unwrap()),
-            );
+                    .map(|a| a.map(|token| token.local_sid().unwrap())),
+            )?;
             write!(&mut self.color_buffer, "::")?;
 
             write!(self.text_buffer, "{}", self.color_buffer.dimmed())?;
@@ -718,12 +708,13 @@ fn to_hex(buffer: &mut String, bytes: &[u8]) {
 fn join_into<T: Display>(
     buffer: &mut String,
     delimiter: &str,
-    mut values: impl Iterator<Item = T>,
-) {
+    mut values: impl Iterator<Item = IonResult<T>>,
+) -> IonResult<()> {
     if let Some(first) = values.next() {
-        write!(buffer, "{}", first).unwrap();
+        write!(buffer, "{}", first?).unwrap();
     }
     for value in values {
-        write!(buffer, "{}{}", delimiter, value).unwrap();
+        write!(buffer, "{}{}", delimiter, value?).unwrap();
     }
+    Ok(())
 }

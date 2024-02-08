@@ -1,8 +1,7 @@
 use crate::commands::{IonCliCommand, WithIonCliArgument};
 use anyhow::{Context, Result};
 use clap::{ArgMatches, Command};
-use ion_rs::element::reader::ElementReader;
-use ion_rs::element::Element;
+use ion_rs::{Element, ElementReader};
 use ion_rs::{Reader, ReaderBuilder};
 use serde_json::{Map, Number, Value as JsonValue};
 use std::fs::File;
@@ -82,7 +81,7 @@ fn to_json_value(element: &Element) -> Result<JsonValue> {
     if element.is_null() {
         Ok(JsonValue::Null)
     } else {
-        use ion_rs::element::Value::*;
+        use ion_rs::Value::*;
         let value = match element.value() {
             Null(_ion_type) => JsonValue::Null,
             Bool(b) => JsonValue::Bool(*b),

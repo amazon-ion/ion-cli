@@ -1,7 +1,7 @@
 use crate::commands::{IonCliCommand, WithIonCliArgument};
 use anyhow::{bail, Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use ion_rs::binary::non_blocking::raw_binary_reader::RawBinaryReader;
+use ion_rs::RawBinaryReader;
 use ion_rs::{IonReader, IonResult, IonType, SystemReader, SystemStreamItem};
 use memmap::MmapOptions;
 use std::fs::File;

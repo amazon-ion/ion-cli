@@ -1,10 +1,10 @@
 use crate::commands::IonCliCommand;
 use anyhow::{Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use ion_rs::element::writer::TextKind;
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
 use ion_schema::external::ion_rs::element::reader::ElementReader;
 use ion_schema::external::ion_rs::element::writer::ElementWriter;
+use ion_schema::external::ion_rs::element::writer::TextKind;
 use ion_schema::external::ion_rs::element::Element;
 use ion_schema::external::ion_rs::{IonResult, TextWriterBuilder};
 use ion_schema::external::ion_rs::{IonType, IonWriter, ReaderBuilder};
