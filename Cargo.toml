@@ -1,6 +1,6 @@
 [package]
 name = "ion-cli"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["The Ion Team <ion-team@amazon.com>"]
 edition = "2021"
 description = "Command line tool for working with the Ion data format."
