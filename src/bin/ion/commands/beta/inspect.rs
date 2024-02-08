@@ -12,6 +12,8 @@ use clap::{Arg, ArgMatches, Command};
 use colored::Colorize;
 use ion_rs::*;
 use memmap::MmapOptions;
+#[cfg(not(target_os = "windows"))]
+use pager::Pager;
 
 pub struct InspectCommand;
 
@@ -62,7 +64,17 @@ complete value will be displayed.",
             )
     }
 
+    #[cfg(not(target_os = "windows"))] // TODO find a cross-platform pager implementation.
+    fn set_up_pager(&self) {
+        // Direct output to the pager specified by the PAGER environment variable, or "less -FIRX"
+        // if the environment variable is not set. Note: a pager is not used if the output is not
+        // a TTY.
+        Pager::with_default_pager("less -FIRX").setup();
+    }
+
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
+        self.set_up_pager();
+
         // --skip-bytes has a default value, so we can unwrap this safely.
         let skip_bytes_arg = args.get_one::<String>("skip-bytes").unwrap().as_str();
 
