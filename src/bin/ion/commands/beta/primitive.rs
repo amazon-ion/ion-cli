@@ -1,8 +1,7 @@
 use crate::commands::IonCliCommand;
 use anyhow::{Context, Result};
 use clap::{Arg, ArgMatches, Command};
-use ion_rs::binary::var_int::VarInt;
-use ion_rs::binary::var_uint::VarUInt;
+use ion_rs::{VarInt, VarUInt};
 
 pub struct PrimitiveCommand;
 
