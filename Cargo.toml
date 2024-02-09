@@ -30,6 +30,9 @@ matches = "0.1.10"
 thiserror = "1.0.50"
 zstd = "0.13.0"
 
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+pager = "0.16.1"
+
 [dev-dependencies]
 rstest = "~0.17.0"
 assert_cmd = "~1.0.5"
