@@ -1,6 +1,6 @@
 use ion_rs::{IonResult, IonReader, Reader, StreamItem};
 {% for import in imports %}
-use crate::ion_data_model::{{ import.module_name }}::{{ import.type_name }};
+use crate::ion_data_model::{{ import.name | snake }}::{{ import.name | upper_camel }};
 {% endfor %}
 
 #[derive(Debug, Clone, Default)]

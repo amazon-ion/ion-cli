@@ -105,7 +105,7 @@ impl IonCliCommand for GenerateCommand {
             "java" => CodeGenerator::<JavaLanguage>::new(output).generate(schema)?,
             "rust" => CodeGenerator::<RustLanguage>::new(output).generate(schema)?,
             _ => bail!(
-                "Unsupported programming language: {}, this tool only supports Java and Rust code generation.",
+                "Programming language '{}' is not yet supported. Currently supported targets: 'java', 'rust'",
                 language
             )
         }

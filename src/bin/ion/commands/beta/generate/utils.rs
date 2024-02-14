@@ -12,25 +12,27 @@ pub struct Field {
     pub(crate) value: String,
 }
 
-/// Represents an import statement in a module file.
+/// Represents an import in a generated code file.
 /// This will be used by template engine to fill import statements of a type definition.
 #[derive(Serialize)]
 pub struct Import {
-    pub(crate) module_name: String,
-    pub(crate) type_name: String,
+    pub(crate) name: String,
 }
 
 pub trait Language {
     /// Provides a file extension based on programming language
     fn file_extension() -> String;
 
-    /// Returns string representation of programming language
-    fn string_value() -> String;
+    /// Returns string representation of programming language name
+    fn name() -> String;
 
-    /// Provides file name based on programming language standards
+    /// Provides generated code's file name for given `name` based on programming language standards
+    /// e.g.
+    ///     In Rust, this will return a string casing `name` to [Case::Snake].
+    ///     In Java, this will return a string casing `name` to  [Case::UpperCamel]
     fn file_name(name: &str) -> String;
 
-    /// Maps the given ISL type name to a target type
+    /// Maps the given ISL type to a target type name
     fn target_type(ion_schema_type: &IonSchemaType) -> String;
 
     /// Provides given target type as sequence
@@ -45,13 +47,13 @@ pub trait Language {
     ///     Java field name case -> [Case::Camel]
     fn field_name_case() -> Case;
 
-    /// Returns true if its a built in type otherwise returns false
+    /// Returns true if the type name specified is provided by the target language implementation
     fn is_built_in_type(name: &str) -> bool;
 
     /// Returns the template as string based on programming language
     /// e.g.
-    ///     Template<RustLanguage>::Struct -> "struct"
-    ///     Template<JavaLanguage>::Class -> "class"
+    ///     In Rust, Template::Struct -> "struct"
+    ///     In Java, Template::Struct -> "class"
     fn template_as_string(template: &Template) -> String;
 }
 
@@ -62,7 +64,7 @@ impl Language for JavaLanguage {
         "java".to_string()
     }
 
-    fn string_value() -> String {
+    fn name() -> String {
         "java".to_string()
     }
 
@@ -115,7 +117,7 @@ impl Language for RustLanguage {
         "rs".to_string()
     }
 
-    fn string_value() -> String {
+    fn name() -> String {
         "rust".to_string()
     }
 
@@ -176,9 +178,7 @@ impl TryFrom<Option<&AbstractDataType>> for Template {
 
     fn try_from(value: Option<&AbstractDataType>) -> Result<Self, Self::Error> {
         match value {
-            Some(AbstractDataType::Value)
-            | Some(AbstractDataType::Sequence(_))
-            | Some(AbstractDataType::Struct) => Ok(Template::Struct),
+            Some(_) => Ok(Template::Struct),
             None => invalid_abstract_data_type_error(
                 "Can not get a template without determining data model first.",
             ),

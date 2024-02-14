@@ -29,7 +29,7 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
         Self {
             output,
             anonymous_type_counter: 0,
-            tera: Tera::new("src/bin/ion/commands/beta/generate/templates/**/*.templ").unwrap(),
+            tera: Tera::new("src/bin/ion/commands/beta/generate/templates/rust/*.templ").unwrap(),
             phantom: PhantomData,
         }
     }
@@ -40,8 +40,9 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
         let mut modules = vec![];
         let mut module_context = tera::Context::new();
 
-        // Register a tera filter that can be used to convert a string to upper camel case
+        // Register a tera filter that can be used to convert a string based on case
         self.tera.register_filter("upper_camel", Self::upper_camel);
+        self.tera.register_filter("snake", Self::snake);
         // Register a tera filter that can be used to see if a type is built in data type or not
         self.tera
             .register_filter("is_built_in_type", Self::is_built_in_type);
@@ -61,7 +62,7 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
         module_context: &mut Context,
     ) -> CodeGenResult<()> {
         module_context.insert("modules", &modules);
-        let rendered = self.tera.render("rust/mod.templ", module_context)?;
+        let rendered = self.tera.render("mod.templ", module_context)?;
         let mut file = File::create(self.output.join("mod.rs"))?;
         file.write_all(rendered.as_bytes())?;
         Ok(())
@@ -73,7 +74,7 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
         Self {
             output,
             anonymous_type_counter: 0,
-            tera: Tera::new("src/bin/ion/commands/beta/generate/templates/**/*.templ").unwrap(),
+            tera: Tera::new("src/bin/ion/commands/beta/generate/templates/java/*.templ").unwrap(),
             phantom: PhantomData,
         }
     }
@@ -83,7 +84,7 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
         // this will be used for Rust to create mod.rs which lists all the generated modules
         let mut modules = vec![];
 
-        // Register a tera filter that can be used to convert a string to upper camel case
+        // Register a tera filter that can be used to convert a string based on case
         self.tera.register_filter("upper_camel", Self::upper_camel);
 
         for isl_type in schema.types() {
@@ -114,6 +115,25 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         ))
     }
 
+    /// Represents a [tera] filter that converts given tera string value to [snake case].
+    /// Returns error if the given value is not a string.
+    ///
+    /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
+    ///
+    /// [tera]: <https://docs.rs/tera/latest/tera/>
+    /// [upper camel case]: <https://docs.rs/convert_case/latest/convert_case/enum.Case.html#variant.Snake>
+    pub fn snake(
+        value: &tera::Value,
+        _map: &HashMap<String, tera::Value>,
+    ) -> Result<tera::Value, tera::Error> {
+        Ok(tera::Value::String(
+            value
+                .as_str()
+                .ok_or(tera::Error::msg("Required string for this filter"))?
+                .to_case(Case::Snake),
+        ))
+    }
+
     /// Represents a [tera] filter that return true if the value is a built in type, otherwise returns false.
     ///
     /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
@@ -124,9 +144,9 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         _map: &HashMap<String, tera::Value>,
     ) -> Result<tera::Value, tera::Error> {
         Ok(tera::Value::Bool(L::is_built_in_type(
-            value
-                .as_str()
-                .ok_or(tera::Error::msg("Required string for this filter"))?,
+            value.as_str().ok_or(tera::Error::msg(
+                "`is_built_in_type` called with non-String Value",
+            ))?,
         )))
     }
 
@@ -135,7 +155,7 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         modules: &mut Vec<String>,
         isl_type: &IslType,
     ) -> CodeGenResult<()> {
-        let abstract_data_type_name = isl_type
+        let isl_type_name = isl_type
             .name()
             .clone()
             .unwrap_or_else(|| format!("AnonymousType{}", self.anonymous_type_counter));
@@ -145,11 +165,8 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         let mut imports: Vec<Import> = vec![];
         let mut code_gen_context = CodeGenContext::new();
 
-        // Set the target kind name of the abstract data type (i.e. enum/class)
-        context.insert(
-            "target_kind_name",
-            &abstract_data_type_name.to_case(Case::UpperCamel),
-        );
+        // Set the ISL type name for the generated abstract data type
+        context.insert("target_kind_name", &isl_type_name.to_case(Case::UpperCamel));
 
         let constraints = isl_type.constraints();
         for constraint in constraints {
@@ -166,29 +183,16 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         context.insert("imports", &imports);
 
         // add fields for template
-        if code_gen_context.abstract_data_type == Some(AbstractDataType::Struct)
-            || code_gen_context.abstract_data_type == Some(AbstractDataType::Value)
-            || matches!(
-                code_gen_context.abstract_data_type,
-                Some(AbstractDataType::Sequence(_))
-            )
-        {
+        if let Some(abstract_data_type) = &code_gen_context.abstract_data_type {
             context.insert("fields", &tera_fields);
-            if let Some(abstract_data_type) = &code_gen_context.abstract_data_type {
-                context.insert("abstract_data_type", abstract_data_type);
-            } else {
-                return invalid_abstract_data_type_error(
+            context.insert("abstract_data_type", abstract_data_type);
+        } else {
+            return invalid_abstract_data_type_error(
                     "Can not determine abstract data type, constraints are mapping not mapping to an abstract data type.",
                 );
-            }
         }
 
-        self.render_generated_code(
-            modules,
-            &abstract_data_type_name,
-            &mut context,
-            &mut code_gen_context,
-        )
+        self.render_generated_code(modules, &isl_type_name, &mut context, &mut code_gen_context)
     }
 
     fn render_generated_code(
@@ -205,11 +209,7 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         let rendered = self
             .tera
             .render(
-                &format!(
-                    "{}/{}.templ",
-                    L::string_value(),
-                    L::template_as_string(template)
-                ),
+                &format!("{}.templ", L::template_as_string(template)),
                 context,
             )
             .unwrap();
@@ -233,8 +233,7 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
             IslTypeRef::Named(name, _) => {
                 if !L::is_built_in_type(name) {
                     imports.push(Import {
-                        module_name: name.to_case(Case::Snake),
-                        type_name: name.to_case(Case::UpperCamel),
+                        name: name.to_string(),
                     });
                 }
                 let schema_type: IonSchemaType = name.into();
@@ -248,8 +247,7 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
                 self.generate_abstract_data_type(modules, type_def)?;
                 let name = format!("AnonymousType{}", self.anonymous_type_counter);
                 imports.push(Import {
-                    module_name: name.to_case(Case::Snake),
-                    type_name: name.to_case(Case::UpperCamel),
+                    name: name.to_string(),
                 });
                 name
             }

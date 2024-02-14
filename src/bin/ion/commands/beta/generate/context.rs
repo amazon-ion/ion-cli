@@ -20,14 +20,14 @@ impl CodeGenContext {
     }
 }
 
-/// Represents an abstract data type type that can be used to determine which templates can be used for code generation.
+/// A target-language-agnostic data type that determines which template(s) to use for code generation.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum AbstractDataType {
-    // a struct with a scalar value (used for `type` constraint)
+    // A scalar value (e.g. a string or integer or user defined type)
     Value,
-    // a struct with a sequence/collection value (used for `element` constraint)
-    // the parameter string represents the data type of the sequence
+    // A series of zero or more values whose type is described by the nested `String` (e.g. a list)
     Sequence(String),
+    // A collection of field name/value pairs (e.g. a map)
     Struct,
 }
 
@@ -37,8 +37,8 @@ impl Display for AbstractDataType {
             f,
             "{}",
             match self {
-                AbstractDataType::Value => "single value struct",
-                AbstractDataType::Sequence(_) => "sequence value struct",
+                AbstractDataType::Value => "scalar value struct",
+                AbstractDataType::Sequence(_) => "sequence",
                 AbstractDataType::Struct => "struct",
             }
         )
