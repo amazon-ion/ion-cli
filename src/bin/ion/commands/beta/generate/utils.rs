@@ -1,5 +1,5 @@
-use crate::commands::beta::generate::context::DataModel;
-use crate::commands::beta::generate::result::{invalid_data_model_error, CodeGenError};
+use crate::commands::beta::generate::context::AbstractDataType;
+use crate::commands::beta::generate::result::{invalid_abstract_data_type_error, CodeGenError};
 use convert_case::{Case, Casing};
 use serde::Serialize;
 use std::fmt::{Display, Formatter};
@@ -12,57 +12,154 @@ pub struct Field {
     pub(crate) value: String,
 }
 
-/// Represents an import statement in a module file.
+/// Represents an import in a generated code file.
 /// This will be used by template engine to fill import statements of a type definition.
 #[derive(Serialize)]
 pub struct Import {
-    pub(crate) module_name: String,
-    pub(crate) type_name: String,
+    pub(crate) name: String,
 }
 
-/// Represent the programming language for code generation.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Language {
-    Rust,
-    Java,
+pub trait Language {
+    /// Provides a file extension based on programming language
+    fn file_extension() -> String;
+
+    /// Returns string representation of programming language name
+    fn name() -> String;
+
+    /// Provides generated code's file name for given type `name` based on programming language standards
+    /// e.g.
+    ///     In Rust, this will return a string casing `name` to [Case::Snake].
+    ///     In Java, this will return a string casing `name` to  [Case::UpperCamel]
+    fn file_name_for_type(name: &str) -> String;
+
+    /// Maps the given ISL type to a target type name
+    fn target_type(ion_schema_type: &IonSchemaType) -> String;
+
+    /// Provides given target type as sequence
+    /// e.g.
+    ///     target_type = "Foo" returns "ArrayList<Foo>"
+    ///     target_type = "Foo" returns "Vec<Foo>"
+    fn target_type_as_sequence(target_type: &str) -> String;
+
+    /// Returns the [Case] based on programming languages
+    /// e.g.  
+    ///     Rust field name case -> [Case::Snake]
+    ///     Java field name case -> [Case::Camel]
+    fn field_name_case() -> Case;
+
+    /// Returns true if the type name specified is provided by the target language implementation
+    fn is_built_in_type(name: &str) -> bool;
+
+    /// Returns the template as string based on programming language
+    /// e.g.
+    ///     In Rust, Template::Struct -> "struct"
+    ///     In Java, Template::Struct -> "class"
+    fn template_name(template: &Template) -> String;
 }
 
-impl Language {
-    pub fn file_extension(&self) -> &str {
-        match self {
-            Language::Rust => "rs",
-            Language::Java => "java",
-        }
+pub struct JavaLanguage;
+
+impl Language for JavaLanguage {
+    fn file_extension() -> String {
+        "java".to_string()
     }
 
-    pub fn file_name(&self, name: &str) -> String {
-        match self {
-            Language::Rust => name.to_case(Case::Snake),
-            Language::Java => name.to_case(Case::UpperCamel),
+    fn name() -> String {
+        "java".to_string()
+    }
+
+    fn file_name_for_type(name: &str) -> String {
+        name.to_case(Case::UpperCamel)
+    }
+
+    fn target_type(ion_schema_type: &IonSchemaType) -> String {
+        use IonSchemaType::*;
+        match ion_schema_type {
+            Int => "int",
+            String | Symbol => "String",
+            Float => "double",
+            Bool => "boolean",
+            Blob | Clob => "byte[]",
+            SchemaDefined(name) => name,
+        }
+        .to_string()
+    }
+
+    fn target_type_as_sequence(target_type: &str) -> String {
+        format!("ArrayList<{}>", target_type)
+    }
+
+    fn field_name_case() -> Case {
+        Case::Camel
+    }
+
+    fn is_built_in_type(name: &str) -> bool {
+        matches!(name, "int" | "String" | "boolean" | "byte[]" | "float")
+    }
+
+    fn template_name(template: &Template) -> String {
+        match template {
+            Template::Struct => "class".to_string(),
         }
     }
 }
 
-impl From<&str> for Language {
-    fn from(value: &str) -> Self {
-        match value {
-            "java" => Language::Java,
-            "rust" => Language::Rust,
-            _ => unreachable!("Unsupported programming language: {}, this tool only supports Java and Rust code generation.", value)
-        }
-    }
-}
-
-impl Display for Language {
+impl Display for JavaLanguage {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Language::Rust => {
-                write!(f, "rust")
-            }
-            Language::Java => {
-                write!(f, "java")
-            }
+        write!(f, "java")
+    }
+}
+
+pub struct RustLanguage;
+
+impl Language for RustLanguage {
+    fn file_extension() -> String {
+        "rs".to_string()
+    }
+
+    fn name() -> String {
+        "rust".to_string()
+    }
+
+    fn file_name_for_type(name: &str) -> String {
+        name.to_case(Case::Snake)
+    }
+
+    fn target_type(ion_schema_type: &IonSchemaType) -> String {
+        use IonSchemaType::*;
+        match ion_schema_type {
+            Int => "i64",
+            String | Symbol => "String",
+            Float => "f64",
+            Bool => "bool",
+            Blob | Clob => "Vec<u8>",
+            SchemaDefined(name) => name,
         }
+        .to_string()
+    }
+
+    fn target_type_as_sequence(target_type: &str) -> String {
+        format!("Vec<{}>", target_type)
+    }
+
+    fn field_name_case() -> Case {
+        Case::Snake
+    }
+
+    fn is_built_in_type(name: &str) -> bool {
+        matches!(name, "i64" | "String" | "bool" | "Vec<u8>" | "f64")
+    }
+
+    fn template_name(template: &Template) -> String {
+        match template {
+            Template::Struct => "struct".to_string(),
+        }
+    }
+}
+
+impl Display for RustLanguage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "rust")
     }
 }
 
@@ -76,25 +173,13 @@ pub enum Template {
     Struct, // Represents a template for a Rust struct or Java class
 }
 
-impl Template {
-    /// Returns a string that represent the template file name based on given programming language.
-    pub fn name(&self, language: &Language) -> &str {
-        match language {
-            Language::Rust => "struct",
-            Language::Java => "class",
-        }
-    }
-}
-
-impl TryFrom<Option<&DataModel>> for Template {
+impl TryFrom<Option<&AbstractDataType>> for Template {
     type Error = CodeGenError;
 
-    fn try_from(value: Option<&DataModel>) -> Result<Self, Self::Error> {
+    fn try_from(value: Option<&AbstractDataType>) -> Result<Self, Self::Error> {
         match value {
-            Some(DataModel::Value) | Some(DataModel::Sequence) | Some(DataModel::Struct) => {
-                Ok(Template::Struct)
-            }
-            None => invalid_data_model_error(
+            Some(_) => Ok(Template::Struct),
+            None => invalid_abstract_data_type_error(
                 "Can not get a template without determining data model first.",
             ),
         }
@@ -114,26 +199,6 @@ pub enum IonSchemaType {
     Blob,
     Clob,
     SchemaDefined(String), // A user defined schema type
-}
-
-impl IonSchemaType {
-    /// Maps the given ISL type name to a target type
-    pub fn target_type(&self, language: &Language) -> &str {
-        use IonSchemaType::*;
-        use Language::*;
-        match (self, language) {
-            (Int, Rust) => "i64",
-            (Int, Java) => "int",
-            (String | Symbol, _) => "String",
-            (Float, Rust) => "f64",
-            (Float, Java) => "double",
-            (Bool, Rust) => "bool",
-            (Bool, Java) => "boolean",
-            (Blob | Clob, Rust) => "Vec<u8>",
-            (Blob | Clob, Java) => "byte[]",
-            (SchemaDefined(name), _) => name,
-        }
-    }
 }
 
 impl From<&str> for IonSchemaType {

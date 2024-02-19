@@ -1,6 +1,6 @@
-use crate::commands::beta::generate::context::{CodeGenContext, DataModel};
-use crate::commands::beta::generate::result::{invalid_data_model_error, CodeGenResult};
-use crate::commands::beta::generate::utils::{Field, Import, Language};
+use crate::commands::beta::generate::context::{AbstractDataType, CodeGenContext};
+use crate::commands::beta::generate::result::{invalid_abstract_data_type_error, CodeGenResult};
+use crate::commands::beta::generate::utils::{Field, Import, JavaLanguage, Language, RustLanguage};
 use crate::commands::beta::generate::utils::{IonSchemaType, Template};
 use convert_case::{Case, Casing};
 use ion_schema::isl::isl_constraint::{IslConstraint, IslConstraintValue};
@@ -10,42 +10,92 @@ use ion_schema::isl::IslSchema;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
+use std::marker::PhantomData;
 use std::path::Path;
 use tera::{Context, Tera};
 
-// TODO: generator can store language and output path as it doesn't change during code generation process
-pub(crate) struct CodeGenerator<'a> {
+pub(crate) struct CodeGenerator<'a, L: Language> {
     // Represents the templating engine - tera
     // more information: https://docs.rs/tera/latest/tera/
     pub(crate) tera: Tera,
-    language: Language,
     output: &'a Path,
     // Represents a counter for naming anonymous type definitions
     pub(crate) anonymous_type_counter: usize,
+    phantom: PhantomData<L>,
 }
 
-impl<'a> CodeGenerator<'a> {
-    pub fn new(language: Language, output: &'a Path) -> Self {
+impl<'a> CodeGenerator<'a, RustLanguage> {
+    pub fn new(output: &'a Path) -> CodeGenerator<RustLanguage> {
         Self {
-            language,
             output,
             anonymous_type_counter: 0,
-            tera: Tera::new("src/bin/ion/commands/beta/generate/templates/**/*.templ").unwrap(),
+            tera: Tera::new("src/bin/ion/commands/beta/generate/templates/rust/*.templ").unwrap(),
+            phantom: PhantomData,
         }
     }
 
-    /// Returns true if its a built in type otherwise returns false
-    pub fn is_built_in_type(&self, name: &str) -> bool {
-        match self.language {
-            Language::Rust => {
-                matches!(name, "i64" | "String" | "bool" | "Vec<u8>" | "f64")
-            }
-            Language::Java => {
-                matches!(name, "int" | "String" | "boolean" | "byte[]" | "float")
-            }
+    /// Generates code in Rust for given Ion Schema
+    pub fn generate(&mut self, schema: IslSchema) -> CodeGenResult<()> {
+        // this will be used for Rust to create mod.rs which lists all the generated modules
+        let mut modules = vec![];
+        let mut module_context = tera::Context::new();
+
+        // Register a tera filter that can be used to convert a string based on case
+        self.tera.register_filter("upper_camel", Self::upper_camel);
+        self.tera.register_filter("snake", Self::snake);
+        // Register a tera filter that can be used to see if a type is built in data type or not
+        self.tera
+            .register_filter("is_built_in_type", Self::is_built_in_type);
+
+        for isl_type in schema.types() {
+            self.generate_abstract_data_type(&mut modules, isl_type)?;
+        }
+
+        self.generate_modules(&mut modules, &mut module_context)?;
+
+        Ok(())
+    }
+
+    pub fn generate_modules(
+        &mut self,
+        modules: &mut Vec<String>,
+        module_context: &mut Context,
+    ) -> CodeGenResult<()> {
+        module_context.insert("modules", &modules);
+        let rendered = self.tera.render("mod.templ", module_context)?;
+        let mut file = File::create(self.output.join("mod.rs"))?;
+        file.write_all(rendered.as_bytes())?;
+        Ok(())
+    }
+}
+
+impl<'a> CodeGenerator<'a, JavaLanguage> {
+    pub fn new(output: &'a Path) -> CodeGenerator<JavaLanguage> {
+        Self {
+            output,
+            anonymous_type_counter: 0,
+            tera: Tera::new("src/bin/ion/commands/beta/generate/templates/java/*.templ").unwrap(),
+            phantom: PhantomData,
         }
     }
 
+    /// Generates code in Java for given Ion Schema
+    pub fn generate(&mut self, schema: IslSchema) -> CodeGenResult<()> {
+        // this will be used for Rust to create mod.rs which lists all the generated modules
+        let mut modules = vec![];
+
+        // Register a tera filter that can be used to convert a string based on case
+        self.tera.register_filter("upper_camel", Self::upper_camel);
+
+        for isl_type in schema.types() {
+            self.generate_abstract_data_type(&mut modules, isl_type)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a, L: Language> CodeGenerator<'a, L> {
     /// Represents a [tera] filter that converts given tera string value to [upper camel case].
     /// Returns error if the given value is not a string.
     ///
@@ -60,61 +110,69 @@ impl<'a> CodeGenerator<'a> {
         Ok(tera::Value::String(
             value
                 .as_str()
-                .ok_or(tera::Error::msg("Required string for this filter"))?
+                .ok_or(tera::Error::msg(
+                    "the `upper_camel` filter only accepts strings",
+                ))?
                 .to_case(Case::UpperCamel),
         ))
     }
 
-    /// Generates code for given Ion Schema
-    pub fn generate(&mut self, schema: IslSchema) -> CodeGenResult<()> {
-        // this will be used for Rust to create mod.rs which lists all the generated modules
-        let mut modules = vec![];
-        let mut module_context = tera::Context::new();
-
-        // Register a tera filter that can be used to convert a string to upper camel case
-        self.tera.register_filter("upper_camel", Self::upper_camel);
-
-        for isl_type in schema.types() {
-            self.generate_data_model(&mut modules, isl_type)?;
-        }
-
-        if self.language == Language::Rust {
-            module_context.insert("modules", &modules);
-            let rendered = self.tera.render("rust/mod.templ", &module_context)?;
-            let mut file = File::create(self.output.join("mod.rs"))?;
-            file.write_all(rendered.as_bytes())?;
-        }
-
-        Ok(())
+    /// Represents a [tera] filter that converts given tera string value to [snake case].
+    /// Returns error if the given value is not a string.
+    ///
+    /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
+    ///
+    /// [tera]: <https://docs.rs/tera/latest/tera/>
+    /// [upper camel case]: <https://docs.rs/convert_case/latest/convert_case/enum.Case.html#variant.Snake>
+    pub fn snake(
+        value: &tera::Value,
+        _map: &HashMap<String, tera::Value>,
+    ) -> Result<tera::Value, tera::Error> {
+        Ok(tera::Value::String(
+            value
+                .as_str()
+                .ok_or(tera::Error::msg("the `snake` filter only accepts strings"))?
+                .to_case(Case::Snake),
+        ))
     }
 
-    /// Generates data model based on given ISL type definition
-    fn generate_data_model(
+    /// Represents a [tera] filter that return true if the value is a built in type, otherwise returns false.
+    ///
+    /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
+    ///
+    /// [tera]: <https://docs.rs/tera/latest/tera/>
+    pub fn is_built_in_type(
+        value: &tera::Value,
+        _map: &HashMap<String, tera::Value>,
+    ) -> Result<tera::Value, tera::Error> {
+        Ok(tera::Value::Bool(L::is_built_in_type(
+            value.as_str().ok_or(tera::Error::msg(
+                "`is_built_in_type` called with non-String Value",
+            ))?,
+        )))
+    }
+
+    fn generate_abstract_data_type(
         &mut self,
         modules: &mut Vec<String>,
         isl_type: &IslType,
     ) -> CodeGenResult<()> {
-        let data_model_name = match isl_type.name().clone() {
-            None => {
-                format!("AnonymousType{}", self.anonymous_type_counter)
-            }
-            Some(name) => name,
-        };
+        let isl_type_name = isl_type
+            .name()
+            .clone()
+            .unwrap_or_else(|| format!("AnonymousType{}", self.anonymous_type_counter));
 
         let mut context = Context::new();
         let mut tera_fields = vec![];
         let mut imports: Vec<Import> = vec![];
         let mut code_gen_context = CodeGenContext::new();
 
-        // Set the target kind name of the data model (i.e. enum/class)
-        context.insert(
-            "target_kind_name",
-            &data_model_name.to_case(Case::UpperCamel),
-        );
+        // Set the ISL type name for the generated abstract data type
+        context.insert("target_kind_name", &isl_type_name.to_case(Case::UpperCamel));
 
         let constraints = isl_type.constraints();
         for constraint in constraints {
-            self.map_constraint_to_data_model(
+            self.map_constraint_to_abstract_data_type(
                 modules,
                 &mut tera_fields,
                 &mut imports,
@@ -126,31 +184,77 @@ impl<'a> CodeGenerator<'a> {
         // add imports for the template
         context.insert("imports", &imports);
 
-        // generate read and write APIs for the data model
-        self.generate_read_api(&mut context, &mut tera_fields, &mut code_gen_context)?;
-        self.generate_write_api(&mut context, &mut tera_fields, &mut code_gen_context);
-        modules.push(self.language.file_name(&data_model_name));
+        // add fields for template
+        if let Some(abstract_data_type) = &code_gen_context.abstract_data_type {
+            context.insert("fields", &tera_fields);
+            context.insert("abstract_data_type", abstract_data_type);
+        } else {
+            return invalid_abstract_data_type_error(
+                    "Can not determine abstract data type, constraints are mapping not mapping to an abstract data type.",
+                );
+        }
+
+        self.render_generated_code(modules, &isl_type_name, &mut context, &mut code_gen_context)
+    }
+
+    fn render_generated_code(
+        &mut self,
+        modules: &mut Vec<String>,
+        abstract_data_type_name: &str,
+        context: &mut Context,
+        code_gen_context: &mut CodeGenContext,
+    ) -> CodeGenResult<()> {
+        modules.push(L::file_name_for_type(abstract_data_type_name));
 
         // Render or generate file for the template with the given context
-        let template: &Template = &code_gen_context.data_model.as_ref().try_into()?;
+        let template: &Template = &code_gen_context.abstract_data_type.as_ref().try_into()?;
         let rendered = self
             .tera
-            .render(
-                &format!("{}/{}.templ", &self.language, template.name(&self.language)),
-                &context,
-            )
+            .render(&format!("{}.templ", L::template_name(template)), context)
             .unwrap();
         let mut file = File::create(self.output.join(format!(
             "{}.{}",
-            self.language.file_name(&data_model_name),
-            self.language.file_extension()
+            L::file_name_for_type(abstract_data_type_name),
+            L::file_extension()
         )))?;
         file.write_all(rendered.as_bytes())?;
         Ok(())
     }
 
-    /// Maps the given constraint value to a data model
-    fn map_constraint_to_data_model(
+    /// Provides name of the type reference that will be used for generated abstract data type
+    fn type_reference_name(
+        &mut self,
+        isl_type_ref: &IslTypeRef,
+        modules: &mut Vec<String>,
+        imports: &mut Vec<Import>,
+    ) -> CodeGenResult<String> {
+        Ok(match isl_type_ref {
+            IslTypeRef::Named(name, _) => {
+                if !L::is_built_in_type(name) {
+                    imports.push(Import {
+                        name: name.to_string(),
+                    });
+                }
+                let schema_type: IonSchemaType = name.into();
+                L::target_type(&schema_type)
+            }
+            IslTypeRef::TypeImport(_, _) => {
+                unimplemented!("Imports in schema are not supported yet!");
+            }
+            IslTypeRef::Anonymous(type_def, _) => {
+                self.anonymous_type_counter += 1;
+                self.generate_abstract_data_type(modules, type_def)?;
+                let name = format!("AnonymousType{}", self.anonymous_type_counter);
+                imports.push(Import {
+                    name: name.to_string(),
+                });
+                name
+            }
+        })
+    }
+
+    /// Maps the given constraint value to an abstract data type
+    fn map_constraint_to_abstract_data_type(
         &mut self,
         modules: &mut Vec<String>,
         tera_fields: &mut Vec<Field>,
@@ -160,48 +264,60 @@ impl<'a> CodeGenerator<'a> {
     ) -> CodeGenResult<()> {
         match constraint.constraint() {
             IslConstraintValue::Element(isl_type, _) => {
-                self.verify_data_model_consistency(DataModel::Sequence, code_gen_context)?;
+                let type_name = self.type_reference_name(isl_type, modules, imports)?;
+                self.verify_abstract_data_type_consistency(
+                    AbstractDataType::Sequence(type_name.to_owned()),
+                    code_gen_context,
+                )?;
                 self.generate_struct_field(
                     tera_fields,
-                    isl_type,
-                    modules,
+                    L::target_type_as_sequence(&type_name),
                     "value",
-                    imports,
-                    code_gen_context,
                 )?;
             }
             IslConstraintValue::Fields(fields, _content_closed) => {
-                self.verify_data_model_consistency(DataModel::Struct, code_gen_context)?;
+                self.verify_abstract_data_type_consistency(
+                    AbstractDataType::Struct,
+                    code_gen_context,
+                )?;
                 for (name, value) in fields.iter() {
-                    self.generate_struct_field(
-                        tera_fields,
-                        value.type_reference(),
-                        modules,
-                        name,
-                        imports,
-                        code_gen_context,
-                    )?;
+                    let type_name =
+                        self.type_reference_name(value.type_reference(), modules, imports)?;
+
+                    self.generate_struct_field(tera_fields, type_name, name)?;
                 }
             }
             IslConstraintValue::Type(isl_type) => {
-                self.verify_data_model_consistency(DataModel::Value, code_gen_context)?;
-                self.generate_struct_field(
-                    tera_fields,
-                    isl_type,
-                    modules,
-                    "value",
-                    imports,
+                let type_name = self.type_reference_name(isl_type, modules, imports)?;
+
+                self.verify_abstract_data_type_consistency(
+                    AbstractDataType::Value,
                     code_gen_context,
                 )?;
+                self.generate_struct_field(tera_fields, type_name, "value")?;
             }
             _ => {}
         }
         Ok(())
     }
 
-    /// Verify that the current data model is same as previously determined data model
-    /// This is referring to data model determined with each constraint that is verifies
-    /// that all the constraints map to a single data model and not different data models.
+    /// Generates a struct field based on field name and value(data type)
+    fn generate_struct_field(
+        &mut self,
+        tera_fields: &mut Vec<Field>,
+        abstract_data_type_name: String,
+        field_name: &str,
+    ) -> CodeGenResult<()> {
+        tera_fields.push(Field {
+            name: field_name.to_case(L::field_name_case()),
+            value: abstract_data_type_name,
+        });
+        Ok(())
+    }
+
+    /// Verify that the current abstract data type is same as previously determined abstract data type
+    /// This is referring to abstract data type determined with each constraint that is verifies
+    /// that all the constraints map to a single abstract data type and not different abstract data types.
     /// e.g.
     /// ```
     /// type::{
@@ -213,245 +329,20 @@ impl<'a> CodeGenerator<'a> {
     ///   }
     /// }
     /// ```
-    /// For the above schema, both `fields` and `type` constraints map to different data models
+    /// For the above schema, both `fields` and `type` constraints map to different abstract data types
     /// respectively Struct(with given fields `source` and `destination`) and Value(with a single field that has String data type).
-    fn verify_data_model_consistency(
+    fn verify_abstract_data_type_consistency(
         &mut self,
-        current_data_model: DataModel,
+        current_abstract_data_type: AbstractDataType,
         code_gen_context: &mut CodeGenContext,
     ) -> CodeGenResult<()> {
-        if let Some(data_model) = &code_gen_context.data_model {
-            if data_model != &current_data_model {
-                return invalid_data_model_error(format!("Can not determine abstract data type as current constraint {} conflicts with prior constraints for {}.", current_data_model, data_model));
+        if let Some(abstract_data_type) = &code_gen_context.abstract_data_type {
+            if abstract_data_type != &current_abstract_data_type {
+                return invalid_abstract_data_type_error(format!("Can not determine abstract data type as current constraint {} conflicts with prior constraints for {}.", current_abstract_data_type, abstract_data_type));
             }
         } else {
-            code_gen_context.with_data_model(current_data_model);
+            code_gen_context.with_abstract_data_type(current_abstract_data_type);
         }
         Ok(())
-    }
-
-    /// Generates a struct field based on field name and value(data type)
-    fn generate_struct_field(
-        &mut self,
-        tera_fields: &mut Vec<Field>,
-        isl_type_ref: &IslTypeRef,
-        modules: &mut Vec<String>,
-        field_name: &str,
-        imports: &mut Vec<Import>,
-        code_gen_context: &mut CodeGenContext,
-    ) -> CodeGenResult<()> {
-        let value = self.generate_field_value(isl_type_ref, modules, imports, code_gen_context)?;
-
-        tera_fields.push(Field {
-            name: {
-                match self.language {
-                    Language::Rust => field_name.to_case(Case::Snake),
-                    Language::Java => field_name.to_case(Case::Camel),
-                }
-            },
-            value,
-        });
-        Ok(())
-    }
-
-    /// Generates field value in a struct which represents a data type in codegen's programming language
-    fn generate_field_value(
-        &mut self,
-        isl_type_ref: &IslTypeRef,
-        modules: &mut Vec<String>,
-        imports: &mut Vec<Import>,
-        code_gen_context: &mut CodeGenContext,
-    ) -> CodeGenResult<String> {
-        Ok(match isl_type_ref {
-            IslTypeRef::Named(name, _) => {
-                if !self.is_built_in_type(name) {
-                    imports.push(Import {
-                        module_name: name.to_case(Case::Snake),
-                        type_name: name.to_case(Case::UpperCamel),
-                    });
-                }
-                let schema_type: IonSchemaType = name.into();
-                self.generate_sequence_field_value(
-                    schema_type.target_type(&self.language).to_string(),
-                    code_gen_context,
-                )
-            }
-            IslTypeRef::TypeImport(_, _) => {
-                unimplemented!("Imports in schema are not supported yet!");
-            }
-            IslTypeRef::Anonymous(type_def, _) => {
-                self.anonymous_type_counter += 1;
-                self.generate_data_model(modules, type_def)?;
-                let name = format!("AnonymousType{}", self.anonymous_type_counter);
-                imports.push(Import {
-                    module_name: name.to_case(Case::Snake),
-                    type_name: name.to_case(Case::UpperCamel),
-                });
-                self.generate_sequence_field_value(name, code_gen_context)
-            }
-        })
-    }
-
-    /// Generates an appropriately typed sequence in the target programming language to use as a field value
-    pub fn generate_sequence_field_value(
-        &mut self,
-        name: String,
-        code_gen_context: &mut CodeGenContext,
-    ) -> String {
-        if code_gen_context.data_model == Some(DataModel::Sequence) {
-            return match self.language {
-                Language::Rust => {
-                    format!("Vec<{}>", name)
-                }
-                Language::Java => {
-                    format!("ArrayList<{}>", name)
-                }
-            };
-        }
-        name
-    }
-
-    /// Generates Generates a read API for an abstract data type.
-    /// This adds statements for reading each the Ion value(s) that collectively represent the given abstract data type.
-    // TODO: add support for Java
-    fn generate_read_api(
-        &mut self,
-        context: &mut Context,
-        tera_fields: &mut Vec<Field>,
-        code_gen_context: &mut CodeGenContext,
-    ) -> CodeGenResult<()> {
-        let mut read_statements = vec![];
-
-        if code_gen_context.data_model == Some(DataModel::Struct)
-            || code_gen_context.data_model == Some(DataModel::Value)
-            || code_gen_context.data_model == Some(DataModel::Sequence)
-        {
-            context.insert("fields", &tera_fields);
-            if let Some(data_model) = &code_gen_context.data_model {
-                context.insert("data_model", data_model);
-            } else {
-                return invalid_data_model_error(
-                    "Can not determine data model, constraints are mapping not mapping to a data model.",
-                );
-            }
-
-            for tera_field in tera_fields {
-                if !self.is_built_in_type(&tera_field.value) {
-                    if code_gen_context.data_model == Some(DataModel::Sequence) {
-                        read_statements.push(format!(
-                            "\"{}\" => {{ data_model.{} =",
-                            &tera_field.name, &tera_field.name,
-                        ));
-                        read_statements.push(
-                            r#"{
-                let mut values = vec![];
-                reader.step_in()?;
-                while reader.next()? != StreamItem::Nothing {"#
-                                .to_string(),
-                        );
-                        let sequence_type = &tera_field.value.replace("Vec<", "").replace('>', "");
-                        if !self.is_built_in_type(sequence_type) {
-                            read_statements.push(format!(
-                                "values.push({}::read_from(reader)?)",
-                                sequence_type
-                            ));
-                        } else {
-                            read_statements.push(format!(
-                                "values.push(reader.read_{}()?)",
-                                sequence_type.to_lowercase()
-                            ));
-                        }
-
-                        read_statements.push(
-                            r#"}
-                values }}"#
-                                .to_string(),
-                        );
-                    } else if code_gen_context.data_model == Some(DataModel::Value) {
-                        context.insert(
-                            "read_statement",
-                            &format!("{}::read_from(reader)?", &tera_field.value,),
-                        );
-                    } else {
-                        read_statements.push(format!(
-                            "\"{}\" => {{ data_model.{} = {}::read_from(reader)?;}}",
-                            &tera_field.name, &tera_field.name, &tera_field.value,
-                        ));
-                    }
-                } else {
-                    if code_gen_context.data_model == Some(DataModel::Value) {
-                        context.insert(
-                            "read_statement",
-                            &format!("reader.read_{}()?", &tera_field.value.to_lowercase(),),
-                        );
-                    }
-                    read_statements.push(format!(
-                        "\"{}\" => {{ data_model.{} = reader.read_{}()?;}}",
-                        &tera_field.name,
-                        &tera_field.name,
-                        &tera_field.value.to_lowercase()
-                    ));
-                }
-            }
-        }
-        context.insert("statements", &read_statements);
-        Ok(())
-    }
-
-    /// Generates write API for a data model
-    /// This adds statements for writing data model as Ion value that will be used by data model templates
-    // TODO: add support for Java
-    fn generate_write_api(
-        &mut self,
-        context: &mut Context,
-        tera_fields: &mut Vec<Field>,
-        code_gen_context: &mut CodeGenContext,
-    ) {
-        let mut write_statements = Vec::new();
-        if code_gen_context.data_model == Some(DataModel::Value) {
-            for tera_field in tera_fields {
-                if !self.is_built_in_type(&tera_field.value) {
-                    write_statements.push(format!("self.{}.write_to(writer)?;", &tera_field.name,));
-                } else {
-                    write_statements.push(format!(
-                        "writer.write_{}(self.value)?;",
-                        &tera_field.value.to_lowercase(),
-                    ));
-                }
-            }
-        } else if code_gen_context.data_model == Some(DataModel::Struct) {
-            write_statements.push("writer.step_in(IonType::Struct)?;".to_string());
-            for tera_field in tera_fields {
-                write_statements.push(format!("writer.set_field_name(\"{}\");", &tera_field.name));
-
-                if !self.is_built_in_type(&tera_field.value) {
-                    write_statements.push(format!("self.{}.write_to(writer)?;", &tera_field.name,));
-                } else {
-                    write_statements.push(format!(
-                        "writer.write_{}(self.{})?;",
-                        &tera_field.value.to_lowercase(),
-                        &tera_field.name
-                    ));
-                }
-            }
-            write_statements.push("writer.step_out()?;".to_string());
-        } else if code_gen_context.data_model == Some(DataModel::Sequence) {
-            write_statements.push("writer.step_in(IonType::List)?;".to_string());
-            for tera_field in tera_fields {
-                let sequence_type = &tera_field.value.replace("Vec<", "").replace('>', "");
-                write_statements.push("for value in self.value {".to_string());
-                if !self.is_built_in_type(sequence_type) {
-                    write_statements.push("value.write_to(writer)?;".to_string());
-                } else {
-                    write_statements.push(format!(
-                        "writer.write_{}(value)?;",
-                        &sequence_type.to_lowercase(),
-                    ));
-                }
-                write_statements.push("}".to_string());
-            }
-            write_statements.push("writer.step_out()?;".to_string());
-        }
-        context.insert("write_statements", &write_statements);
     }
 }

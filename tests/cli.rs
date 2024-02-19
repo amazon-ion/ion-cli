@@ -297,8 +297,8 @@ fn test_code_generation_in_rust(
     let mut cmd = Command::cargo_bin("ion")?;
     let temp_dir = TempDir::new()?;
     let input_schema_path = temp_dir.path().join("test_schema.isl");
-    let mut input_schema_file = File::create(input_schema_path)?;
-    input_schema_file.write_all(test_schema.as_bytes())?;
+    let mut input_schema_file = File::create(&input_schema_path)?;
+    input_schema_file.write(test_schema.as_bytes())?;
     input_schema_file.flush()?;
     cmd.args([
         "beta",
@@ -412,8 +412,8 @@ fn test_code_generation_in_java(
     let mut cmd = Command::cargo_bin("ion")?;
     let temp_dir = TempDir::new()?;
     let input_schema_path = temp_dir.path().join("test_schema.isl");
-    let mut input_schema_file = File::create(input_schema_path)?;
-    input_schema_file.write_all(test_schema.as_bytes())?;
+    let mut input_schema_file = File::create(&input_schema_path)?;
+    input_schema_file.write(test_schema.as_bytes())?;
     input_schema_file.flush()?;
     cmd.args([
         "beta",

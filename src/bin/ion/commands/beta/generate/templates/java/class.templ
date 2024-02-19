@@ -1,5 +1,5 @@
 {% if import %}
-import ion_data_model.{{ import_type }};
+import ion_data_model.{{ import.name | upper_camel }};
 {% endif %}
 public final class {{ target_kind_name }} {
 {% for field in fields -%}

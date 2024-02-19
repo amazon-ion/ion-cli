@@ -4,15 +4,14 @@ mod result;
 mod utils;
 
 use crate::commands::beta::generate::generator::CodeGenerator;
-use crate::commands::beta::generate::utils::Language;
+use crate::commands::beta::generate::utils::{JavaLanguage, RustLanguage};
 use crate::commands::IonCliCommand;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
 use ion_schema::system::SchemaSystem;
 use std::fs;
 use std::path::{Path, PathBuf};
-
 pub struct GenerateCommand;
 
 impl IonCliCommand for GenerateCommand {
@@ -62,7 +61,7 @@ impl IonCliCommand for GenerateCommand {
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
         // Extract programming language for code generation
-        let language: Language = args.get_one::<String>("language").unwrap().as_str().into();
+        let language: &str = args.get_one::<String>("language").unwrap().as_str();
 
         // Extract output path information where the generated code will be saved
         // Create a module `ion_data_model` for storing all the generated code in the output directory
@@ -102,7 +101,14 @@ impl IonCliCommand for GenerateCommand {
         println!("Started generating code...");
 
         // generate code based on schema and programming language
-        CodeGenerator::new(language, output).generate(schema)?;
+        match language {
+            "java" => CodeGenerator::<JavaLanguage>::new(output).generate(schema)?,
+            "rust" => CodeGenerator::<RustLanguage>::new(output).generate(schema)?,
+            _ => bail!(
+                "Programming language '{}' is not yet supported. Currently supported targets: 'java', 'rust'",
+                language
+            )
+        }
 
         println!("Code generation complete successfully!");
         println!("Path to generated code: {}", output.display());
