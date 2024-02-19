@@ -26,11 +26,11 @@ pub trait Language {
     /// Returns string representation of programming language name
     fn name() -> String;
 
-    /// Provides generated code's file name for given `name` based on programming language standards
+    /// Provides generated code's file name for given type `name` based on programming language standards
     /// e.g.
     ///     In Rust, this will return a string casing `name` to [Case::Snake].
     ///     In Java, this will return a string casing `name` to  [Case::UpperCamel]
-    fn file_name(name: &str) -> String;
+    fn file_name_for_type(name: &str) -> String;
 
     /// Maps the given ISL type to a target type name
     fn target_type(ion_schema_type: &IonSchemaType) -> String;
@@ -54,7 +54,7 @@ pub trait Language {
     /// e.g.
     ///     In Rust, Template::Struct -> "struct"
     ///     In Java, Template::Struct -> "class"
-    fn template_as_string(template: &Template) -> String;
+    fn template_name(template: &Template) -> String;
 }
 
 pub struct JavaLanguage;
@@ -68,7 +68,7 @@ impl Language for JavaLanguage {
         "java".to_string()
     }
 
-    fn file_name(name: &str) -> String {
+    fn file_name_for_type(name: &str) -> String {
         name.to_case(Case::UpperCamel)
     }
 
@@ -97,7 +97,7 @@ impl Language for JavaLanguage {
         matches!(name, "int" | "String" | "boolean" | "byte[]" | "float")
     }
 
-    fn template_as_string(template: &Template) -> String {
+    fn template_name(template: &Template) -> String {
         match template {
             Template::Struct => "class".to_string(),
         }
@@ -121,7 +121,7 @@ impl Language for RustLanguage {
         "rust".to_string()
     }
 
-    fn file_name(name: &str) -> String {
+    fn file_name_for_type(name: &str) -> String {
         name.to_case(Case::Snake)
     }
 
@@ -150,7 +150,7 @@ impl Language for RustLanguage {
         matches!(name, "i64" | "String" | "bool" | "Vec<u8>" | "f64")
     }
 
-    fn template_as_string(template: &Template) -> String {
+    fn template_name(template: &Template) -> String {
         match template {
             Template::Struct => "struct".to_string(),
         }

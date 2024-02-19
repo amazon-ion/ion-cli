@@ -110,7 +110,9 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         Ok(tera::Value::String(
             value
                 .as_str()
-                .ok_or(tera::Error::msg("Required string for this filter"))?
+                .ok_or(tera::Error::msg(
+                    "the `upper_camel` filter only accepts strings",
+                ))?
                 .to_case(Case::UpperCamel),
         ))
     }
@@ -129,7 +131,7 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         Ok(tera::Value::String(
             value
                 .as_str()
-                .ok_or(tera::Error::msg("Required string for this filter"))?
+                .ok_or(tera::Error::msg("the `snake` filter only accepts strings"))?
                 .to_case(Case::Snake),
         ))
     }
@@ -202,20 +204,17 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         context: &mut Context,
         code_gen_context: &mut CodeGenContext,
     ) -> CodeGenResult<()> {
-        modules.push(L::file_name(abstract_data_type_name));
+        modules.push(L::file_name_for_type(abstract_data_type_name));
 
         // Render or generate file for the template with the given context
         let template: &Template = &code_gen_context.abstract_data_type.as_ref().try_into()?;
         let rendered = self
             .tera
-            .render(
-                &format!("{}.templ", L::template_as_string(template)),
-                context,
-            )
+            .render(&format!("{}.templ", L::template_name(template)), context)
             .unwrap();
         let mut file = File::create(self.output.join(format!(
             "{}.{}",
-            L::file_name(abstract_data_type_name),
+            L::file_name_for_type(abstract_data_type_name),
             L::file_extension()
         )))?;
         file.write_all(rendered.as_bytes())?;

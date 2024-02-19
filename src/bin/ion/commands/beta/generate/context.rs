@@ -24,10 +24,53 @@ impl CodeGenContext {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum AbstractDataType {
     // A scalar value (e.g. a string or integer or user defined type)
+    // e.g. Given below ISL,
+    // ```
+    // type::{
+    //   name: value_type,
+    //   type: int
+    // }
+    // ```
+    // Corresponding abstract type in Rust would look like following:
+    // ```
+    // struct ValueType {
+    //    value: i64
+    // }
+    // ```
     Value,
     // A series of zero or more values whose type is described by the nested `String` (e.g. a list)
+    // e.g. Given below ISL,
+    // ```
+    // type::{
+    //   name: sequence_type,
+    //   element: int
+    // }
+    // ```
+    // Corresponding abstract type in Rust would look like following:
+    // ```
+    // struct SequenceType {
+    //    value: Vec<i64>
+    // }
+    // ```
     Sequence(String),
     // A collection of field name/value pairs (e.g. a map)
+    // e.g. Given below ISL,
+    // ```
+    // type::{
+    //   name: struct_type,
+    //   fields: {
+    //      a: int,
+    //      b: string,
+    //   }
+    // }
+    // ```
+    // Corresponding abstract type in Rust would look like following:
+    // ```
+    // struct StructType {
+    //    a: i64,
+    //    b: String,
+    // }
+    // ```
     Struct,
 }
 
