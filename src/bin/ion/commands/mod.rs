@@ -70,6 +70,10 @@ pub trait IonCliCommand {
         }
     }
 
+    /// Sets up the pager (e.g. `less`)  to which long text output will be directed. The default
+    /// implementation does not configure a pager.
+    fn set_up_pager(&self) {}
+
     /// The core logic of the command.
     ///
     /// The default implementation assumes this command is a namespace (i.e. a group of subcommands).

@@ -17,7 +17,7 @@ fn main() -> Result<()> {
         match e.downcast_ref::<IonError>() {
             // If `ion-cli` is being invoked as part of a pipeline we want to allow the pipeline to
             // to shut off without printing an error to stderr
-            Some(IonError::IoError { source }) if source.kind() == ErrorKind::BrokenPipe => {
+            Some(IonError::Io(error)) if error.source().kind() == ErrorKind::BrokenPipe => {
                 return Ok(())
             }
             _ => return Err(e),
