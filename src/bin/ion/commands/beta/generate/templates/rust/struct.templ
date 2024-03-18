@@ -6,68 +6,75 @@ use crate::ion_data_model::{{ import.name | snake }}::{{ import.name | upper_cam
 #[derive(Debug, Clone, Default)]
 pub struct {{ target_kind_name }} {
 {% for field in fields -%}
-         {{ field.name | indent(first = true) }}: {{ field.value }},
+         {{ field.name | snake | indent(first = true) }}: {{ field.value }},
 {% endfor %}
 }
 
 impl {{ target_kind_name }} {
-    pub fn new({% for field in fields -%}{{ field.name }}: {{ field.value }},{% endfor %}) -> Self {
+    pub fn new({% for field in fields -%}{{ field.name | snake }}: {{ field.value }},{% endfor %}) -> Self {
         Self {
             {% for field in fields -%}
-            {{ field.name }},
+            {{ field.name | snake }},
             {% endfor %}
         }
     }
 
 
-    {% for field in fields -%}pub fn {{ field.name }}(&self) -> &{{ field.value }} {
-        &self.{{ field.name }}
+    {% for field in fields -%}pub fn {{ field.name | snake }}(&self) -> &{{ field.value }} {
+        &self.{{ field.name | snake }}
     }
     {% endfor %}
 
 
     pub fn read_from(reader: &mut Reader) -> IonResult<Self> {
+        {% if is_root_type %}
         reader.next()?;
+        {% endif %}
+        let mut abstract_data_type = {{ target_kind_name }}::default();
         {% if abstract_data_type == "Value"%}
-            let mut abstract_data_type = {{ target_kind_name }}::default();
             abstract_data_type.value = {% if target_kind_name | is_built_in_type == false %}
                                             {{ target_kind_name }}::read_from(reader)?;
                                         {% else %}
                                             reader.read_{{ target_kind_name }}()?;
                                         {% endif %}
-        {% else %}
-            {% if abstract_data_type == "Struct"%}reader.step_in()?;{% endif %}
-            let mut abstract_data_type = {{ target_kind_name }}::default();
+        {% elif abstract_data_type is object and abstract_data_type | get(key="Structure") %}
+            reader.step_in()?;
             while reader.next()? != StreamItem::Nothing {
                 if let Some(field_name) = reader.field_name()?.text() {
                     match field_name {
                         {% for field in fields -%}
                             {% if field.value | is_built_in_type == false %}
-                                {% if abstract_data_type is object and abstract_data_type["Sequence"] | length != 0 %}
-                                 "{{ field.name }}" => { abstract_data_type.{{ field.name }} = {
-                                     let mut values = vec![];
-                                     reader.step_in()?;
-                                     while reader.next()? != StreamItem::Nothing {
-                                        {% if abstract_data_type["Sequence"] | is_built_in_type == false %}
-                                            values.push({{ abstract_data_type["Sequence"] }}::read_from(reader)?);
-                                        {% else %}
-                                            values.push(reader.read_{{ abstract_data_type["Sequence"] }}()?);
-                                        {% endif %}
-                                    }
-                                    values
-                                 };}
-                                 {% elif abstract_data_type == "Struct" %}
-                                 "{{ field.name }}" => { abstract_data_type.{{ field.name }} = {{ field.value }}::read_from(reader)?; }
-                                 {% endif %}
+                                 "{{ field.name }}" => { abstract_data_type.{{ field.name | snake }} = {{ field.value }}::read_from(reader)?; }
                             {% else %}
-                            "{{ field.name }}" => { abstract_data_type.{{ field.name }} = reader.read_{{ field.value }}()?; }
+                                "{{ field.name }}" => { abstract_data_type.{{ field.name | snake}} = reader.read_{{ field.value | lower }}()?; }
                             {% endif %}
                         {% endfor %}
-                     _ => {}
+                     _ => {
+                        {% if abstract_data_type["Structure"] %}
+                            return IonResult::decoding_error(
+                                "Can not read field name:{{ field.name }} for {{ target_kind_name }} "
+                            )
+                        {% endif %}
+                     }
                     }
                 }
             }
-            {% if abstract_data_type == "Struct"%}reader.step_out()?;{% endif %}
+            reader.step_out()?;
+        {% elif abstract_data_type is object and abstract_data_type | get(key="Sequence")  %}
+             reader.step_in()?;
+             abstract_data_type.value = {
+                 let mut values = vec![];
+
+                 while reader.next()? != StreamItem::Nothing {
+                    {% if abstract_data_type["Sequence"] | is_built_in_type == false %}
+                        values.push({{ abstract_data_type["Sequence"] }}::read_from(reader)?);
+                    {% else %}
+                        values.push(reader.read_{{ abstract_data_type["Sequence"] | lower }}()?);
+                    {% endif %}
+                }
+                values
+             };
+             reader.step_out()?;
         {% endif %}
      Ok(abstract_data_type)
     }
@@ -76,23 +83,24 @@ impl {{ target_kind_name }} {
         {% if abstract_data_type == "Value" %}
             {% for field in fields %}
                 {% if field.value | is_built_in_type ==false  %}
-                    self.{{ field.name }}.write_to(writer)?;
+                    self.{{ field.name | snake }}.write_to(writer)?;
                 {% else %}
                     writer.write_{{ field.value | lower }}(self.value)?;
                 {% endif %}
             {% endfor %}
-        {% elif abstract_data_type == "Struct"%}
+        {% elif abstract_data_type is object and abstract_data_type | get(key="Structure") %}
             writer.step_in(IonType::Struct)?;
             {% for field in fields %}
             writer.set_field_name("{{ field.name }}");
                 {% if field.value | is_built_in_type == false %}
-                    self.{{ field.name }}.write_to(writer)?;
+                    self.{{ field.name | snake }}.write_to(writer)?;
                 {% else %}
                     writer.write_{{ field.value | lower }}(self.{{ field.name }})?;
+                    writer.write_{{ field.value | lower }}(self.{{ field.name | snake }}.to_owned())?;
                 {% endif %}
             {% endfor %}
             writer.step_out()?;
-        {% elif abstract_data_type is object and abstract_data_type["Sequence"] | length != 0 %}
+        {% elif abstract_data_type is object and abstract_data_type | get(key="Sequence")  %}
             writer.step_in(IonType::List)?;
             for value in self.value {
                 {% if abstract_data_type["Sequence"] | is_built_in_type  == false %}

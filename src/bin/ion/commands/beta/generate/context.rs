@@ -54,6 +54,7 @@ pub enum AbstractDataType {
     // ```
     Sequence(String),
     // A collection of field name/value pairs (e.g. a map)
+    // the nested boolean represents whether the struct has closed fields or not
     // e.g. Given below ISL,
     // ```
     // type::{
@@ -71,7 +72,7 @@ pub enum AbstractDataType {
     //    b: String,
     // }
     // ```
-    Struct,
+    Structure(bool),
 }
 
 impl Display for AbstractDataType {
@@ -80,9 +81,9 @@ impl Display for AbstractDataType {
             f,
             "{}",
             match self {
-                AbstractDataType::Value => "scalar value struct",
-                AbstractDataType::Sequence(_) => "sequence",
-                AbstractDataType::Struct => "struct",
+                AbstractDataType::Value => "single value struct",
+                AbstractDataType::Sequence(_) => "sequence value struct",
+                AbstractDataType::Structure(_) => "struct",
             }
         )
     }
