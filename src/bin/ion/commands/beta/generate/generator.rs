@@ -53,7 +53,9 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
             .register_filter("is_built_in_type", Self::is_built_in_type);
 
         for isl_type in schema.types() {
-            self.generate_abstract_data_type(&mut modules, isl_type)?;
+            // unwrap here is safe because all the top-level type definition always has a name
+            let isl_type_name = isl_type.name().clone().unwrap();
+            self.generate_abstract_data_type(&isl_type_name, &mut modules, isl_type)?;
         }
 
         self.generate_modules(&mut modules, &mut module_context)?;
@@ -96,7 +98,9 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
         self.tera.register_filter("camel", Self::camel);
 
         for isl_type in schema.types() {
-            self.generate_abstract_data_type(&mut modules, isl_type)?;
+            // unwrap here is safe because all the top-level type definition always has a name
+            let isl_type_name = isl_type.name().clone().unwrap();
+            self.generate_abstract_data_type(&isl_type_name, &mut modules, isl_type)?;
         }
 
         Ok(())
@@ -181,14 +185,10 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
 
     fn generate_abstract_data_type(
         &mut self,
+        isl_type_name: &String,
         modules: &mut Vec<String>,
         isl_type: &IslType,
     ) -> CodeGenResult<()> {
-        let isl_type_name = isl_type
-            .name()
-            .clone()
-            .unwrap_or_else(|| format!("AnonymousType{}", self.anonymous_type_counter));
-
         let mut context = Context::new();
         let mut tera_fields = vec![];
         let mut imports: Vec<Import> = vec![];
@@ -277,15 +277,21 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
                 unimplemented!("Imports in schema are not supported yet!");
             }
             IslTypeRef::Anonymous(type_def, _) => {
-                self.anonymous_type_counter += 1;
-                let name = format!("AnonymousType{}", self.anonymous_type_counter);
-                self.generate_abstract_data_type(modules, type_def)?;
+                let name = self.next_anonymous_type_name();
+                self.generate_abstract_data_type(&name, modules, type_def)?;
                 imports.push(Import {
                     name: name.to_string(),
                 });
                 name
             }
         })
+    }
+
+    /// Provides the name of the next anonymous type
+    fn next_anonymous_type_name(&mut self) -> String {
+        self.anonymous_type_counter += 1;
+        let name = format!("AnonymousType{}", self.anonymous_type_counter);
+        name
     }
 
     /// Maps the given constraint value to an abstract data type

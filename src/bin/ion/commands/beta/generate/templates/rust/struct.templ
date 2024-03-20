@@ -1,4 +1,4 @@
-use ion_rs::{IonResult, IonReader, Reader, StreamItem};
+use ion_rs::{IonResult, IonReader, Reader, IonWriter, StreamItem};
 {% for import in imports %}
 use crate::ion_data_model::{{ import.name | snake }}::{{ import.name | upper_camel }};
 {% endfor %}
@@ -52,7 +52,7 @@ impl {{ target_kind_name }} {
                      _ => {
                         {% if abstract_data_type["Structure"] %}
                             return IonResult::decoding_error(
-                                "Can not read field name:{{ field.name }} for {{ target_kind_name }} "
+                                "Can not read field name:{{ field.name }} for {{ target_kind_name }} as it doesn't exist in the given schema type definition."
                             )
                         {% endif %}
                      }
@@ -96,6 +96,7 @@ impl {{ target_kind_name }} {
                     self.{{ field.name | snake }}.write_to(writer)?;
                 {% else %}
                     writer.write_{{ field.value | lower }}(self.{{ field.name }})?;
+                    {# TODO: Change the following `to_owned` to only be used when writing i64,f32,f64,bool which require owned value as input #}
                     writer.write_{{ field.value | lower }}(self.{{ field.name | snake }}.to_owned())?;
                 {% endif %}
             {% endfor %}
