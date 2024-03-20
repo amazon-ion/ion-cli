@@ -21,8 +21,6 @@ pub(crate) struct CodeGenerator<'a, L: Language> {
     output: &'a Path,
     // Represents a counter for naming anonymous type definitions
     pub(crate) anonymous_type_counter: usize,
-    // Current type definition is root type or not
-    is_root_type: bool,
     phantom: PhantomData<L>,
 }
 
@@ -33,7 +31,6 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
             anonymous_type_counter: 0,
             tera: Tera::new("src/bin/ion/commands/beta/generate/templates/rust/*.templ").unwrap(),
             phantom: PhantomData,
-            is_root_type: true,
         }
     }
 
@@ -83,7 +80,6 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
             anonymous_type_counter: 0,
             tera: Tera::new("src/bin/ion/commands/beta/generate/templates/java/*.templ").unwrap(),
             phantom: PhantomData,
-            is_root_type: true,
         }
     }
 
@@ -193,13 +189,6 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         let mut tera_fields = vec![];
         let mut imports: Vec<Import> = vec![];
         let mut code_gen_context = CodeGenContext::new();
-
-        if self.is_root_type {
-            context.insert("is_root_type", &true);
-            self.is_root_type = false;
-        } else {
-            context.insert("is_root_type", &false);
-        }
 
         // Set the ISL type name for the generated abstract data type
         context.insert("target_kind_name", &isl_type_name.to_case(Case::UpperCamel));

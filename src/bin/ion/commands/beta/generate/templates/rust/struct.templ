@@ -27,9 +27,6 @@ impl {{ target_kind_name }} {
 
 
     pub fn read_from(reader: &mut Reader) -> IonResult<Self> {
-        {% if is_root_type %}
-        reader.next()?;
-        {% endif %}
         let mut abstract_data_type = {{ target_kind_name }}::default();
         {% if abstract_data_type == "Value"%}
             abstract_data_type.value = {% if target_kind_name | is_built_in_type == false %}
