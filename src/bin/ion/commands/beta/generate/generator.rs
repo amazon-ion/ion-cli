@@ -43,12 +43,16 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
         // Register a tera filter that can be used to convert a string based on case
         self.tera.register_filter("upper_camel", Self::upper_camel);
         self.tera.register_filter("snake", Self::snake);
+        self.tera.register_filter("camel", Self::camel);
+
         // Register a tera filter that can be used to see if a type is built in data type or not
         self.tera
             .register_filter("is_built_in_type", Self::is_built_in_type);
 
         for isl_type in schema.types() {
-            self.generate_abstract_data_type(&mut modules, isl_type)?;
+            // unwrap here is safe because all the top-level type definition always has a name
+            let isl_type_name = isl_type.name().clone().unwrap();
+            self.generate_abstract_data_type(&isl_type_name, &mut modules, isl_type)?;
         }
 
         self.generate_modules(&mut modules, &mut module_context)?;
@@ -86,9 +90,13 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
 
         // Register a tera filter that can be used to convert a string based on case
         self.tera.register_filter("upper_camel", Self::upper_camel);
+        self.tera.register_filter("snake", Self::snake);
+        self.tera.register_filter("camel", Self::camel);
 
         for isl_type in schema.types() {
-            self.generate_abstract_data_type(&mut modules, isl_type)?;
+            // unwrap here is safe because all the top-level type definition always has a name
+            let isl_type_name = isl_type.name().clone().unwrap();
+            self.generate_abstract_data_type(&isl_type_name, &mut modules, isl_type)?;
         }
 
         Ok(())
@@ -117,13 +125,32 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         ))
     }
 
+    /// Represents a [tera] filter that converts given tera string value to [camel case].
+    /// Returns error if the given value is not a string.
+    ///
+    /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
+    ///
+    /// [tera]: <https://docs.rs/tera/latest/tera/>
+    /// [camel case]: <https://docs.rs/convert_case/latest/convert_case/enum.Case.html#variant.Camel>
+    pub fn camel(
+        value: &tera::Value,
+        _map: &HashMap<String, tera::Value>,
+    ) -> Result<tera::Value, tera::Error> {
+        Ok(tera::Value::String(
+            value
+                .as_str()
+                .ok_or(tera::Error::msg("Required string for this filter"))?
+                .to_case(Case::Camel),
+        ))
+    }
+
     /// Represents a [tera] filter that converts given tera string value to [snake case].
     /// Returns error if the given value is not a string.
     ///
     /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
     ///
     /// [tera]: <https://docs.rs/tera/latest/tera/>
-    /// [upper camel case]: <https://docs.rs/convert_case/latest/convert_case/enum.Case.html#variant.Snake>
+    /// [snake case]: <https://docs.rs/convert_case/latest/convert_case/enum.Case.html#variant.Camel>
     pub fn snake(
         value: &tera::Value,
         _map: &HashMap<String, tera::Value>,
@@ -131,7 +158,7 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         Ok(tera::Value::String(
             value
                 .as_str()
-                .ok_or(tera::Error::msg("the `snake` filter only accepts strings"))?
+                .ok_or(tera::Error::msg("Required string for this filter"))?
                 .to_case(Case::Snake),
         ))
     }
@@ -154,14 +181,10 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
 
     fn generate_abstract_data_type(
         &mut self,
+        isl_type_name: &String,
         modules: &mut Vec<String>,
         isl_type: &IslType,
     ) -> CodeGenResult<()> {
-        let isl_type_name = isl_type
-            .name()
-            .clone()
-            .unwrap_or_else(|| format!("AnonymousType{}", self.anonymous_type_counter));
-
         let mut context = Context::new();
         let mut tera_fields = vec![];
         let mut imports: Vec<Import> = vec![];
@@ -185,6 +208,7 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         context.insert("imports", &imports);
 
         // add fields for template
+        // TODO: verify the `occurs` value within a field, by default the fields are optional.
         if let Some(abstract_data_type) = &code_gen_context.abstract_data_type {
             context.insert("fields", &tera_fields);
             context.insert("abstract_data_type", abstract_data_type);
@@ -242,15 +266,21 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
                 unimplemented!("Imports in schema are not supported yet!");
             }
             IslTypeRef::Anonymous(type_def, _) => {
-                self.anonymous_type_counter += 1;
-                self.generate_abstract_data_type(modules, type_def)?;
-                let name = format!("AnonymousType{}", self.anonymous_type_counter);
+                let name = self.next_anonymous_type_name();
+                self.generate_abstract_data_type(&name, modules, type_def)?;
                 imports.push(Import {
                     name: name.to_string(),
                 });
                 name
             }
         })
+    }
+
+    /// Provides the name of the next anonymous type
+    fn next_anonymous_type_name(&mut self) -> String {
+        self.anonymous_type_counter += 1;
+        let name = format!("AnonymousType{}", self.anonymous_type_counter);
+        name
     }
 
     /// Maps the given constraint value to an abstract data type
@@ -275,9 +305,10 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
                     "value",
                 )?;
             }
-            IslConstraintValue::Fields(fields, _content_closed) => {
+            IslConstraintValue::Fields(fields, content_closed) => {
+                // TODO: Check for `closed` annotation on fields and based on that return error while reading if there are extra fields.
                 self.verify_abstract_data_type_consistency(
-                    AbstractDataType::Struct,
+                    AbstractDataType::Structure(*content_closed),
                     code_gen_context,
                 )?;
                 for (name, value) in fields.iter() {
@@ -309,7 +340,7 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         field_name: &str,
     ) -> CodeGenResult<()> {
         tera_fields.push(Field {
-            name: field_name.to_case(L::field_name_case()),
+            name: field_name.to_string(),
             value: abstract_data_type_name,
         });
         Ok(())
