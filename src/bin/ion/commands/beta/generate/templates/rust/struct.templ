@@ -1,8 +1,3 @@
-use ion_rs::{IonResult, IonReader, Reader, IonWriter, StreamItem};
-{% for import in imports %}
-use crate::ion_data_model::{{ import.name | snake }}::{{ import.name | upper_camel }};
-{% endfor %}
-
 #[derive(Debug, Clone, Default)]
 pub struct {{ target_kind_name }} {
 {% for field in fields -%}

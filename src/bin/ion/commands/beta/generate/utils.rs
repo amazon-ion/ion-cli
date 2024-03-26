@@ -13,13 +13,6 @@ pub struct Field {
     pub(crate) isl_type_name: String,
 }
 
-/// Represents an import in a generated code file.
-/// This will be used by template engine to fill import statements of a type definition.
-#[derive(Serialize)]
-pub struct Import {
-    pub(crate) name: String,
-}
-
 pub trait Language {
     /// Provides a file extension based on programming language
     fn file_extension() -> String;
@@ -122,8 +115,8 @@ impl Language for RustLanguage {
         "rust".to_string()
     }
 
-    fn file_name_for_type(name: &str) -> String {
-        name.to_case(Case::Snake)
+    fn file_name_for_type(_name: &str) -> String {
+        "ion_generated_code".to_string()
     }
 
     fn target_type(ion_schema_type: &IonSchemaType) -> String {

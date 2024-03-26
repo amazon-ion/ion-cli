@@ -76,8 +76,8 @@ impl IonCliCommand for GenerateCommand {
         // Extract output path information where the generated code will be saved
         // Create a module `ion_data_model` for storing all the generated code in the output directory
         let binding = match args.get_one::<String>("output") {
-            Some(output_path) => PathBuf::from(output_path).join("ion_data_model"),
-            None => PathBuf::from("./ion_data_model"),
+            Some(output_path) => PathBuf::from(output_path),
+            None => PathBuf::from("./"),
         };
 
         let output = binding.as_path();

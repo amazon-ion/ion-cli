@@ -1,6 +1,6 @@
 use crate::commands::beta::generate::context::{AbstractDataType, CodeGenContext};
 use crate::commands::beta::generate::result::{invalid_abstract_data_type_error, CodeGenResult};
-use crate::commands::beta::generate::utils::{Field, Import, JavaLanguage, Language, RustLanguage};
+use crate::commands::beta::generate::utils::{Field, JavaLanguage, Language, RustLanguage};
 use crate::commands::beta::generate::utils::{IonSchemaType, Template};
 use convert_case::{Case, Casing};
 use ion_schema::isl::isl_constraint::{IslConstraint, IslConstraintValue};
@@ -10,7 +10,7 @@ use ion_schema::isl::IslSchema;
 use ion_schema::system::SchemaSystem;
 use std::collections::HashMap;
 use std::fs;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::marker::PhantomData;
 use std::path::Path;
@@ -21,6 +21,9 @@ pub(crate) struct CodeGenerator<'a, L: Language> {
     // more information: https://docs.rs/tera/latest/tera/
     pub(crate) tera: Tera,
     output: &'a Path,
+    // This field is used by Java code generation to get the namespace for generated code.
+    // For Rust code generation, this will be set to None.
+    namespace: Option<&'a str>,
     // Represents a counter for naming anonymous type definitions
     pub(crate) anonymous_type_counter: usize,
     phantom: PhantomData<L>,
@@ -34,8 +37,18 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
         ))
         .unwrap();
 
+        // Render the imports into output file
+        let rendered = tera.render("import.templ", &Context::new()).unwrap();
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(output.join("ion_generated_code.rs"))
+            .unwrap();
+        file.write_all(rendered.as_bytes()).unwrap();
+
         Self {
             output,
+            namespace: None,
             anonymous_type_counter: 0,
             tera,
             phantom: PhantomData,
@@ -74,10 +87,6 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
     }
 
     fn generate(&mut self, schema: IslSchema) -> CodeGenResult<()> {
-        // this will be used for Rust to create mod.rs which lists all the generated modules
-        let mut modules = vec![];
-        let mut module_context = tera::Context::new();
-
         // Register a tera filter that can be used to convert a string based on case
         self.tera.register_filter("upper_camel", Self::upper_camel);
         self.tera.register_filter("snake", Self::snake);
@@ -91,29 +100,15 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
         for isl_type in schema.types() {
             // unwrap here is safe because all the top-level type definition always has a name
             let isl_type_name = isl_type.name().clone().unwrap();
-            self.generate_abstract_data_type(&isl_type_name, &mut modules, isl_type)?;
+            self.generate_abstract_data_type(&isl_type_name, isl_type)?;
         }
 
-        self.generate_modules(&mut modules, &mut module_context)?;
-
-        Ok(())
-    }
-
-    pub fn generate_modules(
-        &mut self,
-        modules: &mut Vec<String>,
-        module_context: &mut Context,
-    ) -> CodeGenResult<()> {
-        module_context.insert("modules", &modules);
-        let rendered = self.tera.render("mod.templ", module_context)?;
-        let mut file = File::create(self.output.join("mod.rs"))?;
-        file.write_all(rendered.as_bytes())?;
         Ok(())
     }
 }
 
 impl<'a> CodeGenerator<'a, JavaLanguage> {
-    pub fn new(output: &'a Path, namespace: &str) -> CodeGenerator<JavaLanguage> {
+    pub fn new(output: &'a Path, namespace: &'a str) -> CodeGenerator<'a, JavaLanguage> {
         let tera = Tera::new(&format!(
             "{}/src/bin/ion/commands/beta/generate/templates/java/*.templ",
             env!("CARGO_MANIFEST_DIR")
@@ -122,6 +117,7 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
 
         Self {
             output,
+            namespace: Some(namespace),
             anonymous_type_counter: 0,
             tera,
             phantom: PhantomData,
@@ -160,18 +156,16 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
     }
 
     fn generate(&mut self, schema: IslSchema) -> CodeGenResult<()> {
-        // this will be used for Rust to create mod.rs which lists all the generated modules
-        let mut modules = vec![];
-
         // Register a tera filter that can be used to convert a string based on case
         self.tera.register_filter("upper_camel", Self::upper_camel);
         self.tera.register_filter("snake", Self::snake);
         self.tera.register_filter("camel", Self::camel);
 
+        // Iterate through the ISL types, generate an abstract data type for each
         for isl_type in schema.types() {
             // unwrap here is safe because all the top-level type definition always has a name
             let isl_type_name = isl_type.name().clone().unwrap();
-            self.generate_abstract_data_type(&isl_type_name, &mut modules, isl_type)?;
+            self.generate_abstract_data_type(&isl_type_name, isl_type)?;
         }
 
         Ok(())
@@ -257,12 +251,10 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
     fn generate_abstract_data_type(
         &mut self,
         isl_type_name: &String,
-        modules: &mut Vec<String>,
         isl_type: &IslType,
     ) -> CodeGenResult<()> {
         let mut context = Context::new();
         let mut tera_fields = vec![];
-        let mut imports: Vec<Import> = vec![];
         let mut code_gen_context = CodeGenContext::new();
 
         // Set the ISL type name for the generated abstract data type
@@ -271,16 +263,11 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         let constraints = isl_type.constraints();
         for constraint in constraints {
             self.map_constraint_to_abstract_data_type(
-                modules,
                 &mut tera_fields,
-                &mut imports,
                 constraint,
                 &mut code_gen_context,
             )?;
         }
-
-        // add imports for the template
-        context.insert("imports", &imports);
 
         // add fields for template
         // TODO: verify the `occurs` value within a field, by default the fields are optional.
@@ -293,47 +280,41 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
                 );
         }
 
-        self.render_generated_code(modules, &isl_type_name, &mut context, &mut code_gen_context)
+        self.render_generated_code(&isl_type_name, &mut context, &mut code_gen_context)
     }
 
     fn render_generated_code(
         &mut self,
-        modules: &mut Vec<String>,
-        abstract_data_type_name: &str,
+        type_name: &str,
         context: &mut Context,
         code_gen_context: &mut CodeGenContext,
     ) -> CodeGenResult<()> {
-        modules.push(L::file_name_for_type(abstract_data_type_name));
-
+        // Add namespace to tera context
+        if let Some(namespace) = self.namespace {
+            context.insert("namespace", namespace);
+        }
         // Render or generate file for the template with the given context
         let template: &Template = &code_gen_context.abstract_data_type.as_ref().try_into()?;
         let rendered = self
             .tera
             .render(&format!("{}.templ", L::template_name(template)), context)
             .unwrap();
-        let mut file = File::create(self.output.join(format!(
-            "{}.{}",
-            L::file_name_for_type(abstract_data_type_name),
-            L::file_extension()
-        )))?;
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(self.output.join(format!(
+                "{}.{}",
+                L::file_name_for_type(type_name),
+                L::file_extension()
+            )))?;
         file.write_all(rendered.as_bytes())?;
         Ok(())
     }
 
     /// Provides name of the type reference that will be used for generated abstract data type
-    fn type_reference_name(
-        &mut self,
-        isl_type_ref: &IslTypeRef,
-        modules: &mut Vec<String>,
-        imports: &mut Vec<Import>,
-    ) -> CodeGenResult<String> {
+    fn type_reference_name(&mut self, isl_type_ref: &IslTypeRef) -> CodeGenResult<String> {
         Ok(match isl_type_ref {
             IslTypeRef::Named(name, _) => {
-                if !L::is_built_in_type(name) {
-                    imports.push(Import {
-                        name: name.to_string(),
-                    });
-                }
                 let schema_type: IonSchemaType = name.into();
                 L::target_type(&schema_type)
             }
@@ -342,10 +323,8 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
             }
             IslTypeRef::Anonymous(type_def, _) => {
                 let name = self.next_anonymous_type_name();
-                self.generate_abstract_data_type(&name, modules, type_def)?;
-                imports.push(Import {
-                    name: name.to_string(),
-                });
+                self.generate_abstract_data_type(&name, type_def)?;
+
                 name
             }
         })
@@ -361,15 +340,13 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
     /// Maps the given constraint value to an abstract data type
     fn map_constraint_to_abstract_data_type(
         &mut self,
-        modules: &mut Vec<String>,
         tera_fields: &mut Vec<Field>,
-        imports: &mut Vec<Import>,
         constraint: &IslConstraint,
         code_gen_context: &mut CodeGenContext,
     ) -> CodeGenResult<()> {
         match constraint.constraint() {
             IslConstraintValue::Element(isl_type, _) => {
-                let type_name = self.type_reference_name(isl_type, modules, imports)?;
+                let type_name = self.type_reference_name(isl_type)?;
                 self.verify_abstract_data_type_consistency(
                     AbstractDataType::Sequence(type_name.to_owned()),
                     code_gen_context,
@@ -388,8 +365,7 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
                     code_gen_context,
                 )?;
                 for (name, value) in fields.iter() {
-                    let type_name =
-                        self.type_reference_name(value.type_reference(), modules, imports)?;
+                    let type_name = self.type_reference_name(value.type_reference())?;
 
                     self.generate_struct_field(
                         tera_fields,
@@ -400,7 +376,7 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
                 }
             }
             IslConstraintValue::Type(isl_type) => {
-                let type_name = self.type_reference_name(isl_type, modules, imports)?;
+                let type_name = self.type_reference_name(isl_type)?;
 
                 self.verify_abstract_data_type_consistency(
                     AbstractDataType::Value,
