@@ -37,6 +37,14 @@ impl IonCliCommand for GenerateCommand {
                     .short('s')
                     .help("Schema file name or schema id"),
             )
+            // `--namespace` is required when Java language is specified for code generation
+            .arg(
+                Arg::new("namespace")
+                    .long("namespace")
+                    .short('n')
+                    .required_if_eq("language", "java")
+                    .help("Provide namespace for generated Java code (e.g. `org.example`)"),
+            )
             .arg(
                 Arg::new("language")
                     .long("language")
@@ -61,6 +69,9 @@ impl IonCliCommand for GenerateCommand {
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
         // Extract programming language for code generation
         let language: &str = args.get_one::<String>("language").unwrap().as_str();
+
+        // Extract namespace for code generation
+        let namespace = args.get_one::<String>("namespace");
 
         // Extract output path information where the generated code will be saved
         // Create a module `ion_data_model` for storing all the generated code in the output directory
@@ -99,7 +110,7 @@ impl IonCliCommand for GenerateCommand {
                 // generate code based on schema and programming language
                 match language {
                     "java" =>
-                        CodeGenerator::<JavaLanguage>::new(output)
+                        CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().as_str())
                             .generate_code_for_authorities(&authorities, &mut schema_system)?,
                     "rust" =>
                         CodeGenerator::<RustLanguage>::new(output)
@@ -111,12 +122,10 @@ impl IonCliCommand for GenerateCommand {
                 }
             }
             Some(schema_id) => {
-                let schema = schema_system.load_isl_schema(schema_id).unwrap();
-
                 // generate code based on schema and programming language
                 match language {
-                    "java" => CodeGenerator::<JavaLanguage>::new(output).generate_code_for_schema(schema)?,
-                    "rust" => CodeGenerator::<RustLanguage>::new(output).generate_code_for_schema(schema)?,
+                    "java" => CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().as_str()).generate_code_for_schema(&mut schema_system, schema_id)?,
+                    "rust" => CodeGenerator::<RustLanguage>::new(output).generate_code_for_schema(&mut schema_system, schema_id)?,
                     _ => bail!(
                         "Programming language '{}' is not yet supported. Currently supported targets: 'java', 'rust'",
                         language

@@ -113,7 +113,7 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
 }
 
 impl<'a> CodeGenerator<'a, JavaLanguage> {
-    pub fn new(output: &'a Path) -> CodeGenerator<JavaLanguage> {
+    pub fn new(output: &'a Path, namespace: &str) -> CodeGenerator<JavaLanguage> {
         let tera = Tera::new(&format!(
             "{}/src/bin/ion/commands/beta/generate/templates/java/*.templ",
             env!("CARGO_MANIFEST_DIR")
