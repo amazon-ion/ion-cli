@@ -7,7 +7,9 @@ use ion_schema::isl::isl_constraint::{IslConstraint, IslConstraintValue};
 use ion_schema::isl::isl_type::IslType;
 use ion_schema::isl::isl_type_reference::IslTypeRef;
 use ion_schema::isl::IslSchema;
+use ion_schema::system::SchemaSystem;
 use std::collections::HashMap;
+use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::marker::PhantomData;
@@ -26,20 +28,52 @@ pub(crate) struct CodeGenerator<'a, L: Language> {
 
 impl<'a> CodeGenerator<'a, RustLanguage> {
     pub fn new(output: &'a Path) -> CodeGenerator<RustLanguage> {
+        let tera = Tera::new(&format!(
+            "{}/src/bin/ion/commands/beta/generate/templates/rust/*.templ",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap();
+
         Self {
             output,
             anonymous_type_counter: 0,
-            tera: Tera::new(&format!(
-                "{}/src/bin/ion/commands/beta/generate/templates/rust/*.templ",
-                env!("CARGO_MANIFEST_DIR")
-            ))
-            .unwrap(),
+            tera,
             phantom: PhantomData,
         }
     }
 
+    /// Generates code in Rust for all the schemas in given authorities
+    pub fn generate_code_for_authorities(
+        &mut self,
+        authorities: &Vec<&String>,
+        schema_system: &mut SchemaSystem,
+    ) -> CodeGenResult<()> {
+        for authority in authorities {
+            let paths = fs::read_dir(authority)?;
+
+            for schema_file in paths {
+                let schema_file_path = schema_file?.path();
+                let schema_id = schema_file_path.file_name().unwrap().to_str().unwrap();
+
+                let schema = schema_system.load_isl_schema(schema_id).unwrap();
+
+                self.generate(schema)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Generates code in Rust for given Ion Schema
-    pub fn generate(&mut self, schema: IslSchema) -> CodeGenResult<()> {
+    pub fn generate_code_for_schema(
+        &mut self,
+        schema_system: &mut SchemaSystem,
+        schema_id: &str,
+    ) -> CodeGenResult<()> {
+        let schema = schema_system.load_isl_schema(schema_id).unwrap();
+        self.generate(schema)
+    }
+
+    fn generate(&mut self, schema: IslSchema) -> CodeGenResult<()> {
         // this will be used for Rust to create mod.rs which lists all the generated modules
         let mut modules = vec![];
         let mut module_context = tera::Context::new();
@@ -53,6 +87,7 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
         self.tera
             .register_filter("is_built_in_type", Self::is_built_in_type);
 
+        // Iterate through the ISL types, generate an abstract data type for each
         for isl_type in schema.types() {
             // unwrap here is safe because all the top-level type definition always has a name
             let isl_type_name = isl_type.name().clone().unwrap();
@@ -79,20 +114,52 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
 
 impl<'a> CodeGenerator<'a, JavaLanguage> {
     pub fn new(output: &'a Path) -> CodeGenerator<JavaLanguage> {
+        let tera = Tera::new(&format!(
+            "{}/src/bin/ion/commands/beta/generate/templates/java/*.templ",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap();
+
         Self {
             output,
             anonymous_type_counter: 0,
-            tera: Tera::new(&format!(
-                "{}/src/bin/ion/commands/beta/generate/templates/java/*.templ",
-                env!("CARGO_MANIFEST_DIR")
-            ))
-            .unwrap(),
+            tera,
             phantom: PhantomData,
         }
     }
 
+    /// Generates code in Java for all the schemas in given authorities
+    pub fn generate_code_for_authorities(
+        &mut self,
+        authorities: &Vec<&String>,
+        schema_system: &mut SchemaSystem,
+    ) -> CodeGenResult<()> {
+        for authority in authorities {
+            let paths = fs::read_dir(authority)?;
+
+            for schema_file in paths {
+                let schema_file_path = schema_file?.path();
+                let schema_id = schema_file_path.file_name().unwrap().to_str().unwrap();
+
+                let schema = schema_system.load_isl_schema(schema_id).unwrap();
+
+                self.generate(schema)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Generates code in Java for given Ion Schema
-    pub fn generate(&mut self, schema: IslSchema) -> CodeGenResult<()> {
+    pub fn generate_code_for_schema(
+        &mut self,
+        schema_system: &mut SchemaSystem,
+        schema_id: &str,
+    ) -> CodeGenResult<()> {
+        let schema = schema_system.load_isl_schema(schema_id).unwrap();
+        self.generate(schema)
+    }
+
+    fn generate(&mut self, schema: IslSchema) -> CodeGenResult<()> {
         // this will be used for Rust to create mod.rs which lists all the generated modules
         let mut modules = vec![];
 

@@ -34,9 +34,8 @@ impl IonCliCommand for GenerateCommand {
             .arg(
                 Arg::new("schema")
                     .long("schema")
-                    .required(true)
                     .short('s')
-                    .help("Schema file"),
+                    .help("Schema file name or schema id"),
             )
             .arg(
                 Arg::new("language")
@@ -75,13 +74,10 @@ impl IonCliCommand for GenerateCommand {
         // Extract the user provided document authorities/ directories
         let authorities: Vec<&String> = args.get_many("directory").unwrap().collect();
 
-        // Extract schema file provided by user
-        let schema_id = args.get_one::<String>("schema").unwrap();
-
         // Set up document authorities vector
         let mut document_authorities: Vec<Box<dyn DocumentAuthority>> = vec![];
 
-        for authority in authorities {
+        for authority in &authorities {
             document_authorities.push(Box::new(FileSystemDocumentAuthority::new(Path::new(
                 authority,
             ))))
@@ -90,24 +86,43 @@ impl IonCliCommand for GenerateCommand {
         // Create a new schema system from given document authorities
         let mut schema_system = SchemaSystem::new(document_authorities);
 
-        let schema = schema_system.load_isl_schema(schema_id).unwrap();
-
-        // clean the target output directory if it already exists, before generating new code
-        if output.exists() {
-            fs::remove_dir_all(output).unwrap();
+        // Generate directories in the output path if the path doesn't exist
+        if !output.exists() {
+            fs::create_dir_all(output).unwrap();
         }
-        fs::create_dir_all(output).unwrap();
 
         println!("Started generating code...");
 
-        // generate code based on schema and programming language
-        match language {
-            "java" => CodeGenerator::<JavaLanguage>::new(output).generate(schema)?,
-            "rust" => CodeGenerator::<RustLanguage>::new(output).generate(schema)?,
-            _ => bail!(
-                "Programming language '{}' is not yet supported. Currently supported targets: 'java', 'rust'",
-                language
-            )
+        // Extract schema file provided by user
+        match args.get_one::<String>("schema") {
+            None => {
+                // generate code based on schema and programming language
+                match language {
+                    "java" =>
+                        CodeGenerator::<JavaLanguage>::new(output)
+                            .generate_code_for_authorities(&authorities, &mut schema_system)?,
+                    "rust" =>
+                        CodeGenerator::<RustLanguage>::new(output)
+                            .generate_code_for_authorities(&authorities, &mut schema_system)?,
+                    _ => bail!(
+                        "Programming language '{}' is not yet supported. Currently supported targets: 'java', 'rust'",
+                        language
+                    )
+                }
+            }
+            Some(schema_id) => {
+                let schema = schema_system.load_isl_schema(schema_id).unwrap();
+
+                // generate code based on schema and programming language
+                match language {
+                    "java" => CodeGenerator::<JavaLanguage>::new(output).generate_code_for_schema(schema)?,
+                    "rust" => CodeGenerator::<RustLanguage>::new(output).generate_code_for_schema(schema)?,
+                    _ => bail!(
+                        "Programming language '{}' is not yet supported. Currently supported targets: 'java', 'rust'",
+                        language
+                    )
+                }
+            }
         }
 
         println!("Code generation complete successfully!");
