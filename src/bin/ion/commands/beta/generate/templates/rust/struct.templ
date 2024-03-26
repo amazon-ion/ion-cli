@@ -29,12 +29,12 @@ impl {{ target_kind_name }} {
     pub fn read_from(reader: &mut Reader) -> IonResult<Self> {
         let mut abstract_data_type = {{ target_kind_name }}::default();
         {% if abstract_data_type == "Value"%}
-            abstract_data_type.value = {% if target_kind_name | is_built_in_type == false %}
-                                            {{ target_kind_name }}::read_from(reader)?;
+            abstract_data_type.value = {% if fields[0].value | is_built_in_type == false %}
+                                            {{ fields[0].value }}::read_from(reader)?;
                                         {% else %}
-                                            reader.read_{{ target_kind_name }}()?;
+                                            reader.read_{% if fields[0].isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ fields[0].value | replace(from="string", to ="str") }}()?{% endif %}{% if fields[0].value | lower == "string" %} .to_string() {% endif %};
                                         {% endif %}
-        {% elif abstract_data_type is object and abstract_data_type | get(key="Structure") %}
+        {% elif abstract_data_type is object and abstract_data_type is containing("Structure") %}
             reader.step_in()?;
             while reader.next()? != StreamItem::Nothing {
                 if let Some(field_name) = reader.field_name()?.text() {
@@ -43,21 +43,21 @@ impl {{ target_kind_name }} {
                             {% if field.value | is_built_in_type == false %}
                                  "{{ field.name }}" => { abstract_data_type.{{ field.name | snake }} = {{ field.value }}::read_from(reader)?; }
                             {% else %}
-                                "{{ field.name }}" => { abstract_data_type.{{ field.name | snake}} = reader.read_{{ field.value | lower }}()?; }
+                                "{{ field.name }}" => { abstract_data_type.{{ field.name | snake}} = reader.read_{% if field.isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ field.value | lower | replace(from="string", to ="str") }}()?{% endif %}{% if field.value | lower== "string" %} .to_string() {% endif %}; }
                             {% endif %}
                         {% endfor %}
                      _ => {
                         {% if abstract_data_type["Structure"] %}
                             return IonResult::decoding_error(
                                 "Can not read field name:{{ field.name }} for {{ target_kind_name }} as it doesn't exist in the given schema type definition."
-                            )
+                            );
                         {% endif %}
                      }
                     }
                 }
             }
             reader.step_out()?;
-        {% elif abstract_data_type is object and abstract_data_type | get(key="Sequence")  %}
+        {% elif abstract_data_type is object and abstract_data_type is containing("Sequence")  %}
              reader.step_in()?;
              abstract_data_type.value = {
                  let mut values = vec![];
@@ -66,12 +66,14 @@ impl {{ target_kind_name }} {
                     {% if abstract_data_type["Sequence"] | is_built_in_type == false %}
                         values.push({{ abstract_data_type["Sequence"] }}::read_from(reader)?);
                     {% else %}
-                        values.push(reader.read_{{ abstract_data_type["Sequence"] | lower }}()?);
+                        values.push(reader.read_{% if fields[0].isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ abstract_data_type["Sequence"] | lower | replace(from="string", to ="str") }}()?{% endif %}{% if abstract_data_type["Sequence"] | lower== "string" %} .to_string() {% endif %});
                     {% endif %}
                 }
                 values
              };
              reader.step_out()?;
+        {% else %}
+            return IonResult::decoding_error("Can not resolve read API template for {{ target_kind_name }}");
         {% endif %}
      Ok(abstract_data_type)
     }
@@ -79,32 +81,31 @@ impl {{ target_kind_name }} {
     pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> IonResult<()> {
         {% if abstract_data_type == "Value" %}
             {% for field in fields %}
-                {% if field.value | is_built_in_type ==false  %}
+                {% if field.value | is_built_in_type == false  %}
                     self.{{ field.name | snake }}.write_to(writer)?;
                 {% else %}
-                    writer.write_{{ field.value | lower }}(self.value)?;
+                    writer.write_{% if field.isl_type_name == "symbol" %}symbol{% else %}{{ field.value | lower }}{% endif %}(self.value)?;
                 {% endif %}
             {% endfor %}
-        {% elif abstract_data_type is object and abstract_data_type | get(key="Structure") %}
+        {% elif abstract_data_type is object and abstract_data_type is containing("Structure") %}
             writer.step_in(IonType::Struct)?;
             {% for field in fields %}
             writer.set_field_name("{{ field.name }}");
                 {% if field.value | is_built_in_type == false %}
                     self.{{ field.name | snake }}.write_to(writer)?;
                 {% else %}
-                    writer.write_{{ field.value | lower }}(self.{{ field.name }})?;
                     {# TODO: Change the following `to_owned` to only be used when writing i64,f32,f64,bool which require owned value as input #}
-                    writer.write_{{ field.value | lower }}(self.{{ field.name | snake }}.to_owned())?;
+                    writer.write_{% if field.isl_type_name == "symbol" %}symbol{% else %}{{ field.value | lower }}{% endif %}(self.{{ field.name | snake }}.to_owned())?;
                 {% endif %}
             {% endfor %}
             writer.step_out()?;
-        {% elif abstract_data_type is object and abstract_data_type | get(key="Sequence")  %}
+        {% elif abstract_data_type is object and abstract_data_type is containing("Sequence")  %}
             writer.step_in(IonType::List)?;
-            for value in self.value {
+            for value in &self.value {
                 {% if abstract_data_type["Sequence"] | is_built_in_type  == false %}
                     value.write_to(writer)?;
                 {% else %}
-                   writer.write_{{ abstract_data_type["Sequence"] | lower }}(value)?;
+                   writer.write_{% if fields[0].isl_type_name == "symbol" %}symbol{% else %}{{ abstract_data_type["Sequence"] | lower }}{% endif %}(value.to_owned())?;
                 {% endif %}
             }
             writer.step_out()?;

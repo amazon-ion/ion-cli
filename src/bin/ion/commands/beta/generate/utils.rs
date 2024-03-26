@@ -10,6 +10,7 @@ use std::fmt::{Display, Formatter};
 pub struct Field {
     pub(crate) name: String,
     pub(crate) value: String,
+    pub(crate) isl_type_name: String,
 }
 
 /// Represents an import in a generated code file.

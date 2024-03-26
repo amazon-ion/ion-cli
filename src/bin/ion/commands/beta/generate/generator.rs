@@ -29,7 +29,11 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
         Self {
             output,
             anonymous_type_counter: 0,
-            tera: Tera::new("src/bin/ion/commands/beta/generate/templates/rust/*.templ").unwrap(),
+            tera: Tera::new(&format!(
+                "{}/src/bin/ion/commands/beta/generate/templates/rust/*.templ",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+            .unwrap(),
             phantom: PhantomData,
         }
     }
@@ -78,7 +82,11 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
         Self {
             output,
             anonymous_type_counter: 0,
-            tera: Tera::new("src/bin/ion/commands/beta/generate/templates/java/*.templ").unwrap(),
+            tera: Tera::new(&format!(
+                "{}/src/bin/ion/commands/beta/generate/templates/java/*.templ",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+            .unwrap(),
             phantom: PhantomData,
         }
     }
@@ -302,6 +310,7 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
                 self.generate_struct_field(
                     tera_fields,
                     L::target_type_as_sequence(&type_name),
+                    isl_type.name(),
                     "value",
                 )?;
             }
@@ -315,7 +324,12 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
                     let type_name =
                         self.type_reference_name(value.type_reference(), modules, imports)?;
 
-                    self.generate_struct_field(tera_fields, type_name, name)?;
+                    self.generate_struct_field(
+                        tera_fields,
+                        type_name,
+                        value.type_reference().name(),
+                        name,
+                    )?;
                 }
             }
             IslConstraintValue::Type(isl_type) => {
@@ -325,7 +339,7 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
                     AbstractDataType::Value,
                     code_gen_context,
                 )?;
-                self.generate_struct_field(tera_fields, type_name, "value")?;
+                self.generate_struct_field(tera_fields, type_name, isl_type.name(), "value")?;
             }
             _ => {}
         }
@@ -337,11 +351,13 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         &mut self,
         tera_fields: &mut Vec<Field>,
         abstract_data_type_name: String,
+        isl_type_name: String,
         field_name: &str,
     ) -> CodeGenResult<()> {
         tera_fields.push(Field {
             name: field_name.to_string(),
             value: abstract_data_type_name,
+            isl_type_name,
         });
         Ok(())
     }
