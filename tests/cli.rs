@@ -220,8 +220,7 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
 
 #[cfg(feature = "beta-subcommands")]
 #[rstest]
-#[case(
-    "simple_struct",
+#[case::simple_struct(
     r#"
         type::{
          name: simple_struct,
@@ -234,8 +233,7 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     &["id: i64", "name: String"],
     &["pub fn name(&self) -> &String {", "pub fn id(&self) -> &i64 {"]
 )]
-#[case(
-    "value_struct",
+#[case::value_struct(
     r#"
         type::{
          name: value_struct,
@@ -245,8 +243,7 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     &["value: i64"],
     &["pub fn value(&self) -> &i64 {"]
 )]
-#[case(
-    "sequence_struct",
+#[case::sequence_struct(
     r#"
         type::{
          name: sequence_struct,
@@ -256,8 +253,7 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     &["value: Vec<String>"],
     &["pub fn value(&self) -> &Vec<String> {"]
 )]
-#[case(
-    "struct_with_reference_field",
+#[case::struct_with_reference_field(
     r#"
         type::{
          name: struct_with_reference_field,
@@ -274,8 +270,7 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     &["reference: OtherType"],
     &["pub fn reference(&self) -> &OtherType {"]
 )]
-#[case(
-    "struct_with_anonymous_type",
+#[case::struct_with_anonymous_type(
     r#"
         type::{
          name: struct_with_anonymous_type,
@@ -289,7 +284,6 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
 )]
 /// Calls ion-cli beta generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
 fn test_code_generation_in_rust(
-    #[case] test_name: &str,
     #[case] test_schema: &str,
     #[case] expected_properties: &[&str],
     #[case] expected_accessors: &[&str],
@@ -313,10 +307,7 @@ fn test_code_generation_in_rust(
         temp_dir.path().to_str().unwrap(),
     ]);
     let command_assert = cmd.assert();
-    let output_file_path = temp_dir
-        .path()
-        .join("ion_data_model")
-        .join(format!("{}.rs", test_name));
+    let output_file_path = temp_dir.path().join("ion_generated_code.rs");
     command_assert.success();
     let contents =
         fs::read_to_string(output_file_path).expect("Should have been able to read the file");
@@ -424,14 +415,13 @@ fn test_code_generation_in_java(
         temp_dir.path().to_str().unwrap(),
         "--language",
         "java",
+        "--namespace",
+        "org.example",
         "--directory",
         temp_dir.path().to_str().unwrap(),
     ]);
     let command_assert = cmd.assert();
-    let output_file_path = temp_dir
-        .path()
-        .join("ion_data_model")
-        .join(format!("{}.java", test_name));
+    let output_file_path = temp_dir.path().join(format!("{}.java", test_name));
     command_assert.success();
     let contents = fs::read_to_string(output_file_path).expect("Can not read generated code file.");
     for expected_property in expected_properties {

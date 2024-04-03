@@ -10,7 +10,7 @@ use ion_schema::isl::IslSchema;
 use ion_schema::system::SchemaSystem;
 use std::collections::HashMap;
 use std::fs;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::marker::PhantomData;
 use std::path::Path;
@@ -280,7 +280,7 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
                 );
         }
 
-        self.render_generated_code(&isl_type_name, &mut context, &mut code_gen_context)
+        self.render_generated_code(isl_type_name, &mut context, &mut code_gen_context)
     }
 
     fn render_generated_code(
