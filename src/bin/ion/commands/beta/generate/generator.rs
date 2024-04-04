@@ -40,8 +40,10 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
         // Render the imports into output file
         let rendered = tera.render("import.templ", &Context::new()).unwrap();
         let mut file = OpenOptions::new()
+            // In order for the file to be created, OpenOptions::write or OpenOptions::append access must be used
+            // reference: https://doc.rust-lang.org/std/fs/struct.OpenOptions.html#method.create
+            .write(true)
             .create(true)
-            .append(true)
             .open(output.join("ion_generated_code.rs"))
             .unwrap();
         file.write_all(rendered.as_bytes()).unwrap();
@@ -53,57 +55,6 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
             tera,
             phantom: PhantomData,
         }
-    }
-
-    /// Generates code in Rust for all the schemas in given authorities
-    pub fn generate_code_for_authorities(
-        &mut self,
-        authorities: &Vec<&String>,
-        schema_system: &mut SchemaSystem,
-    ) -> CodeGenResult<()> {
-        for authority in authorities {
-            let paths = fs::read_dir(authority)?;
-
-            for schema_file in paths {
-                let schema_file_path = schema_file?.path();
-                let schema_id = schema_file_path.file_name().unwrap().to_str().unwrap();
-
-                let schema = schema_system.load_isl_schema(schema_id).unwrap();
-
-                self.generate(schema)?;
-            }
-        }
-        Ok(())
-    }
-
-    /// Generates code in Rust for given Ion Schema
-    pub fn generate_code_for_schema(
-        &mut self,
-        schema_system: &mut SchemaSystem,
-        schema_id: &str,
-    ) -> CodeGenResult<()> {
-        let schema = schema_system.load_isl_schema(schema_id).unwrap();
-        self.generate(schema)
-    }
-
-    fn generate(&mut self, schema: IslSchema) -> CodeGenResult<()> {
-        // Register a tera filter that can be used to convert a string based on case
-        self.tera.register_filter("upper_camel", Self::upper_camel);
-        self.tera.register_filter("snake", Self::snake);
-        self.tera.register_filter("camel", Self::camel);
-
-        // Register a tera filter that can be used to see if a type is built in data type or not
-        self.tera
-            .register_filter("is_built_in_type", Self::is_built_in_type);
-
-        // Iterate through the ISL types, generate an abstract data type for each
-        for isl_type in schema.types() {
-            // unwrap here is safe because all the top-level type definition always has a name
-            let isl_type_name = isl_type.name().clone().unwrap();
-            self.generate_abstract_data_type(&isl_type_name, isl_type)?;
-        }
-
-        Ok(())
     }
 }
 
@@ -123,56 +74,9 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
             phantom: PhantomData,
         }
     }
-
-    /// Generates code in Java for all the schemas in given authorities
-    pub fn generate_code_for_authorities(
-        &mut self,
-        authorities: &Vec<&String>,
-        schema_system: &mut SchemaSystem,
-    ) -> CodeGenResult<()> {
-        for authority in authorities {
-            let paths = fs::read_dir(authority)?;
-
-            for schema_file in paths {
-                let schema_file_path = schema_file?.path();
-                let schema_id = schema_file_path.file_name().unwrap().to_str().unwrap();
-
-                let schema = schema_system.load_isl_schema(schema_id).unwrap();
-
-                self.generate(schema)?;
-            }
-        }
-        Ok(())
-    }
-
-    /// Generates code in Java for given Ion Schema
-    pub fn generate_code_for_schema(
-        &mut self,
-        schema_system: &mut SchemaSystem,
-        schema_id: &str,
-    ) -> CodeGenResult<()> {
-        let schema = schema_system.load_isl_schema(schema_id).unwrap();
-        self.generate(schema)
-    }
-
-    fn generate(&mut self, schema: IslSchema) -> CodeGenResult<()> {
-        // Register a tera filter that can be used to convert a string based on case
-        self.tera.register_filter("upper_camel", Self::upper_camel);
-        self.tera.register_filter("snake", Self::snake);
-        self.tera.register_filter("camel", Self::camel);
-
-        // Iterate through the ISL types, generate an abstract data type for each
-        for isl_type in schema.types() {
-            // unwrap here is safe because all the top-level type definition always has a name
-            let isl_type_name = isl_type.name().clone().unwrap();
-            self.generate_abstract_data_type(&isl_type_name, isl_type)?;
-        }
-
-        Ok(())
-    }
 }
 
-impl<'a, L: Language> CodeGenerator<'a, L> {
+impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     /// Represents a [tera] filter that converts given tera string value to [upper camel case].
     /// Returns error if the given value is not a string.
     ///
@@ -248,6 +152,57 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
         )))
     }
 
+    /// Generates code for all the schemas in given authorities
+    pub fn generate_code_for_authorities(
+        &mut self,
+        authorities: &Vec<&String>,
+        schema_system: &mut SchemaSystem,
+    ) -> CodeGenResult<()> {
+        for authority in authorities {
+            let paths = fs::read_dir(authority)?;
+
+            for schema_file in paths {
+                let schema_file_path = schema_file?.path();
+                let schema_id = schema_file_path.file_name().unwrap().to_str().unwrap();
+
+                let schema = schema_system.load_isl_schema(schema_id).unwrap();
+
+                self.generate(schema)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Generates code for given Ion Schema
+    pub fn generate_code_for_schema(
+        &mut self,
+        schema_system: &mut SchemaSystem,
+        schema_id: &str,
+    ) -> CodeGenResult<()> {
+        let schema = schema_system.load_isl_schema(schema_id).unwrap();
+        self.generate(schema)
+    }
+
+    fn generate(&mut self, schema: IslSchema) -> CodeGenResult<()> {
+        // Register a tera filter that can be used to convert a string based on case
+        self.tera.register_filter("upper_camel", Self::upper_camel);
+        self.tera.register_filter("snake", Self::snake);
+        self.tera.register_filter("camel", Self::camel);
+
+        // Register a tera filter that can be used to see if a type is built in data type or not
+        self.tera
+            .register_filter("is_built_in_type", Self::is_built_in_type);
+
+        // Iterate through the ISL types, generate an abstract data type for each
+        for isl_type in schema.types() {
+            // unwrap here is safe because all the top-level type definition always has a name
+            let isl_type_name = isl_type.name().clone().unwrap();
+            self.generate_abstract_data_type(&isl_type_name, isl_type)?;
+        }
+
+        Ok(())
+    }
+
     fn generate_abstract_data_type(
         &mut self,
         isl_type_name: &String,
@@ -299,9 +254,16 @@ impl<'a, L: Language> CodeGenerator<'a, L> {
             .tera
             .render(&format!("{}.templ", L::template_name(template)), context)
             .unwrap();
-        let mut file = OpenOptions::new()
+        let mut file_options = OpenOptions::new();
+        if L::name() == "rust" {
+            // since Rust code is generated into a single file, it needs append set to true.
+            file_options.append(true);
+        }
+        let mut file = file_options
+            // In order for the file to be created, OpenOptions::write or OpenOptions::append access must be used
+            // reference: https://doc.rust-lang.org/std/fs/struct.OpenOptions.html#method.create
+            .write(true)
             .create(true)
-            .append(true)
             .open(self.output.join(format!(
                 "{}.{}",
                 L::file_name_for_type(type_name),
