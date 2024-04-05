@@ -43,6 +43,7 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
             // In order for the file to be created, OpenOptions::write or OpenOptions::append access must be used
             // reference: https://doc.rust-lang.org/std/fs/struct.OpenOptions.html#method.create
             .write(true)
+            .truncate(true)
             .create(true)
             .open(output.join("ion_generated_code.rs"))
             .unwrap();
