@@ -172,7 +172,6 @@ fn run_it<S: AsRef<str>>(
     Ok(())
 }
 
-#[cfg(feature = "beta-subcommands")]
 #[rstest]
 #[case(0, "")]
 #[case(2, "{foo: bar, abc: [123, 456]}\n{foo: baz, abc: [42.0, 4.3e1]}")]
@@ -218,7 +217,7 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     Ok(())
 }
 
-#[cfg(feature = "beta-subcommands")]
+#[cfg(feature = "experimental-code-gen")]
 #[rstest]
 #[case::simple_struct(
     r#"
@@ -324,7 +323,7 @@ fn test_code_generation_in_rust(
     Ok(())
 }
 
-#[cfg(feature = "beta-subcommands")]
+#[cfg(feature = "experimental-code-gen")]
 #[rstest]
 #[case(
     "SimpleStruct",

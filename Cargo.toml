@@ -40,7 +40,7 @@ tempfile = "~3.5.0"
 
 [features]
 default = []
-beta-subcommands = ["dep:tera", "dep:convert_case"]
+experimental-code-gen = ["dep:tera", "dep:convert_case"]
 
 [[bin]]
 name = "ion"
