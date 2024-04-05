@@ -6,7 +6,7 @@ pub struct {{ target_kind_name }} {
 }
 
 impl {{ target_kind_name }} {
-    pub fn new({% for field in fields -%}{{ field.name | snake }}: {{ field.value }},{% endfor %}) -> Self {
+    pub fn new({% for field in fields | sort(attribute="name") -%}{{ field.name | snake }}: {{ field.value }},{% endfor %}) -> Self {
         Self {
             {% for field in fields -%}
             {{ field.name | snake }},

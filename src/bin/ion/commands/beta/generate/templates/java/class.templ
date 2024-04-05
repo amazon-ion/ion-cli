@@ -6,7 +6,7 @@ public final class {{ target_kind_name }} {
        private final {{ field.value }} {{ field.name | camel }};
 {% endfor %}
 
-    public {{ target_kind_name }}({% for field in fields -%}{{ field.value }} {{ field.name | camel }}{% if not loop.last %},{% endif %}{% endfor %}) {
+    public {{ target_kind_name }}({% for field in fields | sort(attribute="name") -%}{{ field.value }} {{ field.name | camel }}{% if not loop.last %},{% endif %}{% endfor %}) {
         {% for field in fields -%}
             this.{{ field.name | camel }} = {{ field.name | camel }};
         {% endfor %}
