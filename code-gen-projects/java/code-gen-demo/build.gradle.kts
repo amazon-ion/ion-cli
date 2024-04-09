@@ -37,7 +37,7 @@ tasks {
         inputs.files(ionSchemaSourceCodeDir)
         outputs.file(generatedIonSchemaModelDir)
 
-        val ionCli = "../../../target/debug/ion"
+        val ionCli = System.getenv("ION_CLI") ?: "ion"
 
         commandLine(ionCli)
             .args(
