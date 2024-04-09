@@ -10,6 +10,7 @@ fn roundtrip_tests_for_generated_code_gradle() -> Result<()> {
     // so simply running the tests on this project builds the project, generates code and runs tests
 
     // absolute paths for gradle project and executables
+    let ion_executable = env!("CARGO_BIN_EXE_ion");
     let test_crate_path = format!(
         "{}/code-gen-projects/java/code-gen-demo",
         env!("CARGO_MANIFEST_DIR")
@@ -19,6 +20,7 @@ fn roundtrip_tests_for_generated_code_gradle() -> Result<()> {
     // Clean and Test
     let gradle_output = std::process::Command::new(gradle_executable)
         .current_dir(&test_crate_path)
+        .env("ION_CLI", ion_executable)
         .arg("clean")
         .arg("test")
         .output()
@@ -41,6 +43,7 @@ fn roundtrip_tests_for_generated_code_cargo() -> Result<()> {
     // so simply running the tests on this project builds the project, generates code and runs tests
 
     // absolute paths for crate and executables
+    let ion_executable = env!("CARGO_BIN_EXE_ion");
     let test_crate_path = format!(
         "{}/code-gen-projects/rust/code-gen-demo",
         env!("CARGO_MANIFEST_DIR")
@@ -66,6 +69,7 @@ fn roundtrip_tests_for_generated_code_cargo() -> Result<()> {
     let cargo_test_output = std::process::Command::new(cargo_executable)
         .current_dir(&test_crate_path)
         .arg("test")
+        .env("ION_CLI", ion_executable)
         .output()
         .expect("failed to execute 'cargo test'");
 

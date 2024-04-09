@@ -9,7 +9,7 @@ fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
     // Invoke cargo CLI
-    let ion_cli = "../../../target/debug/ion";
+    let ion_cli = env::var("ION_CLI").unwrap_or("ion".to_string());
     println!("cargo:warn=Running command: {}", ion_cli);
     let mut cmd = std::process::Command::new(ion_cli);
     cmd.arg("beta")
