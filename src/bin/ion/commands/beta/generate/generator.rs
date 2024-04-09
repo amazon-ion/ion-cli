@@ -43,6 +43,7 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
             // In order for the file to be created, OpenOptions::write or OpenOptions::append access must be used
             // reference: https://doc.rust-lang.org/std/fs/struct.OpenOptions.html#method.create
             .write(true)
+            .truncate(true)
             .create(true)
             .open(output.join("ion_generated_code.rs"))
             .unwrap();
@@ -159,10 +160,12 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         schema_system: &mut SchemaSystem,
     ) -> CodeGenResult<()> {
         for authority in authorities {
-            let paths = fs::read_dir(authority)?;
-
+            // Sort the directory paths to ensure anonymous type names are always ordered based
+            // on directory path. (anonymous type name uses a counter in its name to represent that type)
+            let mut paths = fs::read_dir(authority)?.collect::<Result<Vec<_>, _>>()?;
+            paths.sort_by_key(|dir| dir.path());
             for schema_file in paths {
-                let schema_file_path = schema_file?.path();
+                let schema_file_path = schema_file.path();
                 let schema_id = schema_file_path.file_name().unwrap().to_str().unwrap();
 
                 let schema = schema_system.load_isl_schema(schema_id).unwrap();
