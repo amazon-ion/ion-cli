@@ -1,5 +1,7 @@
 package {{ namespace }};
 import java.util.ArrayList;
+import com.amazon.ion.IonReader;
+import com.amazon.ion.IonException;
 
 public final class {{ target_kind_name }} {
 {% for field in fields -%}
@@ -16,4 +18,69 @@ public final class {{ target_kind_name }} {
         return this.{{ field.name | camel }};
     }
     {% endfor %}
+
+    public static {{ target_kind_name }} readFrom(IonReader reader) {
+        {% for field in fields -%}
+        {{ field.value }} {{ field.name | camel }} =
+            {% if field.value == "boolean" %}
+                false
+            {% elif field.value == "int" or field.value == "double" %}
+                0
+            {% else %}
+                null
+            {% endif %};
+        {% endfor %}
+        {% if abstract_data_type == "Value"%}
+            value = {% if fields[0].value | is_built_in_type %}
+                        {% if fields[0].value == "bytes[]" %}
+                                reader.newBytes();
+                        {% else %}
+                             reader.{{ fields[0].value | camel }}Value();
+                        {% endif %}
+                     {% else %}
+                        {{ fields[0].value }}.readFrom(reader);
+                     {% endif %}
+        {% elif abstract_data_type is object and abstract_data_type is containing("Structure") %}
+            reader.stepIn();
+            while (reader.hasNext()) {
+                reader.next();
+                String fieldName = reader.getFieldName();
+                switch(fieldName) {
+                    {% for field in fields %}
+                    case "{{ field.name }}":
+                        {{ field.name | camel }} = {% if field.value | is_built_in_type %}
+                                                       {% if field.value == "bytes[]" %}
+                                                               reader.newBytes();
+                                                       {% else %}
+                                                            reader.{{ field.value | camel }}Value();
+                                                       {% endif %}
+                                                    {% else %}
+                                                       {{ field.value }}.readFrom(reader);
+                                                    {% endif %}
+                        break;
+                    {% endfor %}
+                    default:
+                        throw new IonException("Can not read field name:" + fieldName + " for {{ target_kind_name }} as it doesn't exist in the given schema type definition.");
+                }
+            }
+            reader.stepOut();
+        {% elif abstract_data_type is object and abstract_data_type is containing("Sequence") %}
+            reader.stepIn();
+            value = new {{ fields[0].value }}();
+            while (reader.hasNext()) {
+                reader.next();
+                {% if abstract_data_type["Sequence"] | is_built_in_type == false %}
+                    value.add({{ abstract_data_type["Sequence"] }}.readFrom(reader));
+                {% else %}
+                    {% if abstract_data_type["Sequence"] == "bytes[]" %}
+                        value.add(reader.newBytes());
+                    {% else %}
+                        value.add(reader.{{ abstract_data_type["Sequence"] | camel }}Value());
+                    {% endif %}
+                {% endif %}
+            }
+            reader.stepOut();
+        {% endif %}
+        return new {{ target_kind_name }}({% for field in fields | sort(attribute="name") -%}{{ field.name | camel }}{% if not loop.last %},{% endif %}{% endfor %});
+    }
 }
