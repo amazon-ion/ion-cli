@@ -88,7 +88,7 @@ impl Language for JavaLanguage {
     }
 
     fn is_built_in_type(name: &str) -> bool {
-        matches!(name, "int" | "String" | "boolean" | "byte[]" | "float")
+        matches!(name, "int" | "String" | "boolean" | "byte[]" | "double")
     }
 
     fn template_name(template: &Template) -> String {
