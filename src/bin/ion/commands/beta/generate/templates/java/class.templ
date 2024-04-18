@@ -22,10 +22,17 @@ public final class {{ target_kind_name }} {
     }
     {% endfor %}
 
+
+    /**
+     * Reads a {{ target_kind_name }} from an {@link IonReader}.
+     *
+     * This method does not advance the reader at the current level.
+     * The caller is responsible for positioning the reader on the value to read.
+     */
     public static {{ target_kind_name }} readFrom(IonReader reader) {
         {# Intializes all the fields of this class #}
         {% for field in fields -%}
-        {{ field.value }} {{ field.name | camel }} =
+            {{ field.value }} {{ field.name | camel }} =
             {% if field.value == "boolean" %}
                 false
             {% elif field.value == "int" or field.value == "double" %}
@@ -35,12 +42,12 @@ public final class {{ target_kind_name }} {
             {% endif %};
         {% endfor %}
         {% if abstract_data_type == "Value"%}
-            {# Reads `Value` class with a signle field `value` #}
+            {# Reads `Value` class with a single field `value` #}
             value = {% if fields[0].value | is_built_in_type %}
                         {% if fields[0].value == "bytes[]" %}
-                                reader.newBytes();
+                            reader.newBytes();
                         {% else %}
-                             reader.{{ fields[0].value | camel }}Value();
+                            reader.{{ fields[0].value | camel }}Value();
                         {% endif %}
                      {% else %}
                         {{ fields[0].value }}.readFrom(reader);
@@ -56,12 +63,12 @@ public final class {{ target_kind_name }} {
                     case "{{ field.name }}":
                         {{ field.name | camel }} = {% if field.value | is_built_in_type %}
                                                        {% if field.value == "bytes[]" %}
-                                                               reader.newBytes();
+                                                            reader.newBytes();
                                                        {% else %}
                                                             reader.{{ field.value | camel }}Value();
                                                        {% endif %}
                                                     {% else %}
-                                                       {{ field.value }}.readFrom(reader);
+                                                        {{ field.value }}.readFrom(reader);
                                                     {% endif %}
                         break;
                     {% endfor %}
@@ -71,7 +78,7 @@ public final class {{ target_kind_name }} {
             }
             reader.stepOut();
         {% elif abstract_data_type is object and abstract_data_type is containing("Sequence") %}
-            {# Reads `Sequence` class with a single field `value` that is an `ArraList` #}
+            {# Reads `Sequence` class with a single field `value` that is an `ArrayList` #}
             reader.stepIn();
             value = new {{ fields[0].value }}();
             {# Iterate through the `ArraList` and read each element in it based on the data type provided in `abstract_data_type[Sequence]` #}
@@ -92,36 +99,43 @@ public final class {{ target_kind_name }} {
         return new {{ target_kind_name }}({% for field in fields | sort(attribute="name") -%}{{ field.name | camel }}{% if not loop.last %},{% endif %}{% endfor %});
     }
 
+
+    /**
+     * Writes a {{ target_kind_name }} as Ion from an {@link IonWriter}.
+     *
+     * This method does not close the writer after writing is complete.
+     * The caller is responsible for closing the stream associated with the writer.
+     */
     public void writeTo(IonWriter writer) throws IOException {
          {% if abstract_data_type == "Value" %}
-            {# Writes `Value` class with a signle field `value` as an Ion value #}
+            {# Writes `Value` class with a single field `value` as an Ion value #}
             {% for field in fields %}
                 {% if field.value | is_built_in_type == false  %}
                     this.{{ field.name | camel }}.writeTo(writer)?;
                 {% else %}
-                    writer.write{% if field.isl_type_name == "symbol" %}Symbol{% else %}{{ field.isl_type_name | upper_camel }}{% endif %}(this.value);
+                    writer.write{{ field.isl_type_name | upper_camel }}(this.value);
                 {% endif %}
             {% endfor %}
          {% elif abstract_data_type is object and abstract_data_type is containing("Structure") %}
-            {# Writes `Structure` class with multiple fields based on `field.name` as an Ion struct #}
+             {# Writes `Structure` class with multiple fields based on `field.name` as an Ion struct #}
              writer.stepIn(IonType.STRUCT);
              {% for field in fields %}
-             writer.setFieldName("{{ field.name }}");
+                 writer.setFieldName("{{ field.name }}");
                  {% if field.value | is_built_in_type == false %}
                      this.{{ field.name | camel }}.writeTo(writer);
                  {% else %}
-                     writer.write{% if field.isl_type_name == "symbol" %}Symbol{% else %}{{ field.isl_type_name | upper_camel }}{% endif %}(this.{{ field.name | camel }});
+                     writer.write{{ field.isl_type_name | upper_camel }}(this.{{ field.name | camel }});
                  {% endif %}
              {% endfor %}
              writer.stepOut();
          {% elif abstract_data_type is object and abstract_data_type is containing("Sequence") %}
-            {# Writes `Sequence` class with a single field `value` that is an `ArraList` as an Ion sequence #}
+            {# Writes `Sequence` class with a single field `value` that is an `ArrayList` as an Ion sequence #}
             writer.stepIn(IonType.LIST);
             for ({{ abstract_data_type["Sequence"] }} value: this.value) {
                  {% if abstract_data_type["Sequence"] | is_built_in_type  == false %}
-                     value.writeTo(writer);
+                    value.writeTo(writer);
                  {% else %}
-                    writer.write{% if fields[0].isl_type_name == "symbol" %}Symbol{% else %}{{ abstract_data_type["Sequence"] | upper_camel }}{% endif %}(value);
+                    writer.write{{ abstract_data_type["Sequence"] | upper_camel }}(value);
                  {% endif %}
             }
             writer.stepOut();
