@@ -336,7 +336,7 @@ fn test_code_generation_in_rust(
          }
         }
     "#,
-    &["private final int id;", "private final String name;"],
+    &["private int id;", "private String name;"],
     &["public String getName() {", "public int getId() {"]
 )]
 #[case(
@@ -347,7 +347,7 @@ fn test_code_generation_in_rust(
          type: int // this will be a field in struct
         }
     "#,
-    &["private final int value;"],
+    &["private int value;"],
     &["public int getValue() {"]
 )]
 #[case(
@@ -358,7 +358,7 @@ fn test_code_generation_in_rust(
          element: string // this will be a sequence field in struct
         }
     "#,
-    &["private final ArrayList<String> value;"],
+    &["private ArrayList<String> value;"],
     &["public ArrayList<String> getValue() {"]
 )]
 #[case(
@@ -376,7 +376,7 @@ fn test_code_generation_in_rust(
             type: int
         }
     "#,
-    &["private final OtherType reference;"],
+    &["private OtherType reference;"],
     &["public OtherType getReference() {"]
 )]
 #[case(
@@ -389,7 +389,7 @@ fn test_code_generation_in_rust(
          }
         }
     "#,
-    &["private final AnonymousType1 anonymousType;"],
+    &["private AnonymousType1 anonymousType;"],
     &["public AnonymousType1 getAnonymousType() {"]
 )]
 /// Calls ion-cli beta generate with different schema file. Pass the test if the return value contains the expected properties and accessors.

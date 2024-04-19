@@ -26,17 +26,38 @@ class CodeGenTest {
          a.add("bar");
          a.add("baz");
          StructWithFields s = new StructWithFields("hello", 12, new AnonymousType2(a), 10e2);
+
+         // getter tests for `StructWithFields`
          assertEquals("hello", s.getA(), "s.getA() should return \"hello\"");
          assertEquals(12, s.getB(), "s.getB() should return `12`");
          assertEquals(3, s.getC().getValue().size(), "s.getC().getValue() should return ArrayList fo size 3");
          assertEquals(10e2, s.getD(), "s.getD() should return `10e2`");
+
+         // setter tests for `StructWithFields`
+         s.setA("hi");
+         assertEquals("hi", s.getA(), "s.getA() should return \"hi\"");
+         s.setB(6);
+         assertEquals(6, s.getB(), "s.getB() should return `6`");
+         s.setC(new AnonymousType2(new ArrayList<String>()));
+         assertEquals(true, s.getC().getValue().isEmpty(), "s.getC().isEmpty() should return `true`");
+         s.setD(11e3);
+         assertEquals(11e3 ,s.getD(), "s.getD() should return `11e3`");
     }
 
     @Test void getterAndSetterTestForNestedStruct() {
+         // getter tests for `NestedStruct`
          NestedStruct n = new NestedStruct("hello", 12, new AnonymousType1(false));
          assertEquals("hello", n.getA(), "n.getA() should return \"hello\"");
          assertEquals(12, n.getB(), "n.getB() should return `12`");
          assertEquals(false, n.getC().getD(), "n.getC().getD() should return `false`");
+
+         // setter tests for `NestedStruct`
+         n.setA("hi");
+         assertEquals("hi", n.getA(), "s.getA() should return \"hi\"");
+         n.setB(6);
+         assertEquals(6, n.getB(), "s.getB() should return `6`");
+         n.getC().setD(true);
+         assertEquals(true, n.getC().getD(), "s.getC().getD() should return `true`");
     }
 
     @Test void roundtripTestForStructWithFields() throws IOException {
