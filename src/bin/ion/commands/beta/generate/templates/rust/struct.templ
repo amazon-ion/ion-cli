@@ -1,12 +1,12 @@
 #[derive(Debug, Clone, Default)]
 pub struct {{ target_kind_name }} {
 {% for field in fields -%}
-         {{ field.name | snake | indent(first = true) }}: {{ field.value }},
+         {{ field.name | snake | indent(first = true) }}: {{ field.value_type }},
 {% endfor %}
 }
 
 impl {{ target_kind_name }} {
-    pub fn new({% for field in fields | sort(attribute="name") -%}{{ field.name | snake }}: {{ field.value }},{% endfor %}) -> Self {
+    pub fn new({% for field in fields | sort(attribute="name") -%}{{ field.name | snake }}: {{ field.value_type }},{% endfor %}) -> Self {
         Self {
             {% for field in fields -%}
             {{ field.name | snake }},
@@ -15,7 +15,7 @@ impl {{ target_kind_name }} {
     }
 
 
-    {% for field in fields -%}pub fn {{ field.name | snake }}(&self) -> &{{ field.value }} {
+    {% for field in fields -%}pub fn {{ field.name | snake }}(&self) -> &{{ field.value_type }} {
         &self.{{ field.name | snake }}
     }
     {% endfor %}
@@ -24,10 +24,10 @@ impl {{ target_kind_name }} {
     pub fn read_from(reader: &mut Reader) -> IonResult<Self> {
         let mut abstract_data_type = {{ target_kind_name }}::default();
         {% if abstract_data_type == "Value"%}
-            abstract_data_type.value = {% if fields[0].value | is_built_in_type == false %}
-                                            {{ fields[0].value }}::read_from(reader)?;
+            abstract_data_type.value = {% if fields[0].value_type | is_built_in_type == false %}
+                                            {{ fields[0].value_type }}::read_from(reader)?;
                                         {% else %}
-                                            reader.read_{% if fields[0].isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ fields[0].value | replace(from="string", to ="str") }}()?{% endif %}{% if fields[0].value | lower == "string" %} .to_string() {% endif %};
+                                            reader.read_{% if fields[0].isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ fields[0].value_type | replace(from="string", to ="str") }}()?{% endif %}{% if fields[0].value_type | lower == "string" %} .to_string() {% endif %};
                                         {% endif %}
         {% elif abstract_data_type is object and abstract_data_type is containing("Structure") %}
             reader.step_in()?;
@@ -35,10 +35,10 @@ impl {{ target_kind_name }} {
                 if let Some(field_name) = reader.field_name()?.text() {
                     match field_name {
                         {% for field in fields -%}
-                            {% if field.value | is_built_in_type == false %}
-                                 "{{ field.name }}" => { abstract_data_type.{{ field.name | snake }} = {{ field.value }}::read_from(reader)?; }
+                            {% if field.value_type | is_built_in_type == false %}
+                                 "{{ field.name }}" => { abstract_data_type.{{ field.name | snake }} = {{ field.value_type }}::read_from(reader)?; }
                             {% else %}
-                                "{{ field.name }}" => { abstract_data_type.{{ field.name | snake}} = reader.read_{% if field.isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ field.value | lower | replace(from="string", to ="str") }}()?{% endif %}{% if field.value | lower== "string" %} .to_string() {% endif %}; }
+                                "{{ field.name }}" => { abstract_data_type.{{ field.name | snake}} = reader.read_{% if field.isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ field.value_type | lower | replace(from="string", to ="str") }}()?{% endif %}{% if field.value_type | lower== "string" %} .to_string() {% endif %}; }
                             {% endif %}
                         {% endfor %}
                      _ => {
@@ -76,21 +76,21 @@ impl {{ target_kind_name }} {
     pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> IonResult<()> {
         {% if abstract_data_type == "Value" %}
             {% for field in fields %}
-                {% if field.value | is_built_in_type == false  %}
+                {% if field.value_type | is_built_in_type == false  %}
                     self.{{ field.name | snake }}.write_to(writer)?;
                 {% else %}
-                    writer.write_{% if field.isl_type_name == "symbol" %}symbol{% else %}{{ field.value | lower }}{% endif %}(self.value)?;
+                    writer.write_{% if field.isl_type_name == "symbol" %}symbol{% else %}{{ field.value_type | lower }}{% endif %}(self.value)?;
                 {% endif %}
             {% endfor %}
         {% elif abstract_data_type is object and abstract_data_type is containing("Structure") %}
             writer.step_in(IonType::Struct)?;
             {% for field in fields %}
             writer.set_field_name("{{ field.name }}");
-                {% if field.value | is_built_in_type == false %}
+                {% if field.value_type | is_built_in_type == false %}
                     self.{{ field.name | snake }}.write_to(writer)?;
                 {% else %}
                     {# TODO: Change the following `to_owned` to only be used when writing i64,f32,f64,bool which require owned value as input #}
-                    writer.write_{% if field.isl_type_name == "symbol" %}symbol{% else %}{{ field.value | lower }}{% endif %}(self.{{ field.name | snake }}.to_owned())?;
+                    writer.write_{% if field.isl_type_name == "symbol" %}symbol{% else %}{{ field.value_type | lower }}{% endif %}(self.{{ field.name | snake }}.to_owned())?;
                 {% endif %}
             {% endfor %}
             writer.step_out()?;

@@ -8,21 +8,21 @@ import java.io.IOException;
 
 public final class {{ target_kind_name }} {
 {% for field in fields -%}
-       private {{ field.value }} {{ field.name | camel }};
+       private {{ field.value_type }} {{ field.name | camel }};
 {% endfor %}
 
-    public {{ target_kind_name }}({% for field in fields | sort(attribute="name") -%}{{ field.value }} {{ field.name | camel }}{% if not loop.last %},{% endif %}{% endfor %}) {
+    public {{ target_kind_name }}({% for field in fields | sort(attribute="name") -%}{{ field.value_type }} {{ field.name | camel }}{% if not loop.last %},{% endif %}{% endfor %}) {
         {% for field in fields -%}
             this.{{ field.name | camel }} = {{ field.name | camel }};
         {% endfor %}
     }
 
-    {% for field in fields -%}public {{ field.value }} get{% filter upper_camel %}{{ field.name }}{% endfilter %}() {
+    {% for field in fields -%}public {{ field.value_type }} get{% filter upper_camel %}{{ field.name }}{% endfilter %}() {
         return this.{{ field.name | camel }};
     }
     {% endfor %}
 
-    {% for field in fields -%}public {{ field.value }} set{% filter upper_camel %}{{ field.name }}{% endfilter %}({{ field.value }} {{ field.name | camel }}) {
+    {% for field in fields -%}public {{ field.value_type }} set{% filter upper_camel %}{{ field.name }}{% endfilter %}({{ field.value_type }} {{ field.name | camel }}) {
         return this.{{ field.name | camel }} = {{ field.name | camel }};
     }
     {% endfor %}
@@ -37,10 +37,10 @@ public final class {{ target_kind_name }} {
     public static {{ target_kind_name }} readFrom(IonReader reader) {
         {# Intializes all the fields of this class #}
         {% for field in fields -%}
-            {{ field.value }} {{ field.name | camel }} =
-            {% if field.value == "boolean" %}
+            {{ field.value_type }} {{ field.name | camel }} =
+            {% if field.value_type == "boolean" %}
                 false
-            {% elif field.value == "int" or field.value == "double" %}
+            {% elif field.value_type == "int" or field.value_type == "double" %}
                 0
             {% else %}
                 null
@@ -48,14 +48,14 @@ public final class {{ target_kind_name }} {
         {% endfor %}
         {% if abstract_data_type == "Value"%}
             {# Reads `Value` class with a single field `value` #}
-            value = {% if fields[0].value | is_built_in_type %}
-                        {% if fields[0].value == "bytes[]" %}
+            value = {% if fields[0].value_type | is_built_in_type %}
+                        {% if fields[0].value_type == "bytes[]" %}
                             reader.newBytes();
                         {% else %}
-                            reader.{{ fields[0].value | camel }}Value();
+                            reader.{{ fields[0].value_type | camel }}Value();
                         {% endif %}
                      {% else %}
-                        {{ fields[0].value }}.readFrom(reader);
+                        {{ fields[0].value_type }}.readFrom(reader);
                      {% endif %}
         {% elif abstract_data_type is object and abstract_data_type is containing("Structure") %}
             {# Reads `Structure` class with multiple fields based on `field.name` #}
@@ -66,14 +66,14 @@ public final class {{ target_kind_name }} {
                 switch(fieldName) {
                     {% for field in fields %}
                     case "{{ field.name }}":
-                        {{ field.name | camel }} = {% if field.value | is_built_in_type %}
-                                                       {% if field.value == "bytes[]" %}
+                        {{ field.name | camel }} = {% if field.value_type | is_built_in_type %}
+                                                       {% if field.value_type == "bytes[]" %}
                                                             reader.newBytes();
                                                        {% else %}
-                                                            reader.{{ field.value | camel }}Value();
+                                                            reader.{{ field.value_type | camel }}Value();
                                                        {% endif %}
                                                     {% else %}
-                                                        {{ field.value }}.readFrom(reader);
+                                                        {{ field.value_type }}.readFrom(reader);
                                                     {% endif %}
                         break;
                     {% endfor %}
@@ -85,7 +85,7 @@ public final class {{ target_kind_name }} {
         {% elif abstract_data_type is object and abstract_data_type is containing("Sequence") %}
             {# Reads `Sequence` class with a single field `value` that is an `ArrayList` #}
             reader.stepIn();
-            value = new {{ fields[0].value }}();
+            value = new {{ fields[0].value_type }}();
             {# Iterate through the `ArraList` and read each element in it based on the data type provided in `abstract_data_type[Sequence]` #}
             while (reader.hasNext()) {
                 reader.next();
@@ -115,7 +115,7 @@ public final class {{ target_kind_name }} {
          {% if abstract_data_type == "Value" %}
             {# Writes `Value` class with a single field `value` as an Ion value #}
             {% for field in fields %}
-                {% if field.value | is_built_in_type == false  %}
+                {% if field.value_type | is_built_in_type == false  %}
                     this.{{ field.name | camel }}.writeTo(writer)?;
                 {% else %}
                     writer.write{{ field.isl_type_name | upper_camel }}(this.value);
@@ -126,7 +126,7 @@ public final class {{ target_kind_name }} {
              writer.stepIn(IonType.STRUCT);
              {% for field in fields %}
                  writer.setFieldName("{{ field.name }}");
-                 {% if field.value | is_built_in_type == false %}
+                 {% if field.value_type | is_built_in_type == false %}
                      this.{{ field.name | camel }}.writeTo(writer);
                  {% else %}
                      writer.write{{ field.isl_type_name | upper_camel }}(this.{{ field.name | camel }});
