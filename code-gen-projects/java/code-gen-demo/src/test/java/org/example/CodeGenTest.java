@@ -10,6 +10,7 @@ import com.amazon.ion.IonWriter;
 import com.amazon.ion.IonSystem;
 import com.amazon.ion.system.IonSystemBuilder;
 import com.amazon.ion.IonLoader;
+import com.amazon.ion.IonException;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -60,35 +61,75 @@ class CodeGenTest {
          assertEquals(true, n.getC().getD(), "s.getC().getD() should return `true`");
     }
 
-    @Test void roundtripTestForStructWithFields() throws IOException {
-        File f = new File("./../../input/struct_with_fields.ion");
-        InputStream inputStream = new FileInputStream(f);
-        IonTextWriterBuilder b = IonTextWriterBuilder.standard();
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        IonReaderBuilder readerBuilder = IonReaderBuilder.standard();
-        try (IonReader reader = readerBuilder.build(inputStream)) {
-            reader.next();
-            StructWithFields s = StructWithFields.readFrom(reader);
-            IonWriter writer = b.build(out);
-            s.writeTo(writer);
-            writer.close();
+    @Test void roundtripGoodTestForStructWithFields() throws IOException {
+        File dir = new File("./../../input/good/struct_with_fields");
+        String[] fileNames = dir.list();
+        for (String fileName : fileNames) {
+            File f = new File(dir, fileName);
+            InputStream inputStream = new FileInputStream(f);
+            IonTextWriterBuilder b = IonTextWriterBuilder.standard();
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            IonReaderBuilder readerBuilder = IonReaderBuilder.standard();
+            try (IonReader reader = readerBuilder.build(inputStream)) {
+                reader.next();
+                StructWithFields s = StructWithFields.readFrom(reader);
+                IonWriter writer = b.build(out);
+                s.writeTo(writer);
+                writer.close();
+                assertEquals(ionLoader.load(f), ionLoader.load(out.toByteArray()));
+            }
         }
-        assertEquals(ionLoader.load(f), ionLoader.load(out.toByteArray()));
     }
 
-    @Test void roundtripTestForNestedStruct() throws IOException {
-        File f = new File("./../../input/nested_struct.ion");
-        InputStream inputStream = new FileInputStream(f);
-        IonTextWriterBuilder b = IonTextWriterBuilder.standard();
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        IonReaderBuilder readerBuilder = IonReaderBuilder.standard();
-        try (IonReader reader = readerBuilder.build(inputStream)) {
-            reader.next();
-            NestedStruct n = NestedStruct.readFrom(reader);
-            IonWriter writer = b.build(out);
-            n.writeTo(writer);
-            writer.close();
+    @Test void roundtripBadTestForStructWithFields() throws IOException {
+        File dir = new File("./../../input/bad/struct_with_fields");
+        String[] fileNames = dir.list();
+        for (String fileName : fileNames) {
+            File f = new File(dir, fileName);
+            InputStream inputStream = new FileInputStream(f);
+            IonTextWriterBuilder b = IonTextWriterBuilder.standard();
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            IonReaderBuilder readerBuilder = IonReaderBuilder.standard();
+            try (IonReader reader = readerBuilder.build(inputStream)) {
+                reader.next();
+                assertThrows(Throwable.class, () -> { StructWithFields s = StructWithFields.readFrom(reader); });
+            }
         }
-        assertEquals(ionLoader.load(f), ionLoader.load(out.toByteArray()));
+    }
+
+    @Test void roundtripGoodTestForNestedStruct() throws IOException {
+        File dir = new File("./../../input/good/nested_struct");
+        String[] fileNames = dir.list();
+        for (String fileName : fileNames) {
+            File f = new File(dir, fileName);
+            InputStream inputStream = new FileInputStream(f);
+            IonTextWriterBuilder b = IonTextWriterBuilder.standard();
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            IonReaderBuilder readerBuilder = IonReaderBuilder.standard();
+            try (IonReader reader = readerBuilder.build(inputStream)) {
+                reader.next();
+                NestedStruct n = NestedStruct.readFrom(reader);
+                IonWriter writer = b.build(out);
+                n.writeTo(writer);
+                writer.close();
+                assertEquals(ionLoader.load(f), ionLoader.load(out.toByteArray()));
+            }
+        }
+    }
+
+    @Test void roundtripBadTestForNestedStruct() throws IOException {
+        File dir = new File("./../../input/bad/nested_struct");
+        String[] fileNames = dir.list();
+        for (String fileName : fileNames) {
+            File f = new File(dir, fileName);
+            InputStream inputStream = new FileInputStream(f);
+            IonTextWriterBuilder b = IonTextWriterBuilder.standard();
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            IonReaderBuilder readerBuilder = IonReaderBuilder.standard();
+            try (IonReader reader = readerBuilder.build(inputStream)) {
+                reader.next();
+                assertThrows(Throwable.class, () -> { NestedStruct n = NestedStruct.readFrom(reader); });
+            }
+        }
     }
 }

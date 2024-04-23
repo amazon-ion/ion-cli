@@ -1,3 +1,4 @@
+// nested struct with all valid fields
 {
  A: "hello",
  B: 12,

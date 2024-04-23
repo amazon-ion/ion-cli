@@ -8,5 +8,6 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[dependencies]
-ion-rs = {version = "1.0.0-rc.2", features = ["experimental"]}
+[dev-dependencies]
+ion-rs = { version = "1.0.0-rc.2", features = ["experimental"] }
+test-generator = "0.3"

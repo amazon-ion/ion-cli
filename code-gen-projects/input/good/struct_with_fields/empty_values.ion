@@ -1,0 +1,7 @@
+// struct with empty list, empty string and zeros
+{
+ C: [],
+ A: "",
+ B: 0,
+ D: 0e0,
+}
