@@ -1,7 +1,7 @@
 // nested struct with unordered fields
 {
- A: "hello",
  B: 12,
+ A: "hello",
  C: {
     D: false,
  }
