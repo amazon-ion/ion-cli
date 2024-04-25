@@ -10,6 +10,8 @@ mod tests {
     use ion_rs::ReaderBuilder;
     use ion_rs::TextWriterBuilder;
     use std::fs;
+    use test_generator::test_resources;
+
     include!(concat!(env!("OUT_DIR"), "/ion_generated_code.rs"));
 
     #[test]
@@ -18,12 +20,9 @@ mod tests {
         assert_eq!(result, 4);
     }
 
-    #[test]
-    fn test_roundtrip_generated_code_structs_with_fields() -> IonResult<()> {
-        let ion_string = fs::read_to_string(&format!(
-            "{}/../../input/struct_with_fields.ion",
-            env!("CARGO_MANIFEST_DIR")
-        ))?;
+    #[test_resources("../../input/good/struct_with_fields/**/*.ion")]
+    fn roundtrip_good_test_generated_code_structs_with_fields(file_name: &str) -> IonResult<()> {
+        let ion_string = fs::read_to_string(file_name)?;
         let mut reader = ReaderBuilder::new().build(ion_string.clone())?;
         let mut buffer = Vec::new();
         let mut text_writer = TextWriterBuilder::default().build(&mut buffer)?;
@@ -42,12 +41,21 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_roundtrip_generated_code_nested_structs() -> IonResult<()> {
-        let ion_string = fs::read_to_string(&format!(
-            "{}/../../input/nested_struct.ion",
-            env!("CARGO_MANIFEST_DIR")
-        ))?;
+    #[test_resources("../../input/bad/struct_with_fields/**/*.ion")]
+    fn roundtrip_bad_test_generated_code_structs_with_fields(file_name: &str) -> IonResult<()> {
+        let ion_string = fs::read_to_string(file_name)?;
+        let mut reader = ReaderBuilder::new().build(ion_string.clone())?;
+        // read given Ion value using Ion reader
+        reader.next()?;
+        let result = StructWithFields::read_from(&mut reader);
+        assert!(result.is_err());
+
+        Ok(())
+    }
+
+    #[test_resources("../../input/good/nested_struct/**/*.ion")]
+    fn roundtrip_good_test_generated_code_nested_structs(file_name: &str) -> IonResult<()> {
+        let ion_string = fs::read_to_string(file_name)?;
         let mut reader = ReaderBuilder::new().build(ion_string.clone())?;
         let mut buffer = Vec::new();
         let mut text_writer = TextWriterBuilder::default().build(&mut buffer)?;
@@ -62,6 +70,18 @@ mod tests {
             Element::read_one(text_writer.output().as_slice())?,
             (Element::read_one(&ion_string)?)
         );
+
+        Ok(())
+    }
+
+    #[test_resources("../../input/bad/nested_struct/**/*.ion")]
+    fn roundtrip_bad_test_generated_code_nested_structs(file_name: &str) -> IonResult<()> {
+        let ion_string = fs::read_to_string(file_name)?;
+        let mut reader = ReaderBuilder::new().build(ion_string.clone())?;
+        // read given Ion value using Ion reader
+        reader.next()?;
+        let result = NestedStruct::read_from(&mut reader);
+        assert!(result.is_err());
 
         Ok(())
     }

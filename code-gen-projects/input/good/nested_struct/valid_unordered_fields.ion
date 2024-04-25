@@ -1,0 +1,9 @@
+// nested struct with unordered fields
+{
+ B: 12,
+ A: "hello",
+ C: {
+    D: false,
+ }
+}
+

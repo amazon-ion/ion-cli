@@ -364,7 +364,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     ) -> CodeGenResult<()> {
         tera_fields.push(Field {
             name: field_name.to_string(),
-            value: abstract_data_type_name,
+            value_type: abstract_data_type_name,
             isl_type_name,
         });
         Ok(())

@@ -1,19 +1,149 @@
 package {{ namespace }};
 import java.util.ArrayList;
+import com.amazon.ion.IonReader;
+import com.amazon.ion.IonException;
+import com.amazon.ion.IonWriter;
+import com.amazon.ion.IonType;
+import java.io.IOException;
 
 public final class {{ target_kind_name }} {
 {% for field in fields -%}
-       private final {{ field.value }} {{ field.name | camel }};
+       private {{ field.value_type }} {{ field.name | camel }};
 {% endfor %}
 
-    public {{ target_kind_name }}({% for field in fields | sort(attribute="name") -%}{{ field.value }} {{ field.name | camel }}{% if not loop.last %},{% endif %}{% endfor %}) {
+    public {{ target_kind_name }}({% for field in fields | sort(attribute="name") -%}{{ field.value_type }} {{ field.name | camel }}{% if not loop.last %},{% endif %}{% endfor %}) {
         {% for field in fields -%}
             this.{{ field.name | camel }} = {{ field.name | camel }};
         {% endfor %}
     }
 
-    {% for field in fields -%}public {{ field.value }} get{% filter upper_camel %}{{ field.name }}{% endfilter %}() {
+    {% for field in fields -%}public {{ field.value_type }} get{% filter upper_camel %}{{ field.name }}{% endfilter %}() {
         return this.{{ field.name | camel }};
     }
     {% endfor %}
+
+    {% for field in fields -%}public {{ field.value_type }} set{% filter upper_camel %}{{ field.name }}{% endfilter %}({{ field.value_type }} {{ field.name | camel }}) {
+        return this.{{ field.name | camel }} = {{ field.name | camel }};
+    }
+    {% endfor %}
+
+
+    /**
+     * Reads a {{ target_kind_name }} from an {@link IonReader}.
+     *
+     * This method does not advance the reader at the current level.
+     * The caller is responsible for positioning the reader on the value to read.
+     */
+    public static {{ target_kind_name }} readFrom(IonReader reader) {
+        {# Intializes all the fields of this class #}
+        {% for field in fields -%}
+            {{ field.value_type }} {{ field.name | camel }} =
+            {% if field.value_type == "boolean" %}
+                false
+            {% elif field.value_type == "int" or field.value_type == "double" %}
+                0
+            {% else %}
+                null
+            {% endif %};
+        {% endfor %}
+        {% if abstract_data_type == "Value"%}
+            {# Reads `Value` class with a single field `value` #}
+            value = {% if fields[0].value_type | is_built_in_type %}
+                        {% if fields[0].value_type == "bytes[]" %}
+                            reader.newBytes();
+                        {% else %}
+                            reader.{{ fields[0].value_type | camel }}Value();
+                        {% endif %}
+                     {% else %}
+                        {{ fields[0].value_type }}.readFrom(reader);
+                     {% endif %}
+        {% elif abstract_data_type is object and abstract_data_type is containing("Structure") %}
+            {# Reads `Structure` class with multiple fields based on `field.name` #}
+            reader.stepIn();
+            while (reader.hasNext()) {
+                reader.next();
+                String fieldName = reader.getFieldName();
+                switch(fieldName) {
+                    {% for field in fields %}
+                    case "{{ field.name }}":
+                        {{ field.name | camel }} = {% if field.value_type | is_built_in_type %}
+                                                       {% if field.value_type == "bytes[]" %}
+                                                            reader.newBytes();
+                                                       {% else %}
+                                                            reader.{{ field.value_type | camel }}Value();
+                                                       {% endif %}
+                                                    {% else %}
+                                                        {{ field.value_type }}.readFrom(reader);
+                                                    {% endif %}
+                        break;
+                    {% endfor %}
+                    default:
+                        throw new IonException("Can not read field name:" + fieldName + " for {{ target_kind_name }} as it doesn't exist in the given schema type definition.");
+                }
+            }
+            reader.stepOut();
+        {% elif abstract_data_type is object and abstract_data_type is containing("Sequence") %}
+            {# Reads `Sequence` class with a single field `value` that is an `ArrayList` #}
+            reader.stepIn();
+            value = new {{ fields[0].value_type }}();
+            {# Iterate through the `ArraList` and read each element in it based on the data type provided in `abstract_data_type[Sequence]` #}
+            while (reader.hasNext()) {
+                reader.next();
+                {% if abstract_data_type["Sequence"] | is_built_in_type == false %}
+                    value.add({{ abstract_data_type["Sequence"] }}.readFrom(reader));
+                {% else %}
+                    {% if abstract_data_type["Sequence"] == "bytes[]" %}
+                        value.add(reader.newBytes());
+                    {% else %}
+                        value.add(reader.{{ abstract_data_type["Sequence"] | camel }}Value());
+                    {% endif %}
+                {% endif %}
+            }
+            reader.stepOut();
+        {% endif %}
+        return new {{ target_kind_name }}({% for field in fields | sort(attribute="name") -%}{{ field.name | camel }}{% if not loop.last %},{% endif %}{% endfor %});
+    }
+
+
+    /**
+     * Writes a {{ target_kind_name }} as Ion from an {@link IonWriter}.
+     *
+     * This method does not close the writer after writing is complete.
+     * The caller is responsible for closing the stream associated with the writer.
+     */
+    public void writeTo(IonWriter writer) throws IOException {
+         {% if abstract_data_type == "Value" %}
+            {# Writes `Value` class with a single field `value` as an Ion value #}
+            {% for field in fields %}
+                {% if field.value_type | is_built_in_type == false  %}
+                    this.{{ field.name | camel }}.writeTo(writer)?;
+                {% else %}
+                    writer.write{{ field.isl_type_name | upper_camel }}(this.value);
+                {% endif %}
+            {% endfor %}
+         {% elif abstract_data_type is object and abstract_data_type is containing("Structure") %}
+             {# Writes `Structure` class with multiple fields based on `field.name` as an Ion struct #}
+             writer.stepIn(IonType.STRUCT);
+             {% for field in fields %}
+                 writer.setFieldName("{{ field.name }}");
+                 {% if field.value_type | is_built_in_type == false %}
+                     this.{{ field.name | camel }}.writeTo(writer);
+                 {% else %}
+                     writer.write{{ field.isl_type_name | upper_camel }}(this.{{ field.name | camel }});
+                 {% endif %}
+             {% endfor %}
+             writer.stepOut();
+         {% elif abstract_data_type is object and abstract_data_type is containing("Sequence") %}
+            {# Writes `Sequence` class with a single field `value` that is an `ArrayList` as an Ion sequence #}
+            writer.stepIn(IonType.LIST);
+            for ({{ abstract_data_type["Sequence"] }} value: this.value) {
+                 {% if abstract_data_type["Sequence"] | is_built_in_type  == false %}
+                    value.writeTo(writer);
+                 {% else %}
+                    writer.write{{ abstract_data_type["Sequence"] | upper_camel }}(value);
+                 {% endif %}
+            }
+            writer.stepOut();
+        {% endif %}
+    }
 }

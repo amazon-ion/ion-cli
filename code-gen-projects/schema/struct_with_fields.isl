@@ -3,7 +3,8 @@ type::{
  fields: {
     A: string,
     B: int,
-    C: { element: string }
+    C: { element: string },
+    D: float,
  }
 }
 

@@ -9,7 +9,7 @@ use std::fmt::{Display, Formatter};
 #[derive(Serialize)]
 pub struct Field {
     pub(crate) name: String,
-    pub(crate) value: String,
+    pub(crate) value_type: String,
     pub(crate) isl_type_name: String,
 }
 
@@ -88,7 +88,7 @@ impl Language for JavaLanguage {
     }
 
     fn is_built_in_type(name: &str) -> bool {
-        matches!(name, "int" | "String" | "boolean" | "byte[]" | "float")
+        matches!(name, "int" | "String" | "boolean" | "byte[]" | "double")
     }
 
     fn template_name(template: &Template) -> String {
