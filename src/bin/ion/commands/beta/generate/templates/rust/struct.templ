@@ -21,7 +21,7 @@ impl {{ target_kind_name }} {
     {% endfor %}
 
 
-    pub fn read_from(reader: &mut Reader) -> IonResult<Self> {
+    pub fn read_from(reader: &mut Reader) -> SerdeResult<Self> {
         let mut abstract_data_type = {{ target_kind_name }}::default();
         {% if abstract_data_type == "Value"%}
             abstract_data_type.value = {% if fields[0].value_type | is_built_in_type == false %}
@@ -43,7 +43,7 @@ impl {{ target_kind_name }} {
                         {% endfor %}
                      _ => {
                         {% if abstract_data_type["Structure"] %}
-                            return IonResult::decoding_error(
+                            return deserialization_error(
                                 "Can not read field name:{{ field.name }} for {{ target_kind_name }} as it doesn't exist in the given schema type definition."
                             );
                         {% endif %}
@@ -53,27 +53,41 @@ impl {{ target_kind_name }} {
             }
             reader.step_out()?;
         {% elif abstract_data_type is object and abstract_data_type is containing("Sequence")  %}
+            {% if abstract_data_type["Sequence"].sequence_type == "list" %}
+                if reader.ion_type() != Some(IonType::List) {
+                    return deserialization_error(format!(
+                       "Expected list, found {} while reading {{ target_kind_name }}.", reader.ion_type().unwrap()
+                    ));
+                }
+            {% elif abstract_data_type["Sequence"].sequence_type == "sexp" %}
+                if reader.ion_type() != Some(IonType::SExp) {
+                   return deserialization_error(format!(
+                       "Expected sexpression, found {} while reading {{ target_kind_name }}.", reader.ion_type().unwrap()
+                   ));
+                }
+            {% endif %}
              reader.step_in()?;
+
              abstract_data_type.value = {
                  let mut values = vec![];
 
                  while reader.next()? != StreamItem::Nothing {
-                    {% if abstract_data_type["Sequence"] | is_built_in_type == false %}
-                        values.push({{ abstract_data_type["Sequence"] }}::read_from(reader)?);
+                    {% if abstract_data_type["Sequence"].element_type | is_built_in_type == false %}
+                        values.push({{ abstract_data_type["Sequence"].element_type }}::read_from(reader)?);
                     {% else %}
-                        values.push(reader.read_{% if fields[0].isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ abstract_data_type["Sequence"] | lower | replace(from="string", to ="str") }}()?{% endif %}{% if abstract_data_type["Sequence"] | lower== "string" %} .to_string() {% endif %});
+                        values.push(reader.read_{% if fields[0].isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ abstract_data_type["Sequence"].element_type | lower | replace(from="string", to ="str") }}()?{% endif %}{% if abstract_data_type["Sequence"].element_type | lower== "string" %} .to_string() {% endif %});
                     {% endif %}
                 }
                 values
              };
              reader.step_out()?;
         {% else %}
-            return IonResult::decoding_error("Can not resolve read API template for {{ target_kind_name }}");
+            return deserialization_error("Can not resolve read API template for {{ target_kind_name }}");
         {% endif %}
      Ok(abstract_data_type)
     }
 
-    pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> IonResult<()> {
+    pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> SerdeResult<()> {
         {% if abstract_data_type == "Value" %}
             {% for field in fields %}
                 {% if field.value_type | is_built_in_type == false  %}
@@ -95,12 +109,16 @@ impl {{ target_kind_name }} {
             {% endfor %}
             writer.step_out()?;
         {% elif abstract_data_type is object and abstract_data_type is containing("Sequence")  %}
-            writer.step_in(IonType::List)?;
+            {% if abstract_data_type["Sequence"].sequence_type == "list" %}
+                writer.step_in(IonType::List)?;
+            {% else %}
+                writer.step_in(IonType::SExp)?;
+            {% endif %}
             for value in &self.value {
-                {% if abstract_data_type["Sequence"] | is_built_in_type  == false %}
+                {% if abstract_data_type["Sequence"].element_type | is_built_in_type  == false %}
                     value.write_to(writer)?;
                 {% else %}
-                   writer.write_{% if fields[0].isl_type_name == "symbol" %}symbol{% else %}{{ abstract_data_type["Sequence"] | lower }}{% endif %}(value.to_owned())?;
+                   writer.write_{% if fields[0].isl_type_name == "symbol" %}symbol{% else %}{{ abstract_data_type["Sequence"].element_type | lower }}{% endif %}(value.to_owned())?;
                 {% endif %}
             }
             writer.step_out()?;

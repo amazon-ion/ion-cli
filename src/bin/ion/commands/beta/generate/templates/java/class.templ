@@ -84,18 +84,27 @@ public final class {{ target_kind_name }} {
             reader.stepOut();
         {% elif abstract_data_type is object and abstract_data_type is containing("Sequence") %}
             {# Reads `Sequence` class with a single field `value` that is an `ArrayList` #}
+            {% if abstract_data_type["Sequence"].sequence_type == "list" %}
+                if(reader.getType() != IonType.LIST) {
+                    throw new IonException("Expected list, found" + reader.getType() + "while reading {{ target_kind_name }}.");
+                }
+            {% elif abstract_data_type["Sequence"].sequence_type == "sexp" %}
+                if(reader.getType() != IonType.SEXP) {
+                   throw new IonException("Expected sexpression, found" + reader.getType() + "while reading {{ target_kind_name }}.");
+                }
+            {% endif %}
             reader.stepIn();
             value = new {{ fields[0].value_type }}();
             {# Iterate through the `ArraList` and read each element in it based on the data type provided in `abstract_data_type[Sequence]` #}
             while (reader.hasNext()) {
                 reader.next();
-                {% if abstract_data_type["Sequence"] | is_built_in_type == false %}
-                    value.add({{ abstract_data_type["Sequence"] }}.readFrom(reader));
+                {% if abstract_data_type["Sequence"].element_type | is_built_in_type == false %}
+                    value.add({{ abstract_data_type["Sequence"].element_type }}.readFrom(reader));
                 {% else %}
-                    {% if abstract_data_type["Sequence"] == "bytes[]" %}
+                    {% if abstract_data_type["Sequence"].element_type == "bytes[]" %}
                         value.add(reader.newBytes());
                     {% else %}
-                        value.add(reader.{{ abstract_data_type["Sequence"] | camel }}Value());
+                        value.add(reader.{{ abstract_data_type["Sequence"].element_type | camel }}Value());
                     {% endif %}
                 {% endif %}
             }
@@ -135,12 +144,16 @@ public final class {{ target_kind_name }} {
              writer.stepOut();
          {% elif abstract_data_type is object and abstract_data_type is containing("Sequence") %}
             {# Writes `Sequence` class with a single field `value` that is an `ArrayList` as an Ion sequence #}
-            writer.stepIn(IonType.LIST);
-            for ({{ abstract_data_type["Sequence"] }} value: this.value) {
-                 {% if abstract_data_type["Sequence"] | is_built_in_type  == false %}
+            {% if abstract_data_type["Sequence"].sequence_type == "list" %}
+                writer.stepIn(IonType.LIST);
+            {% else %}
+                writer.stepIn(IonType.SEXP);
+            {% endif %}
+            for ({{ abstract_data_type["Sequence"].element_type }} value: this.value) {
+                 {% if abstract_data_type["Sequence"].element_type | is_built_in_type  == false %}
                     value.writeTo(writer);
                  {% else %}
-                    writer.write{{ abstract_data_type["Sequence"] | upper_camel }}(value);
+                    writer.write{{ abstract_data_type["Sequence"].element_type | upper_camel }}(value);
                  {% endif %}
             }
             writer.stepOut();
