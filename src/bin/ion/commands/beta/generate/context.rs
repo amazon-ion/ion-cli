@@ -38,7 +38,8 @@ pub enum AbstractDataType {
     // }
     // ```
     Value,
-    // A series of zero or more values whose type is described by the nested `String` (e.g. a list)
+    // A series of zero or more values whose type is described by the nested `element_type`
+    // and sequence type is described by nested `sequence_type` (e.g. a list)
     // e.g. Given below ISL,
     // ```
     // type::{
@@ -52,7 +53,10 @@ pub enum AbstractDataType {
     //    value: Vec<i64>
     // }
     // ```
-    Sequence(String),
+    Sequence {
+        element_type: String,
+        sequence_type: String,
+    },
     // A collection of field name/value pairs (e.g. a map)
     // the nested boolean represents whether the struct has closed fields or not
     // e.g. Given below ISL,
@@ -75,6 +79,22 @@ pub enum AbstractDataType {
     Structure(bool),
 }
 
+impl AbstractDataType {
+    pub fn element_type(&self) -> Option<&String> {
+        match self {
+            AbstractDataType::Sequence { element_type, .. } => Some(element_type),
+            _ => None,
+        }
+    }
+
+    pub fn sequence_type(&self) -> Option<&String> {
+        match self {
+            AbstractDataType::Sequence { sequence_type, .. } => Some(sequence_type),
+            _ => None,
+        }
+    }
+}
+
 impl Display for AbstractDataType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -82,7 +102,7 @@ impl Display for AbstractDataType {
             "{}",
             match self {
                 AbstractDataType::Value => "single value struct",
-                AbstractDataType::Sequence(_) => "sequence value struct",
+                AbstractDataType::Sequence { .. } => "sequence value struct",
                 AbstractDataType::Structure(_) => "struct",
             }
         )

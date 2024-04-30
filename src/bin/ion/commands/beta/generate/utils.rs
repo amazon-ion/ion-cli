@@ -74,13 +74,21 @@ impl Language for JavaLanguage {
             Float => "double",
             Bool => "boolean",
             Blob | Clob => "byte[]",
+            List | SExp => "Object",
             SchemaDefined(name) => name,
         }
         .to_string()
     }
 
     fn target_type_as_sequence(target_type: &str) -> String {
-        format!("ArrayList<{}>", target_type)
+        match JavaLanguage::wrapper_class(target_type) {
+            Some(wrapper_class_name) => {
+                format!("ArrayList<{}>", wrapper_class_name)
+            }
+            None => {
+                format!("ArrayList<{}>", target_type)
+            }
+        }
     }
 
     fn field_name_case() -> Case {
@@ -94,6 +102,21 @@ impl Language for JavaLanguage {
     fn template_name(template: &Template) -> String {
         match template {
             Template::Struct => "class".to_string(),
+        }
+    }
+}
+
+impl JavaLanguage {
+    fn wrapper_class(primitive_data_type_name: &str) -> Option<&str> {
+        match primitive_data_type_name {
+            "int" => Some("Integer"),
+            "bool" => Some("Boolean"),
+            "double" => Some("Double"),
+            "long" => Some("Long"),
+            _ => {
+                // for any other non-primitive types return None
+                None
+            }
         }
     }
 }
@@ -127,6 +150,7 @@ impl Language for RustLanguage {
             Float => "f64",
             Bool => "bool",
             Blob | Clob => "Vec<u8>",
+            List | SExp => "T",
             SchemaDefined(name) => name,
         }
         .to_string()
@@ -192,6 +216,8 @@ pub enum IonSchemaType {
     Bool,
     Blob,
     Clob,
+    SExp,
+    List,
     SchemaDefined(String), // A user defined schema type
 }
 
@@ -215,9 +241,11 @@ impl From<&str> for IonSchemaType {
             "decimal" | "timestamp" => {
                 unimplemented!("Decimal, Number and Timestamp aren't support yet!")
             }
-            "list" | "struct" | "sexp" => {
+            "struct" => {
                 unimplemented!("Generic containers aren't supported yet!")
             }
+            "list" => List,
+            "sexp" => SExp,
             _ => SchemaDefined(value.to_case(Case::UpperCamel)),
         }
     }

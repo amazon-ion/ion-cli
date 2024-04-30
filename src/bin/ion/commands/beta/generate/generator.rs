@@ -312,8 +312,13 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         match constraint.constraint() {
             IslConstraintValue::Element(isl_type, _) => {
                 let type_name = self.type_reference_name(isl_type)?;
-                self.verify_abstract_data_type_consistency(
-                    AbstractDataType::Sequence(type_name.to_owned()),
+
+                self.verify_and_update_abstract_data_type(
+                    AbstractDataType::Sequence {
+                        element_type: type_name.to_owned(),
+                        sequence_type: "list".to_string(),
+                    },
+                    tera_fields,
                     code_gen_context,
                 )?;
                 self.generate_struct_field(
@@ -325,8 +330,9 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             }
             IslConstraintValue::Fields(fields, content_closed) => {
                 // TODO: Check for `closed` annotation on fields and based on that return error while reading if there are extra fields.
-                self.verify_abstract_data_type_consistency(
+                self.verify_and_update_abstract_data_type(
                     AbstractDataType::Structure(*content_closed),
+                    tera_fields,
                     code_gen_context,
                 )?;
                 for (name, value) in fields.iter() {
@@ -343,11 +349,39 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             IslConstraintValue::Type(isl_type) => {
                 let type_name = self.type_reference_name(isl_type)?;
 
-                self.verify_abstract_data_type_consistency(
-                    AbstractDataType::Value,
+                self.verify_and_update_abstract_data_type(
+                    if isl_type.name() == "list" {
+                        let abstract_data_type = AbstractDataType::Sequence {
+                            element_type: type_name.clone(),
+                            sequence_type: "list".to_string(),
+                        };
+                        abstract_data_type
+                    } else if isl_type.name() == "sexp" {
+                        let abstract_data_type = AbstractDataType::Sequence {
+                            element_type: type_name.clone(),
+                            sequence_type: "sexp".to_string(),
+                        };
+                        abstract_data_type
+                    } else {
+                        AbstractDataType::Value
+                    },
+                    tera_fields,
                     code_gen_context,
                 )?;
-                self.generate_struct_field(tera_fields, type_name, isl_type.name(), "value")?;
+
+                // if the abstract data type is a sequence then pass the type name as the updated `element_type`.
+                if let Some(AbstractDataType::Sequence { element_type, .. }) =
+                    &code_gen_context.abstract_data_type
+                {
+                    self.generate_struct_field(
+                        tera_fields,
+                        L::target_type_as_sequence(element_type),
+                        isl_type.name(),
+                        "value",
+                    )?;
+                } else {
+                    self.generate_struct_field(tera_fields, type_name, isl_type.name(), "value")?;
+                }
             }
             _ => {}
         }
@@ -373,6 +407,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     /// Verify that the current abstract data type is same as previously determined abstract data type
     /// This is referring to abstract data type determined with each constraint that is verifies
     /// that all the constraints map to a single abstract data type and not different abstract data types.
+    /// Also, updates the underlying `element_type` for List and SExp.
     /// e.g.
     /// ```
     /// type::{
@@ -386,14 +421,95 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     /// ```
     /// For the above schema, both `fields` and `type` constraints map to different abstract data types
     /// respectively Struct(with given fields `source` and `destination`) and Value(with a single field that has String data type).
-    fn verify_abstract_data_type_consistency(
+    fn verify_and_update_abstract_data_type(
         &mut self,
         current_abstract_data_type: AbstractDataType,
+        tera_fields: &mut Vec<Field>,
         code_gen_context: &mut CodeGenContext,
     ) -> CodeGenResult<()> {
         if let Some(abstract_data_type) = &code_gen_context.abstract_data_type {
-            if abstract_data_type != &current_abstract_data_type {
-                return invalid_abstract_data_type_error(format!("Can not determine abstract data type as current constraint {} conflicts with prior constraints for {}.", current_abstract_data_type, abstract_data_type));
+            match abstract_data_type {
+                // In the case when a `type` constraint occurs before `element` constraint. The element type for the sequence
+                // needs to be updated based on `element` constraint whereas sequence type will be used as per `type` constraint.
+                // e.g. For a schema as below:
+                // ```
+                // type::{
+                //   name: sequence_type,
+                //   type: sexp,
+                //   element: string,
+                // }
+                // ```
+                // Here, first `type` constraint would set the `AbstractDataType::Sequence{ element_type: T, sequence_type: "sexp"}`
+                // which uses generic type T and sequence type is sexp. Next `element` constraint would
+                // set the `AbstractDataType::Sequence{ element_type: String, sequence_type: "list"}`.
+                // Now this method performs verification that if the above described case occurs
+                // then it updates the `element_type` as per `element` constraint
+                // and `sequence_type` as per `type` constraint.
+                AbstractDataType::Sequence {
+                    element_type,
+                    sequence_type,
+                } if abstract_data_type != &current_abstract_data_type
+                    && (element_type == "Object" || element_type == "T")
+                    && matches!(
+                        &current_abstract_data_type,
+                        &AbstractDataType::Sequence { .. }
+                    ) =>
+                {
+                    // if current abstract data type is sequence and element_type is generic T or Object,
+                    // then this was set by a `type` constraint in sequence field,
+                    // so remove all previous fields that allows `Object` and update with current abstract_data_type.
+                    tera_fields.pop();
+                    code_gen_context.with_abstract_data_type(AbstractDataType::Sequence {
+                        element_type: current_abstract_data_type
+                            .element_type()
+                            .unwrap()
+                            .to_string(),
+                        sequence_type: sequence_type.to_string(),
+                    });
+                }
+                // In the case when a `type` constraint occurs before `element` constraint. The element type for the sequence
+                // needs to be updated based on `element` constraint whereas sequence type will be used as per `type` constraint.
+                // e.g. For a schema as below:
+                // ```
+                // type::{
+                //   name: sequence_type,
+                //   element: string,
+                //   type: sexp,
+                // }
+                // ```
+                // Here, first `element` constraint would set the `AbstractDataType::Sequence{ element_type: String, sequence_type: "list"}` ,
+                // Next `type` constraint would set the `AbstractDataType::Sequence{ element_type: T, sequence_type: "sexp"}`
+                // which uses generic type `T` and sequence type is sexp. Now this method performs verification that
+                // if the above described case occurs then it updates the `element_type` as per `element` constraint
+                // and `sequence_type` as per `type` constraint.
+                AbstractDataType::Sequence { element_type, .. }
+                    if abstract_data_type != &current_abstract_data_type
+                        && (current_abstract_data_type.element_type()
+                            == Some(&"Object".to_string())
+                            || current_abstract_data_type.element_type()
+                                == Some(&"T".to_string()))
+                        && matches!(
+                            &current_abstract_data_type,
+                            &AbstractDataType::Sequence { .. }
+                        ) =>
+                {
+                    // if `element` constraint has already set the abstract data_type to `Sequence`
+                    // then remove previous fields as new fields will be added again after updating `element_type`.
+                    // `type` constraint does update the ISL type name to either `list` or `sexp`,
+                    // which needs to be updated within `abstract_data_type` as well.
+                    tera_fields.pop();
+                    code_gen_context.with_abstract_data_type(AbstractDataType::Sequence {
+                        element_type: element_type.to_string(),
+                        sequence_type: current_abstract_data_type
+                            .sequence_type()
+                            .unwrap()
+                            .to_string(),
+                    })
+                }
+                _ if abstract_data_type != &current_abstract_data_type => {
+                    return invalid_abstract_data_type_error(format!("Can not determine abstract data type as current constraint {} conflicts with prior constraints for {}.", current_abstract_data_type, abstract_data_type));
+                }
+                _ => {}
             }
         } else {
             code_gen_context.with_abstract_data_type(current_abstract_data_type);
