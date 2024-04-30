@@ -5,7 +5,8 @@ type::{
     B: int,
     C: {
         fields: {
-            D: bool
+            D: bool,
+            E: { element: int } // default sequence type is `list`
         }
     }
  }

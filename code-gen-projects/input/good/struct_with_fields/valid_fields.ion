@@ -2,6 +2,6 @@
 {
  A: "hello",
  B: 12,
- C: ["foo", "bar", "baz"],
+ C: ("foo" "bar" "baz"),
  D: 10e2
 }
