@@ -38,7 +38,10 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
         .unwrap();
 
         // Render the imports into output file
-        let rendered = tera.render("import.templ", &Context::new()).unwrap();
+        let rendered_import = tera.render("import.templ", &Context::new()).unwrap();
+        // Render the SerdeResult that is used in generated read-write APIs
+        let rendered_result = tera.render("result.templ", &Context::new()).unwrap();
+
         let mut file = OpenOptions::new()
             // In order for the file to be created, OpenOptions::write or OpenOptions::append access must be used
             // reference: https://doc.rust-lang.org/std/fs/struct.OpenOptions.html#method.create
@@ -47,7 +50,8 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
             .create(true)
             .open(output.join("ion_generated_code.rs"))
             .unwrap();
-        file.write_all(rendered.as_bytes()).unwrap();
+        file.write_all(rendered_import.as_bytes()).unwrap();
+        file.write_all(rendered_result.as_bytes()).unwrap();
 
         Self {
             output,

@@ -1,0 +1,32 @@
+/// Represents serde result
+pub type SerdeResult<T> = Result<T, SerdeError>;
+
+/// Represents an error found during code generation
+#[derive(Debug)]
+pub enum SerdeError {
+    IonError { source: IonError },
+    SerializationError { description: String },
+    DeserializationError { description: String },
+}
+
+/// A convenience method for creating an SerdeError::SerializationError
+/// with the provided description text.
+pub fn serialization_error<T, S: AsRef<str>>(description: S) -> SerdeResult<T> {
+    Err(SerdeError::SerializationError {
+        description: description.as_ref().to_string(),
+    })
+}
+
+/// A convenience method for creating an SerdeError::DeserializationError
+/// with the provided description text.
+pub fn deserialization_error<T, S: AsRef<str>>(description: S) -> SerdeResult<T> {
+    Err(SerdeError::DeserializationError {
+        description: description.as_ref().to_string(),
+    })
+}
+
+impl From<IonError> for SerdeError {
+    fn from(value: IonError) -> Self {
+        SerdeError::IonError { source: value }
+    }
+}
