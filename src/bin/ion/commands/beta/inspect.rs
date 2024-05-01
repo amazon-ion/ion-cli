@@ -1,19 +1,27 @@
-use std::cmp::min;
-use std::fmt::{Display, Write};
+use std::fmt::Display;
 use std::fs::File;
 use std::io;
-use std::io::BufWriter;
-use std::ops::Range;
-use std::str::{from_utf8_unchecked, FromStr};
+use std::io::Write;
+use std::str::FromStr;
+
+use anyhow::{Context, Result};
+use clap::{Arg, ArgMatches, Command};
+use new_ion_rs::*;
 
 use crate::commands::{IonCliCommand, WithIonCliArgument};
-use anyhow::{bail, Context, Result};
-use clap::{Arg, ArgMatches, Command};
-use colored::Colorize;
-use ion_rs::*;
-use memmap::MmapOptions;
-#[cfg(not(target_os = "windows"))]
-use pager::Pager;
+
+// The `inspect` command uses the `termcolor` crate to colorize its text when STDOUT is a TTY.
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, StandardStreamLock, WriteColor};
+// When writing to a named file instead of STDOUT, `inspect` will use a `FileWriter` instead.
+// `FileWriter` ignores all requests to emit TTY color escape codes.
+use crate::file_writer::FileWriter;
+
+
+// * The output stream could be STDOUT or a file handle, so we use `dyn io::Write` to abstract
+//   over the two implementations.
+// * The Drop implementation will ensure that the output stream is flushed when the last reference
+//   is dropped, so we don't need to do that manually.
+type OutputRef<'a> = Box<dyn WriteColor + 'a>;
 
 pub struct InspectCommand;
 
@@ -40,12 +48,11 @@ impl IonCliCommand for InspectCommand {
                     .help("Do not display any user values for the first `n` bytes of Ion data.")
                     .long_help(
                         "When specified, the inspector will skip ahead `n` bytes before
-beginning to display the contents of the stream. System values like
-Ion version markers and symbol tables in the bytes being skipped will
-still be displayed. If the requested number of bytes falls in the
-middle of a value, the whole value (complete with field ID and
-annotations if applicable) will be displayed. If the value is nested
-in one or more containers, those containers will be displayed too.",
+beginning to display the contents of the stream. If the requested number
+of bytes falls in the middle of a scalar, the whole value (complete with
+field ID and annotations if applicable) will be displayed. If the value
+is nested in one or more containers, the opening delimiters of those
+containers be displayed.",
                     ),
             )
             .arg(
@@ -58,24 +65,28 @@ in one or more containers, those containers will be displayed too.",
                     .help("Only display the next 'n' bytes of Ion data.")
                     .long_help(
                         "When specified, the inspector will stop printing values after
-processing `n` bytes of Ion data. If `n` falls within a value, the
-complete value will be displayed.",
+processing `n` bytes of Ion data. If `n` falls within a scalar, the
+complete value will be displayed. If `n` falls within one or more containers,
+the closing delimiters for those containers will be displayed. If this flag
+is used with `--skip-bytes`, `n` is counted from the beginning of the first
+value start after `--skip-bytes`.
+",
                     ),
             )
     }
 
-    #[cfg(not(target_os = "windows"))] // TODO find a cross-platform pager implementation.
-    fn set_up_pager(&self) {
-        // Direct output to the pager specified by the PAGER environment variable, or "less -FIRX"
-        // if the environment variable is not set. Note: a pager is not used if the output is not
-        // a TTY.
-        Pager::with_default_pager("less -FIRX").setup();
-    }
-
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
-        self.set_up_pager();
+        // On macOS and Linux, the `inspect` command's output will automatically be rerouted to a paging
+        // utility like `less` when STDOUT is a TTY.
+        // TODO find a cross-platform pager implementation.
+        #[cfg(not(target_os = "windows"))]
+        {
+            // If STDOUT is a TTY, direct output to the pager specified by the PAGER environment
+            // variable, or "less -FIRX" if the environment variable is not set.
+            pager::Pager::with_default_pager("less -FIRX").setup();
+        }
 
-        // --skip-bytes has a default value, so we can unwrap this safely.
+        // `--skip-bytes` has a default value, so we can unwrap this safely.
         let skip_bytes_arg = args.get_one::<String>("skip-bytes").unwrap().as_str();
 
         let bytes_to_skip = usize::from_str(skip_bytes_arg)
@@ -83,7 +94,7 @@ complete value will be displayed.",
             // will be displayed if it bubbles up to the end user.
             .with_context(|| format!("Invalid value for '--skip-bytes': '{}'", skip_bytes_arg))?;
 
-        // --limit-bytes has a default value, so we can unwrap this safely.
+        // `--limit-bytes` has a default value, so we can unwrap this safely.
         let limit_bytes_arg = args.get_one::<String>("limit-bytes").unwrap().as_str();
 
         let mut limit_bytes = usize::from_str(limit_bytes_arg)
@@ -92,18 +103,28 @@ complete value will be displayed.",
         // If unset, --limit-bytes is effectively usize::MAX. However, it's easier on users if we let
         // them specify "0" on the command line to mean "no limit".
         if limit_bytes == 0 {
-            limit_bytes = usize::MAX
+            limit_bytes = usize::MAX;
         }
+
+        // These types are provided by the `termcolor` crate. They wrap the normal `io::Stdout` and
+        // `io::StdOutLock` types, making it possible to write colorful text to the output stream when
+        // it's a TTY that understands formatting escape codes. These variables are declared here so
+        // the lifetime will extend through the remainder of the function. Unlike `io::StdoutLock`,
+        // the `StandardStreamLock` does not have a static lifetime.
+        let stdout: StandardStream;
+        let stdout_lock: StandardStreamLock<'_>;
 
         // If the user has specified an output file, use it.
         let mut output: OutputRef = if let Some(file_name) = args.get_one::<String>("output") {
             let output_file = File::create(file_name)
-                .with_context(|| format!("Could not open '{}'", file_name))?;
-            let buf_writer = BufWriter::new(output_file);
-            Box::new(buf_writer)
+                .with_context(|| format!("Could not open output file '{file_name}' for writing"))?;
+            let file_writer = FileWriter::new(output_file);
+            Box::new(file_writer)
         } else {
             // Otherwise, write to STDOUT.
-            Box::new(io::stdout().lock())
+            stdout = StandardStream::stdout(ColorChoice::Always);
+            stdout_lock = stdout.lock();
+            Box::new(stdout_lock)
         };
 
         // Run the inspector on each input file that was specified.
@@ -111,7 +132,7 @@ complete value will be displayed.",
             for input_file_name in input_file_iter {
                 let input_file = File::open(input_file_name)
                     .with_context(|| format!("Could not open '{}'", input_file_name))?;
-                inspect_file(
+                inspect_input(
                     input_file_name,
                     input_file,
                     &mut output,
@@ -120,32 +141,11 @@ complete value will be displayed.",
                 )?;
             }
         } else {
+            let stdin_lock = io::stdin().lock();
             // If no input file was specified, run the inspector on STDIN.
-
-            // The inspector expects its input to be a byte array or mmap()ed file acting as a byte
-            // array. If the user wishes to provide data on STDIN, we'll need to copy those bytes to
-            // a temporary file and then read from that.
-
-            // Create a temporary file that will delete itself when the program ends.
-            let mut input_file = tempfile::tempfile().with_context(|| {
-                concat!(
-                    "Failed to create a temporary file to store STDIN.",
-                    "Try passing an --input flag instead."
-                )
-            })?;
-
-            // Pipe the data from STDIN to the temporary file.
-            let mut writer = BufWriter::new(input_file);
-            io::copy(&mut io::stdin(), &mut writer)
-                .with_context(|| "Failed to copy STDIN to a temp file.")?;
-            // Get our file handle back from the BufWriter
-            input_file = writer
-                .into_inner()
-                .with_context(|| "Failed to read from temp file containing STDIN data.")?;
-            // Read from the now-populated temporary file.
-            inspect_file(
-                "STDIN temp file",
-                input_file,
+            inspect_input(
+                "STDIN",
+                stdin_lock,
                 &mut output,
                 bytes_to_skip,
                 limit_bytes,
@@ -155,578 +155,847 @@ complete value will be displayed.",
     }
 }
 
-// Create a type alias to simplify working with a shared reference to our output stream.
-type OutputRef = Box<dyn io::Write>;
-// * The output stream could be STDOUT or a file handle, so we use `dyn io::Write` to abstract
-//   over the two implementations.
-// * The Drop implementation will ensure that the output stream is flushed when the last reference
-//   is dropped, so we don't need to do that manually.
-
-// Given a file, try to mmap() it and run the inspector over the resulting byte array.
-fn inspect_file(
-    input_file_name: &str,
-    input_file: File,
+/// Prints a table showing the offset, length, binary encoding, and text encoding of the Ion stream
+/// contained in `input`.
+fn inspect_input<Input: IonInput>(
+    input_name: &str,
+    input: Input,
     output: &mut OutputRef,
     bytes_to_skip: usize,
     limit_bytes: usize,
 ) -> Result<()> {
-    // mmap involves operating system interactions that inherently place its usage outside of Rust's
-    // safety guarantees. If the file is unexpectedly truncated while it's being read, for example,
-    // problems could arise.
-    let mmap = unsafe {
-        MmapOptions::new()
-            .map(&input_file)
-            .with_context(|| format!("Could not mmap '{}'", input_file_name))?
-    };
-
-    // Treat the mmap as a byte array.
-    let ion_data: &[u8] = &mmap[..];
-    // Confirm that the input data is binary Ion, then run the inspector.
-    match ion_data {
-        // Pattern match the byte array to verify it starts with an IVM
-        [0xE0, 0x01, 0x00, 0xEA, ..] => {
-            write_header(output)?;
-            let mut inspector = IonInspector::new(ion_data, output, bytes_to_skip, limit_bytes)?;
-            // This inspects all values at the top level, recursing as necessary.
-            inspector.inspect_level()?;
-        }
-        _ => {
-            // bail! constructs an `anyhow::Result` with the given context and returns.
-            bail!(
-                "Input file '{}' does not appear to be binary Ion.",
-                input_file_name
-            );
-        }
-    };
+    let mut reader = SystemReader::new(AnyEncoding, input);
+    let mut inspector = IonInspector::new(output, bytes_to_skip, limit_bytes)?;
+    // This inspects all values at the top level, recursing as necessary.
+    inspector.inspect_top_level(&mut reader)
+        .with_context(|| format!("input: {input_name}"))?;
     Ok(())
 }
 
-const IVM_HEX: &str = "e0 01 00 ea";
-const IVM_TEXT: &str = "// Ion 1.0 Version Marker";
-// System events (IVM, symtabs) are always at the top level.
-const SYSTEM_EVENT_INDENTATION: &str = "";
-const LEVEL_INDENTATION: &str = "  "; // 2 spaces per level
-const TEXT_WRITER_INITIAL_BUFFER_SIZE: usize = 128;
+// See the Wikipedia page for Unicode Box Drawing[1] for other potentially useful glyphs.
+// [1] https://en.wikipedia.org/wiki/Box-drawing_characters#Unicode
+const VERTICAL_LINE: &str = "│";
+const START_OF_HEADER: &str = "┌──────────────┬──────────────┬─────────────────────────┬──────────────────────┐";
+const END_OF_HEADER: &str = "├──────────────┼──────────────┼─────────────────────────┼──────────────────────┘";
+const ROW_SEPARATOR: &str = r#"├──────────────┼──────────────┼─────────────────────────┤
+"#;
+const END_OF_TABLE: &str = r#"└──────────────┴──────────────┴─────────────────────────┘
+"#;
 
-struct IonInspector<'a> {
-    output: &'a mut OutputRef,
-    reader: SystemReader<RawBinaryReader<&'a [u8]>>,
+struct IonInspector<'a, 'b> {
+    output: &'a mut OutputRef<'b>,
     bytes_to_skip: usize,
+    skip_complete: bool,
     limit_bytes: usize,
-    // Reusable buffer for formatting bytes as hex
-    hex_buffer: String,
-    // Reusable buffer for formatting text
-    text_buffer: String,
-    // Reusable buffer for colorizing text
-    color_buffer: String,
-    // Reusable buffer for tracking indentation
-    indentation_buffer: String,
     // Text Ion writer for formatting scalar values
-    text_ion_writer: RawTextWriter<Vec<u8>>,
+    text_writer: v1_0::RawTextWriter<Vec<u8>>,
 }
 
-impl<'a> IonInspector<'a> {
-    fn new<'b>(
-        input: &'b [u8],
-        out: &'b mut OutputRef,
+// This buffer is used by the IonInspector's `text_writer` to format scalar values.
+const TEXT_WRITER_INITIAL_BUFFER_SIZE: usize = 128;
+
+// The number of hex-encoded bytes to show in each row of the `Binary Ion` column.
+const BYTES_PER_ROW: usize = 8;
+
+impl<'a, 'b> IonInspector<'a, 'b> {
+    fn new(
+        out: &'a mut OutputRef<'b>,
         bytes_to_skip: usize,
         limit_bytes: usize,
-    ) -> IonResult<IonInspector<'b>> {
-        let reader = SystemReader::new(RawBinaryReader::new(input));
-        let text_ion_writer = RawTextWriterBuilder::new(TextKind::Compact)
-            .build(Vec::with_capacity(TEXT_WRITER_INITIAL_BUFFER_SIZE))?;
+    ) -> IonResult<IonInspector<'a, 'b>> {
+        let text_writer = WriteConfig::<v1_0::Text>::new(TextFormat::Compact)
+            .build_raw_writer(Vec::with_capacity(TEXT_WRITER_INITIAL_BUFFER_SIZE))?;
         let inspector = IonInspector {
             output: out,
-            reader,
             bytes_to_skip,
+            skip_complete: bytes_to_skip == 0,
             limit_bytes,
-            hex_buffer: String::new(),
-            text_buffer: String::new(),
-            color_buffer: String::new(),
-            indentation_buffer: String::new(),
-            text_ion_writer,
+            text_writer,
         };
         Ok(inspector)
     }
 
-    // Returns the offset of the first byte that pertains to the value on which the reader is
-    // currently parked.
-    fn first_value_byte_offset(&self) -> usize {
-        if let Some(offset) = self.reader.field_id_offset() {
-            return offset;
-        }
-        if let Some(offset) = self.reader.annotations_offset() {
-            return offset;
-        }
-        self.reader.header_offset()
-    }
-
-    // Returns the byte offset range containing the current value and its annotations/field ID if
-    // applicable.
-    fn complete_value_range(&self) -> Range<usize> {
-        let start = self.first_value_byte_offset();
-        let end = self.reader.value_range().end;
-        start..end
-    }
-
-    // Displays all of the values (however deeply nested) at the current level.
-    fn inspect_level(&mut self) -> Result<()> {
-        self.increase_indentation();
-
-        // Per-level bytes skipped are tracked so we can add them to the text Ion comments that
-        // appear each time some number of values is skipped.
-        let mut bytes_skipped_this_level = 0;
-
+    /// Iterates over the items in `reader`, printing a table section for each top level value.
+    fn inspect_top_level<Input: IonInput>(&mut self, reader: &mut SystemReader<AnyEncoding, Input>) -> Result<()> {
+        self.write_table_header()?;
+        let mut is_first_item = true;
+        let mut has_printed_skip_message = false;
         loop {
-            let ion_type = match self.reader.next()? {
-                SystemStreamItem::Nothing => break,
-                SystemStreamItem::VersionMarker(major, minor) => {
-                    if major != 1 || minor != 0 {
-                        bail!(
-                            "Only Ion 1.0 is supported. Found IVM for v{}.{}",
-                            major,
-                            minor
-                        );
-                    }
-                    output(
-                        self.output,
-                        None,
-                        Some(4),
-                        SYSTEM_EVENT_INDENTATION,
-                        IVM_HEX,
-                        IVM_TEXT.dimmed(),
-                    )
-                    .expect("output() failure from on_ivm()");
-                    continue;
+            let item = reader.next_item()?;
+            // If the next item isn't `EndOfStream`, check to see whether its final byte offset is
+            // beyond the configured number of bytes to skip before printing can begin (the value of
+            // the `--set-bytes` flag).
+            if !matches!(item, SystemStreamItem::EndOfStream(_)) && self.should_skip(item.raw_stream_item()) {
+                // If we need to skip it, print a message indicating that some number of items have been skipped.
+                if !has_printed_skip_message {
+                    self.write_skipping_message(0, "stream items")?;
+                    // We only print this message once, so remember that we've already done this.
+                    has_printed_skip_message = true;
                 }
-                // We don't care if this is a system or user-level value; that distinction
-                // is handled inside the SystemReader.
-                SystemStreamItem::SymbolTableValue(ion_type)
-                | SystemStreamItem::Value(ion_type)
-                | SystemStreamItem::SymbolTableNull(ion_type)
-                | SystemStreamItem::Null(ion_type) => ion_type,
-            };
-            // See if we've already processed `bytes_to_skip` bytes; if not, move to the next value.
-            let complete_value_range = self.complete_value_range();
-            if complete_value_range.end <= self.bytes_to_skip {
-                bytes_skipped_this_level += complete_value_range.len();
+                // Skip ahead to the next stream item.
                 continue;
             }
 
-            // Saturating subtraction: if the result would underflow, the answer will be zero.
-            let bytes_processed = complete_value_range
-                .start
-                .saturating_sub(self.bytes_to_skip);
-            // See if we've already processed `limit_bytes`; if so, stop processing.
-            if bytes_processed >= self.limit_bytes {
-                let limit_message = if self.reader.depth() > 0 {
-                    "// --limit-bytes reached, stepping out."
-                } else {
-                    "// --limit-bytes reached, ending."
-                };
-                output(
-                    self.output,
-                    None,
-                    None,
-                    &self.indentation_buffer,
-                    "...",
-                    limit_message.dimmed(),
-                )?;
-                self.decrease_indentation();
+            // Also check the final byte offset to see if it goes beyond the processing limit set by
+            // the `--limit-bytes` flag.
+            if self.is_past_limit(item.raw_stream_item()) {
+                self.write_limiting_message(0, "ending")?;
+                // If the limit is reached at the top level, there's nothing more to do.
                 return Ok(());
             }
 
-            // We're no longer skip-scanning to `bytes_to_skip`. If we skipped values at this depth
-            // to get to this point, make a note of it in the output.
-            if bytes_skipped_this_level > 0 {
-                self.text_buffer.clear();
-                write!(
-                    &mut self.text_buffer,
-                    "// Skipped {} bytes of user-level data",
-                    bytes_skipped_this_level
-                )?;
-                output(
-                    self.output,
-                    None,
-                    None,
-                    &self.indentation_buffer,
-                    "...",
-                    &self.text_buffer.dimmed(),
-                )?;
-                bytes_skipped_this_level = 0;
+            // In most cases, we would take this opportunity to print a row separator to create
+            // a new table section for this top-level item. However, there are two exceptions we
+            // need to check for:
+            // 1. The first stream item follows the header and so does not require a row separator.
+            if !is_first_item
+                // 2. The end of the stream prints the end of the table, not a row separator.
+                && !matches!(item, SystemStreamItem::EndOfStream(_)) {
+                // If this item is neither the first nor last in the stream, print a row separator.
+                write!(self.output, "{ROW_SEPARATOR}")?;
             }
 
-            self.write_field_if_present()?;
-            self.write_annotations_if_present()?;
-            // Print the value or, if it's a container, its opening delimiter: {, (, or [
-            self.write_value()?;
+            match item {
+                SystemStreamItem::SymbolTable(lazy_struct) => {
+                    let lazy_value = lazy_struct.as_value();
+                    self.inspect_value(0, "", lazy_value)?;
+                }
+                SystemStreamItem::Value(lazy_value) => {
+                    self.inspect_value(0, "", lazy_value)?;
+                }
+                SystemStreamItem::VersionMarker(marker) => {
+                    self.inspect_ivm(marker)?;
+                }
+                SystemStreamItem::EndOfStream(_) => {
+                    break;
+                }
+                // `SystemStreamItem` is marked `#[non_exhaustive]`, so this branch is needed.
+                // The arms above cover all of the existing variants at the time of writing.
+                _ => unimplemented!("a new SystemStreamItem variant was added")
+            }
 
-            // If the current value is a container, step into it and inspect its contents.
-            match ion_type {
-                IonType::List | IonType::SExp | IonType::Struct => {
-                    self.reader.step_in()?;
-                    self.inspect_level()?;
-                    self.reader.step_out()?;
-                    // Print the container's closing delimiter: }, ), or ]
-                    self.text_buffer.clear();
-                    self.text_buffer.push_str(closing_delimiter_for(ion_type));
-                    if ion_type != IonType::SExp && self.reader.depth() > 0 {
-                        self.text_buffer.push(',');
+            // Notice that we wait until _after_ the item has been inspected above to set the
+            // `skip_complete` flag. This is because the offset specified by `--skip-bytes` may
+            // have been located somewhere inside the item and the inspector needed to look for
+            // that point within its nested values. If this happens, the inspector will set the
+            // `skip_complete` flag when it reaches that offset at a deeper level of nesting.
+            // When it reaches this point, `skip_complete` will already be true. However, if the
+            // offset fell at the beginning of a top level value, the line below will set the flag
+            // for the first time.
+            self.skip_complete = true;
+            is_first_item = false;
+        }
+        self.output.write_all(END_OF_TABLE.as_bytes())?;
+        Ok(())
+    }
+
+    /// If `maybe_item` is:
+    ///    * `Some(entity)`, checks to see if the entity's final byte offset is beyond the configured
+    ///                      number of bytes to skip.
+    ///    * `None`, then there is no stream-level entity backing the item (that is: it was the result
+    ///              of a macro expansion). Checks to see if the inspector has already completed its
+    ///              skipping phase on an earlier item.
+    fn should_skip<T: HasRange>(&mut self, maybe_item: Option<T>) -> bool {
+        match maybe_item {
+            // If this item came from an input literal, see if the input literal ends after
+            // the requested number of bytes to skip. If not, we'll move to the next one.
+            Some(item) => item.range().end <= self.bytes_to_skip,
+            // If this item came from a macro, there's no corresponding input literal. If we
+            // haven't finished skipping input literals, we'll skip this ephemeral value.
+            None => !self.skip_complete
+        }
+    }
+
+    /// If `maybe_item` is:
+    ///    * `Some(entity)`, checks to see if the entity's final byte offset is beyond the configured
+    ///                      number of bytes to inspect.
+    ///    * `None`, then there is no stream-level entity backing the item. These will always be
+    ///              inspected; if the e-expression that produced the value was not beyond the limit,
+    ///              none of the ephemeral values it produces are either.
+    fn is_past_limit<T: HasRange>(&mut self, maybe_item: Option<T>) -> bool {
+        maybe_item.map(|item| item.range().start >= self.bytes_to_skip + self.limit_bytes).unwrap_or(false)
+    }
+
+    /// Convenience method to set the output stream to the specified color/style for the duration of `write_fn`
+    /// and then reset it upon completion.
+    fn with_style(&mut self, style: ColorSpec, write_fn: impl FnOnce(&mut OutputRef) -> Result<()>) -> Result<()> {
+        self.output.set_color(&style)?;
+        write_fn(&mut self.output)?;
+        self.output.reset()?;
+        Ok(())
+    }
+
+    /// Convenience method to set the output stream to the specified color/style, write `text`,
+    /// and then reset the output stream's style again.
+    fn write_with_style(&mut self, style: ColorSpec, text: &str) -> Result<()> {
+        self.with_style(style, |out| {
+            out.write_all(text.as_bytes())?;
+            Ok(())
+        })
+    }
+
+    /// Inspects an Ion Version Marker.
+    fn inspect_ivm(&mut self, marker: LazyRawAnyVersionMarker<'_>) -> Result<()> {
+        const BINARY_IVM_LENGTH: usize = 4;
+        let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![IonBytes::new(BytesKind::VersionMarker, marker.span().bytes())]);
+        self.write_offset_length_and_bytes(marker.range().start, BINARY_IVM_LENGTH, &mut formatter)?;
+        self.with_style(BytesKind::VersionMarker.style(), |out| {
+            let (major, minor) = marker.version();
+            write!(out, "$ion_{major}_{minor}")?;
+            Ok(())
+        })?;
+
+        self.with_style(comment_style(), |out| {
+            write!(out, " // Version marker\n")?;
+            Ok(())
+        })?;
+        self.output.reset()?;
+        Ok(())
+    }
+
+    /// Inspects all values (however deeply nested) starting at the current level.
+    fn inspect_value(&mut self, depth: usize, delimiter: &str, value: LazyValue<'_, AnyEncoding>) -> Result<()> {
+        use ValueRef::*;
+        if value.has_annotations() {
+            self.inspect_annotations(depth, value)?;
+        }
+        match value.read()? {
+            SExp(sexp) => self.inspect_sexp(depth, delimiter, sexp),
+            List(list) => self.inspect_list(depth, delimiter, list),
+            Struct(struct_) => self.inspect_struct(depth, delimiter, struct_),
+            _ => self.inspect_scalar(depth, delimiter, value),
+        }
+    }
+
+    /// Inspects the scalar `value`. If this value appears in a list or struct, the caller can set
+    /// `delimiter` to a comma (`","`) and it will be appended to the value's text representation.
+    fn inspect_scalar<'x>(&mut self, depth: usize, delimiter: &str, value: LazyValue<'x, AnyEncoding>) -> Result<()> {
+        use ExpandedValueSource::*;
+        let value_literal = match value.lower().source() {
+            ValueLiteral(value_literal) => value_literal,
+            // In Ion 1.0, there are no template values or constructed values so we can defer
+            // implementing these.
+            Template(_, _) => { todo!("Ion 1.1 template values") }
+            Constructed(_, _) => { todo!("Ion 1.1 constructed values") }
+        };
+
+        use LazyRawValueKind::*;
+        // Check what encoding this is. At the moment, only binary Ion 1.0 is supported.
+        match value_literal.kind() {
+            Binary_1_0(bin_val) => {
+                self.inspect_binary_1_0_scalar(depth, delimiter, value, bin_val)
+            }
+            Binary_1_1(_) => todo!("Binary Ion 1.1 scalars"),
+            Text_1_0(_) | Text_1_1(_) => unreachable!("text value")
+        }
+    }
+
+    /// Inspects the s-expression `sexp`, including all of its child values. If this sexp appears
+    /// in a list or struct, the caller can set `delimiter` to a comma (`","`) and it will be appended
+    /// to the sexp's text representation.
+    fn inspect_sexp<'x>(&mut self, depth: usize, delimiter: &str, sexp: LazySExp<'x, AnyEncoding>) -> Result<()> {
+        use ExpandedSExpSource::*;
+        let raw_sexp = match sexp.lower().source() {
+            ValueLiteral(raw_sexp) => raw_sexp,
+            Template(_, _, _, _) => todo!("Ion 1.1 template SExp")
+        };
+
+        use LazyRawSExpKind::*;
+        match raw_sexp.kind() {
+            Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
+            Binary_1_0(v) => self.inspect_binary_1_0_sexp(depth, delimiter, sexp, v),
+            Binary_1_1(_) => todo!("Binary Ion 1.1 SExp"),
+        }
+    }
+
+    /// Inspects the list `list`, including all of its child values. If this list appears inside
+    /// a list or struct, the caller can set `delimiter` to a comma (`","`) and it will be appended
+    /// to the list's text representation.
+    fn inspect_list<'x>(&mut self, depth: usize, delimiter: &str, list: LazyList<'x, AnyEncoding>) -> Result<()> {
+        use ExpandedListSource::*;
+        let raw_list = match list.lower().source() {
+            ValueLiteral(raw_list) => raw_list,
+            Template(_, _, _, _) => todo!("Ion 1.1 template List")
+        };
+
+        use LazyRawListKind::*;
+        match raw_list.kind() {
+            Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
+            Binary_1_0(v) => self.inspect_binary_1_0_list(depth, delimiter, list, v),
+            Binary_1_1(_) => todo!("Binary Ion 1.1 List"),
+        }
+    }
+
+    /// Inspects the struct `struct_`, including all of its fields. If this struct appears inside
+    /// a list or struct, the caller can set `delimiter` to a comma (`","`) and it will be appended
+    /// to the struct's text representation.
+    fn inspect_struct(&mut self, depth: usize, delimiter: &str, struct_: LazyStruct<'_, AnyEncoding>) -> Result<()> {
+        let raw_struct = match struct_.lower().source() {
+            ExpandedStructSource::ValueLiteral(raw_struct) => raw_struct,
+            ExpandedStructSource::Template(_, _, _, _, _) => todo!("Ion 1.1 template Struct")
+        };
+
+        use LazyRawValueKind::*;
+        match raw_struct.as_value().kind() {
+            Binary_1_0(v) => self.inspect_binary_1_0_struct(depth, delimiter, struct_, raw_struct, v),
+            Binary_1_1(_) => todo!("Binary Ion 1.1 Struct"),
+            Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
+        }
+    }
+
+    fn inspect_annotations(&mut self, depth: usize, value: LazyValue<AnyEncoding>) -> Result<()> {
+        let raw_value = match value.lower().source() {
+            ExpandedValueSource::ValueLiteral(raw_value) => raw_value,
+            ExpandedValueSource::Template(_, _) => todo!("Ion 1.1 template value annotations"),
+            ExpandedValueSource::Constructed(_, _) => todo!("Ion 1.1 constructed value annotations")
+        };
+
+        use LazyRawValueKind::*;
+        match raw_value.kind() {
+            Binary_1_0(v) => self.inspect_binary_1_0_annotations(depth, value, v),
+            Binary_1_1(_) => todo!("Binary Ion 1.1 annotations"),
+            Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
+        }
+    }
+
+    // ===== Binary Ion 1.0 ======
+
+    fn inspect_binary_1_0_sexp<'x>(&mut self, depth: usize, delimiter: &str, sexp: LazySExp<'x, AnyEncoding>, raw_sexp: v1_0::LazyRawBinarySExp<'x>) -> Result<()> {
+        self.inspect_binary_1_0_sequence(depth, "(", "", ")", delimiter, sexp.iter(), raw_sexp, raw_sexp.as_value())
+    }
+
+    fn inspect_binary_1_0_list<'x>(&mut self, depth: usize, delimiter: &str, list: LazyList<'x, AnyEncoding>, raw_list: v1_0::LazyRawBinaryList<'x>) -> Result<()> {
+        self.inspect_binary_1_0_sequence(depth, "[", ",", "]", delimiter, list.iter(), raw_list, raw_list.as_value())
+    }
+
+    fn inspect_binary_1_0_sequence<'x>(&mut self,
+                                       depth: usize,
+                                       opening_delimiter: &str,
+                                       value_delimiter: &str,
+                                       closing_delimiter: &str,
+                                       trailing_delimiter: &str,
+                                       nested_values: impl IntoIterator<Item=IonResult<LazyValue<'x, AnyEncoding>>>,
+                                       nested_raw_values: impl LazyRawSequence<'x, v1_0::Binary>,
+                                       raw_value: v1_0::LazyRawBinaryValue,
+    ) -> Result<()> {
+        let encoding = raw_value.encoded_data();
+        let range = encoding.range();
+
+        let opcode_bytes: &[u8] = raw_value.encoded_data().opcode_span().bytes();
+        let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![
+            IonBytes::new(BytesKind::Opcode, opcode_bytes),
+            IonBytes::new(BytesKind::TrailingLength, raw_value.encoded_data().trailing_length_span().bytes()),
+        ]);
+
+        self.write_offset_length_and_bytes(range.start, range.len(), &mut formatter)?;
+
+        self.write_indentation(depth)?;
+        self.with_style(text_ion_style(), |out| {
+            write!(out, "{opening_delimiter}\n")?;
+            Ok(())
+        })?;
+
+        let mut has_printed_skip_message = false;
+        for (raw_value_res, value_res) in nested_raw_values.iter().zip(nested_values) {
+            let (raw_nested_value, nested_value) = (raw_value_res?, value_res?);
+            if self.should_skip(Some(raw_nested_value)) {
+                if !has_printed_skip_message {
+                    self.write_skipping_message(depth + 1, "values")?;
+                    has_printed_skip_message = true;
+                }
+                continue;
+            }
+            if self.is_past_limit(Some(raw_nested_value)) {
+                self.write_limiting_message(depth + 1, "stepping out")?;
+                break;
+            }
+            self.inspect_value(depth + 1, value_delimiter, nested_value)?;
+            self.skip_complete = true;
+        }
+
+        self.write_blank_offset_length_and_bytes(depth)?;
+        self.with_style(text_ion_style(), |out| {
+            write!(out, "{closing_delimiter}{trailing_delimiter}\n")?;
+            Ok(())
+        })
+    }
+
+    fn inspect_binary_1_0_struct(&mut self, depth: usize, delimiter: &str, struct_: LazyStruct<AnyEncoding>, raw_struct: LazyRawAnyStruct, raw_value: v1_0::LazyRawBinaryValue) -> Result<()> {
+        let encoding = raw_value.encoded_data();
+        let range = encoding.range();
+
+        let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![
+            IonBytes::new(BytesKind::Opcode, encoding.opcode_span().bytes()),
+            IonBytes::new(BytesKind::TrailingLength, encoding.trailing_length_span().bytes()),
+        ]);
+
+        self.write_offset_length_and_bytes(range.start, range.len(), &mut formatter)?;
+
+        self.write_indentation(depth)?;
+        self.with_style(text_ion_style(), |out| {
+            write!(out, "{{\n")?;
+            Ok(())
+        })?;
+        let mut has_printed_skip_message = false;
+        for (raw_field_result, field_result) in raw_struct.iter().zip(struct_.iter()) {
+            let (raw_field, field) = (raw_field_result?, field_result?);
+            let (raw_name, raw_value) = raw_field.expect_name_value()?;
+            let name = field.name()?;
+
+            if self.should_skip(Some(raw_value)) {
+                if !has_printed_skip_message {
+                    self.write_skipping_message(depth + 1, "fields")?;
+                    has_printed_skip_message = true;
+                }
+                continue;
+            }
+            self.skip_complete = true;
+
+            if self.is_past_limit(Some(raw_field)) {
+                self.write_limiting_message(depth + 1, "stepping out")?;
+                break;
+            }
+
+            // ===== Field name =====
+            let range = raw_name.range();
+            let raw_name_bytes = raw_name.span().bytes();
+            let offset = range.start;
+            let length = range.len();
+            let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![
+                IonBytes::new(BytesKind::FieldId, raw_name_bytes)
+            ]);
+            self.write_offset_length_and_bytes(offset, length, &mut formatter)?;
+
+            self.write_indentation(depth + 1)?;
+            self.with_style(field_id_style(), |out| {
+                IoValueFormatter::new(out).value_formatter().format_symbol(name)?;
+                Ok(())
+            })?;
+            write!(self.output, ": ")?;
+            // Print a text Ion comment showing how the field name was encoded, ($SID or text)
+            self.with_style(comment_style(), |out| {
+                match raw_name.read()? {
+                    RawSymbolRef::SymbolId(sid) => {
+                        write!(out, " // ${sid}\n")
                     }
-                    output(
-                        self.output,
-                        None,
-                        None,
-                        &self.indentation_buffer,
-                        "",
-                        &self.text_buffer,
-                    )?;
+                    RawSymbolRef::Text(_) => {
+                        write!(out, " // <text>\n")
+                    }
+                }?;
+                Ok(())
+            })?;
+
+            // ===== Field value =====
+            self.inspect_value(depth + 1, ",", field.value())?;
+        }
+        // ===== Closing delimiter =====
+        self.write_blank_offset_length_and_bytes(depth)?;
+        self.with_style(text_ion_style(), |out| {
+            write!(out, "}}{delimiter}\n")?;
+            Ok(())
+        })
+    }
+
+    fn inspect_binary_1_0_annotations(&mut self, depth: usize, value: LazyValue<AnyEncoding>, raw_value: v1_0::LazyRawBinaryValue) -> Result<()> {
+        let encoding = raw_value.encoded_annotations().unwrap();
+        let range = encoding.range();
+
+        let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![
+            IonBytes::new(BytesKind::AnnotationsHeader, encoding.header_span().bytes()),
+            IonBytes::new(BytesKind::AnnotationsSequence, encoding.sequence_span().bytes()),
+        ]);
+        self.write_offset_length_and_bytes(range.start, range.len(), &mut formatter)?;
+
+        self.write_indentation(depth)?;
+        self.with_style(annotations_style(), |out| {
+            for annotation in value.annotations() {
+                IoValueFormatter::new(&mut *out).value_formatter().format_symbol(annotation?)?;
+                write!(out, "::")?;
+            }
+            Ok(())
+        })?;
+
+        self.with_style(comment_style(), |out| {
+            write!(out, " // ")?;
+            for (index, raw_annotation) in raw_value.annotations().enumerate() {
+                if index > 0 {
+                    write!(out, ", ")?;
                 }
-                _ => {}
+                match raw_annotation? {
+                    RawSymbolRef::SymbolId(sid) => write!(out, "${sid}"),
+                    RawSymbolRef::Text(_) => write!(out, "<text>"),
+                }?;
+            }
+            write!(out, "\n")?;
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+
+    fn inspect_binary_1_0_scalar(&mut self, depth: usize, delimiter: &str, value: LazyValue<AnyEncoding>, raw_value: v1_0::LazyRawBinaryValue) -> Result<()> {
+        let encoding = raw_value.encoded_data();
+        let range = encoding.range();
+
+        let opcode_bytes = IonBytes::new(BytesKind::Opcode, encoding.opcode_span().bytes());
+        let length_bytes = IonBytes::new(BytesKind::TrailingLength, encoding.trailing_length_span().bytes());
+        let body_bytes = IonBytes::new(BytesKind::ValueBody, encoding.body_span().bytes());
+
+        let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![opcode_bytes, length_bytes, body_bytes]);
+
+        self.write_offset_length_and_bytes(range.start, range.len(), &mut formatter)?;
+        self.write_indentation(depth)?;
+
+        let style = text_ion_style();
+        self.output.set_color(&style)?;
+        self.text_writer
+            .write(value.read()?)
+            .expect("failed to write text value to in-memory buffer")
+            .flush()?;
+
+        let encoded = self.text_writer.output_mut();
+        if encoded.ends_with(&[b' ']) {
+            let _ = encoded.pop();
+        }
+        self.output.write_all(self.text_writer.output().as_slice())?;
+        self.text_writer.output_mut().clear();
+        self.output.write_all(delimiter.as_bytes())?;
+        self.output.reset()?;
+        write!(self.output, "\n")?;
+
+        while !formatter.is_empty() {
+            self.write_offset_length_and_bytes("", "", &mut formatter)?;
+            self.write_indentation(depth)?;
+            write!(self.output, "\n")?;
+        }
+
+        Ok(())
+    }
+
+    // ===== Table-writing methods =====
+
+    /// Prints the header of the output table
+    fn write_table_header(&mut self) -> Result<()> {
+        self.output.write_all(START_OF_HEADER.as_bytes())?;
+        write!(self.output, "\n{VERTICAL_LINE}")?;
+        self.write_with_style(header_style(), "    Offset    ")?;
+        write!(self.output, "{VERTICAL_LINE}")?;
+        self.write_with_style(header_style(), "    Length    ")?;
+        write!(self.output, "{VERTICAL_LINE}")?;
+        self.write_with_style(header_style(), "       Binary Ion        ")?;
+        write!(self.output, "{VERTICAL_LINE}")?;
+        self.write_with_style(header_style(), "       Text Ion       ")?;
+        write!(self.output, "{VERTICAL_LINE}\n")?;
+        self.output.write_all(END_OF_HEADER.as_bytes())?;
+        write!(self.output, "\n")?;
+        Ok(())
+    }
+
+    /// Writes a spacing string `depth` times.
+    fn write_indentation(&mut self, depth: usize) -> Result<()> {
+        // This spacing string includes a unicode dot to make it easy to see what level of depth
+        // the current value is found at. This dot is displayed with a muted color; its appearance
+        // is subtle.
+        const INDENTATION_WITH_GUIDE: &'static str = "· ";
+
+        let mut color_spec = ColorSpec::new();
+        color_spec.set_dimmed(false).set_intense(true).set_bold(true).set_fg(Some(Color::Rgb(100, 100, 100)));
+        self.with_style(color_spec, |out| {
+            for _ in 0..depth {
+                out.write_all(INDENTATION_WITH_GUIDE.as_bytes())?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Prints the given `offset` and `length` in the first and second table columns, then uses the
+    /// `formatter` to print a single row of hex-encoded bytes in the third column ("Binary Ion").
+    /// The `offset` and `length` are typically `usize`, but can be anything that implements `Display`.
+    fn write_offset_length_and_bytes(&mut self, offset: impl Display, length: impl Display, formatter: &mut BytesFormatter) -> Result<()> {
+        write!(self.output, "{VERTICAL_LINE} {offset:12} {VERTICAL_LINE} {length:12} {VERTICAL_LINE} ")?;
+        formatter.write_row(self.output)?;
+        write!(self.output, "{VERTICAL_LINE} ")?;
+        Ok(())
+    }
+
+    /// Prints a row with blank fiends in the `Offset`, `Length`, and `Binary Ion` columns. This method
+    /// does not print a trailing newline, allowing the caller to populate the `Text Ion` column as needed.
+    fn write_blank_offset_length_and_bytes(&mut self, depth: usize) -> Result<()> {
+        let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![]);
+        self.write_offset_length_and_bytes("", "", &mut formatter)?;
+        self.write_indentation(depth)
+    }
+
+    /// Prints a row with an ellipsis (`...`) in the first three columns, and a text Ion comment in
+    /// the final column indicating what is being skipped over.
+    fn write_skipping_message(&mut self, depth: usize, name_of_skipped_item: &str) -> Result<()> {
+        write!(self.output, "{VERTICAL_LINE} {:>12} {VERTICAL_LINE} {:>12} {VERTICAL_LINE} {:23} {VERTICAL_LINE} ", "...", "...", "...")?;
+        self.write_indentation(depth)?;
+        self.with_style(comment_style(), |out| {
+            write!(out, "// ...skipping {name_of_skipped_item}...\n")?;
+            Ok(())
+        })
+    }
+
+    /// Prints a row with an ellipsis (`...`) in the first three columns, and a text Ion comment in
+    /// the final column indicating that we have reached the maximum number of bytes to process
+    /// as determined by the `--limit-bytes` flag.
+    fn write_limiting_message(&mut self, depth: usize, action: &str) -> Result<()> {
+        write!(self.output, "{VERTICAL_LINE} {:>12} {VERTICAL_LINE} {:>12} {VERTICAL_LINE} {:23} {VERTICAL_LINE} ", "...", "...", "...")?;
+        self.write_indentation(depth)?;
+        let limit_bytes = self.limit_bytes;
+        self.with_style(comment_style(), |out| {
+            write!(out, "// --limit-bytes {} reached, {action}.\n", limit_bytes)?;
+            Ok(())
+        })
+    }
+}
+
+// ===== Named styles =====
+
+fn header_style() -> ColorSpec {
+    let mut style = ColorSpec::new();
+    style.set_bold(true).set_intense(true);
+    style
+}
+
+fn comment_style() -> ColorSpec {
+    let mut style = ColorSpec::new();
+    style.set_dimmed(true);
+    style
+}
+
+fn text_ion_style() -> ColorSpec {
+    let mut style = ColorSpec::new();
+    style.set_fg(Some(Color::Rgb(255, 255, 255)));
+    style
+}
+
+fn field_id_style() -> ColorSpec {
+    let mut style = ColorSpec::new();
+    style.set_fg(Some(Color::Cyan)).set_intense(true);
+    style
+}
+
+fn annotations_style() -> ColorSpec {
+    let mut style = ColorSpec::new();
+    style.set_fg(Some(Color::Magenta));
+    style
+}
+
+/// Kinds of encoding primitives found in a binary Ion stream.
+#[derive(Copy, Clone, Debug)]
+enum BytesKind {
+    FieldId,
+    Opcode,
+    TrailingLength,
+    ValueBody,
+    AnnotationsHeader,
+    AnnotationsSequence,
+    VersionMarker,
+}
+
+impl BytesKind {
+    /// Returns a [`ColorSpec`] that should be used when printing bytes of the specified `BytesKind`.
+    fn style(&self) -> ColorSpec {
+        use BytesKind::*;
+        let mut color = ColorSpec::new();
+        match self {
+            VersionMarker =>
+                color
+                    .set_fg(Some(Color::Yellow))
+                    .set_intense(true),
+            FieldId =>
+                color
+                    .set_fg(Some(Color::Cyan))
+                    .set_intense(true),
+            Opcode =>
+                color
+                    .set_bold(true)
+                    .set_fg(Some(Color::Rgb(0, 0, 0)))
+                    .set_bg(Some(Color::Rgb(255, 255, 255))),
+
+            TrailingLength =>
+                color
+                    .set_bold(true)
+                    .set_underline(true)
+                    .set_fg(Some(Color::White))
+                    .set_intense(true),
+            ValueBody =>
+                color.set_bold(false)
+                    .set_fg(Some(Color::White))
+                    .set_intense(false),
+            AnnotationsHeader =>
+                color.set_bold(false)
+                    .set_fg(Some(Color::Black))
+                    .set_bg(Some(Color::Magenta)),
+            AnnotationsSequence =>
+                color.set_bold(false)
+                    .set_fg(Some(Color::Magenta)),
+        };
+        color
+    }
+}
+
+/// A slice of Ion bytes to be printed in the `Binary Ion` column.
+///
+/// Each `IonBytes` has a `BytesKind` that maps to a display style as well as a counter tracking
+/// how many of its bytes have been printed so far.
+#[derive(Copy, Clone, Debug)]
+struct IonBytes<'a> {
+    // The actual slice of bytes
+    pub bytes: &'a [u8],
+    // What the slice of bytes represents in Ion
+    pub kind: BytesKind,
+    // How many of this slice's bytes have been printed so far.
+    pub bytes_written: usize,
+}
+
+impl<'a> IonBytes<'a> {
+    fn new(kind: BytesKind, bytes: &'a [u8]) -> Self {
+        Self {
+            bytes,
+            kind,
+            bytes_written: 0,
+        }
+    }
+
+    fn mark_bytes_written(&mut self, num_bytes: usize) {
+        self.bytes_written += num_bytes
+    }
+
+    fn next_n_bytes(&self, num_bytes: usize) -> &[u8] {
+        &self.bytes[self.bytes_written..self.bytes_written + num_bytes]
+    }
+
+    fn bytes_remaining(&self) -> usize {
+        self.bytes.len() - self.bytes_written
+    }
+
+    fn is_empty(&self) -> bool {
+        self.bytes_remaining() == 0
+    }
+
+    fn style(&self) -> ColorSpec {
+        self.kind.style()
+    }
+}
+
+/// Prints bytes as colorized, hex-encoded rows of a configurable size.
+///
+/// Stores a sequence of [`IonBytes`] instances to display. Upon request, writes out the next `n`
+/// colorized, hex-encoded bytes, remembering where to resume when the next row is needed.
+struct BytesFormatter<'a> {
+    slices: Vec<IonBytes<'a>>,
+    slices_written: usize,
+    formatted_bytes_per_row: usize,
+}
+
+impl<'a> BytesFormatter<'a> {
+    pub fn new(formatted_bytes_per_row: usize, slices: Vec<IonBytes<'a>>) -> Self {
+        Self { slices, slices_written: 0, formatted_bytes_per_row }
+    }
+
+    /// Writes a row of `n` hex-encoded, colorized bytes, where `n` is determined by the
+    /// `formatted_bytes_per_row` argument in [`BytesFormatter::new`].
+    ///
+    /// If there are fewer than `n` bytes remaining, prints all remaining bytes.
+    pub fn write_row(&mut self, output: &mut impl WriteColor) -> Result<()> {
+        let num_bytes = self.formatted_bytes_per_row;
+        let bytes_written = self.write_bytes(num_bytes, output)?;
+        let bytes_remaining = num_bytes - bytes_written;
+        // If we printed fewer bytes than are needed to make a row, write out enough padding
+        // to keep the columns aligned.
+        for _ in 0..bytes_remaining {
+            write!(output, "   ")?; // Empty space the width of a formatted byte
+        }
+        Ok(())
+    }
+
+    /// Helper method to iterate over the remaining [`IonBytes`], printing their contents until
+    /// `num_bytes` is reached.
+    fn write_bytes(&mut self, num_bytes: usize, output: &mut impl WriteColor) -> Result<usize> {
+        let mut bytes_remaining = num_bytes;
+        while bytes_remaining > 0 && !self.is_empty() {
+            bytes_remaining -= self.write_bytes_from_current_slice(bytes_remaining, output)?;
+            if self.is_empty() {
+                // Even though `bytes_remaining` hasn't reached zero, we're out of data.
+                break;
             }
         }
 
-        self.decrease_indentation();
-        Ok(())
+        Ok(num_bytes - bytes_remaining)
     }
 
-    fn increase_indentation(&mut self) {
-        // Add a level's worth of indentation to the buffer.
-        if self.reader.depth() > 0 {
-            self.indentation_buffer.push_str(LEVEL_INDENTATION);
-        }
-    }
+    /// Helper method to print up to `num_bytes` bytes from the current [`IonBytes`].
+    fn write_bytes_from_current_slice(&mut self, num_bytes: usize, output: &mut impl WriteColor) -> Result<usize> {
+        let Some(slice) = self.current_slice() else {
+            // No more to write
+            return Ok(0);
+        };
 
-    fn decrease_indentation(&mut self) {
-        // Remove a level's worth of indentation from the buffer.
-        if self.reader.depth() > 0 {
-            let new_length = self.indentation_buffer.len() - LEVEL_INDENTATION.len();
-            self.indentation_buffer.truncate(new_length);
-        }
-    }
-
-    fn write_field_if_present(&mut self) -> Result<()> {
-        if self.reader.parent_type() != Some(IonType::Struct) {
-            // We're not in a struct; nothing to do.
-            return Ok(());
-        }
-        let field_token = self.reader.raw_field_name_token()?;
-        let field_id = field_token.local_sid().expect("No SID for field name.");
-        self.hex_buffer.clear();
-        to_hex(
-            &mut self.hex_buffer,
-            self.reader.raw_field_id_bytes().unwrap(),
-        );
-
-        let field_name_result = self.reader.field_name();
-        let field_name = field_name_result
-            .as_ref()
-            .ok()
-            .and_then(|name| name.text())
-            .unwrap_or("<UNKNOWN>");
-
-        self.text_buffer.clear();
-        write!(&mut self.text_buffer, "'{}':", field_name)?;
-
-        self.color_buffer.clear();
-        write!(&mut self.color_buffer, " // ${}:", field_id)?;
-        write!(&mut self.text_buffer, "{}", &self.color_buffer.dimmed())?;
-        output(
-            self.output,
-            self.reader.field_id_offset(),
-            self.reader.field_id_length(),
-            &self.indentation_buffer,
-            &self.hex_buffer,
-            &self.text_buffer,
-        )?;
-
-        if field_name_result.is_err() {
-            // If we had to write <UNKNOWN> for the field name above, return a fatal error now.
-            bail!("Encountered a field ID (${}) with unknown text.", field_id);
+        if slice.bytes.len() == 0 {
+            self.slices_written += 1;
+            return Ok(0);
         }
 
-        Ok(())
-    }
+        // We're going to write whichever is smaller:
+        //   1. the requested number of bytes from the current slice
+        //      OR
+        //   2. the number of bytes remaining in the current slice
+        let bytes_to_write = num_bytes.min(slice.bytes_remaining());
 
-    fn write_annotations_if_present(&mut self) -> IonResult<()> {
-        let num_annotations = self.reader.raw_annotations().count();
-        if num_annotations > 0 {
-            self.hex_buffer.clear();
-            to_hex(
-                &mut self.hex_buffer,
-                self.reader.raw_annotations_bytes().unwrap(),
-            );
+        // Set the appropriate style for this byte slice.
+        let style: ColorSpec = slice.style();
+        output.set_color(&style)?;
+        write!(output, "{}", hex_contents(slice.next_n_bytes(bytes_to_write)))?;
+        slice.mark_bytes_written(bytes_to_write);
+        output.reset()?;
 
-            self.text_buffer.clear();
-            join_into(&mut self.text_buffer, "::", self.reader.annotations())?;
-            write!(&mut self.text_buffer, "::")?;
-
-            self.color_buffer.clear();
-            write!(&mut self.color_buffer, " // $")?;
-            join_into(
-                &mut self.color_buffer,
-                "::$",
-                self.reader
-                    .raw_annotations()
-                    .map(|a| a.map(|token| token.local_sid().unwrap())),
-            )?;
-            write!(&mut self.color_buffer, "::")?;
-
-            write!(self.text_buffer, "{}", self.color_buffer.dimmed())?;
-            output(
-                self.output,
-                self.reader.annotations_offset(),
-                self.reader.annotations_length(),
-                &self.indentation_buffer,
-                &self.hex_buffer,
-                &self.text_buffer,
-            )?;
-        }
-        Ok(())
-    }
-
-    fn write_value(&mut self) -> IonResult<()> {
-        self.text_buffer.clear();
-        // Populates `self.text_buffer` with the Ion text representation of the current value
-        // if it is a scalar. If the value is a container, format_value() will write the opening
-        // delimiter of that container instead.
-        self.format_value()?;
-
-        self.hex_buffer.clear();
-        to_hex(
-            &mut self.hex_buffer,
-            self.reader.raw_header_bytes().unwrap(),
-        );
-        // Only write the bytes representing the body of the value if it is a scalar.
-        // If it is a container, `inspect_level` will handle stepping into it and writing any
-        // nested values.
-        if !self.reader.ion_type().unwrap().is_container() {
-            self.hex_buffer.push(' ');
-            to_hex(&mut self.hex_buffer, self.reader.raw_value_bytes().unwrap());
-        }
-
-        let length = self.reader.header_length() + self.reader.value_length();
-        output(
-            self.output,
-            Some(self.reader.header_offset()),
-            Some(length),
-            &self.indentation_buffer,
-            &self.hex_buffer,
-            &self.text_buffer,
-        )
-    }
-
-    fn format_value(&mut self) -> IonResult<()> {
-        use ion_rs::IonType::*;
-
-        // Destructure `self` to get multiple simultaneous mutable references to its constituent
-        // fields. This freezes `self`; it cannot be referred to for the rest of the function call.
-        let IonInspector {
-            ref mut reader,
-            ref mut text_ion_writer,
-            ref mut text_buffer,
-            ref mut color_buffer,
-            ..
-        } = self;
-
-        // If we need to write comments alongside any of the values, we'll add them here so we can
-        // colorize them separately.
-        let comment_buffer = color_buffer;
-        comment_buffer.clear();
-
-        let writer = text_ion_writer; // Local alias for brevity.
-        let ion_type = reader
-            .ion_type()
-            .expect("format_value() called when reader was exhausted");
-        if reader.is_null() {
-            writer.write_null(reader.ion_type().unwrap())?;
-        } else {
-            match ion_type {
-                Null => writer.write_null(ion_type),
-                Bool => writer.write_bool(reader.read_bool()?),
-                Int => writer.write_i64(reader.read_i64()?),
-                Float => writer.write_f64(reader.read_f64()?),
-                Decimal => writer.write_decimal(&reader.read_decimal()?),
-                Timestamp => writer.write_timestamp(&reader.read_timestamp()?),
-                Symbol => {
-                    // TODO: Make this easier in the reader
-                    let symbol_token = reader.read_raw_symbol()?;
-                    let sid = symbol_token.local_sid().unwrap();
-                    let text = reader
-                        .symbol_table()
-                        .text_for(sid)
-                        .unwrap_or_else(|| panic!("Could not resolve text for symbol ID ${}", sid));
-                    write!(comment_buffer, " // ${}", sid)?;
-                    writer.write_symbol(text)
-                }
-                String => writer.write_string(reader.read_str()?),
-                Clob => writer.write_clob(reader.read_clob()?),
-                Blob => writer.write_blob(reader.read_blob()?),
-                // The containers don't use the RawTextWriter to format anything. They simply write
-                // the appropriate opening delimiter.
-                List => {
-                    write!(text_buffer, "[")?;
-                    return Ok(());
-                }
-                SExp => {
-                    write!(text_buffer, "(")?;
-                    return Ok(());
-                }
-                Struct => {
-                    write!(text_buffer, "{{")?;
-                    return Ok(());
-                }
-            }?;
-        }
-        // This is writing to a Vec, so flush() will always succeed.
-        let _ = writer.flush();
-        // The writer produces valid UTF-8, so there's no need to re-validate it.
-        let value_text = unsafe { from_utf8_unchecked(writer.output().as_slice()) };
-        write!(text_buffer, "{}", value_text.trim_end())?;
-        // If we're in a container, add a delimiting comma. Text Ion allows trailing commas, so we
-        // don't need to treat the last value as a special case.
-        if self.reader.depth() > 0 {
-            write!(text_buffer, ",")?;
-        }
-        write!(text_buffer, "{}", comment_buffer.dimmed())?;
-        // Clear the writer's output Vec. We encode each scalar independently of one another.
-        writer.output_mut().clear();
-        Ok(())
-    }
-}
-
-const COLUMN_DELIMITER: &str = " | ";
-const CHARS_PER_HEX_BYTE: usize = 3;
-const HEX_BYTES_PER_ROW: usize = 8;
-const HEX_COLUMN_SIZE: usize = HEX_BYTES_PER_ROW * CHARS_PER_HEX_BYTE;
-
-fn write_header(output: &mut OutputRef) -> IonResult<()> {
-    let line = "-".repeat(24 + 24 + 9 + 9 + (COLUMN_DELIMITER.len() * 3));
-
-    writeln!(output, "{}", line)?;
-    write!(
-        output,
-        "{:^9}{}",
-        "Offset".bold().bright_white(),
-        COLUMN_DELIMITER
-    )?;
-    write!(
-        output,
-        "{:^9}{}",
-        "Length".bold().bright_white(),
-        COLUMN_DELIMITER
-    )?;
-    write!(
-        output,
-        "{:^24}{}",
-        "Binary Ion".bold().bright_white(),
-        COLUMN_DELIMITER
-    )?;
-    writeln!(output, "{:^24}", "Text Ion".bold().bright_white())?;
-    writeln!(output, "{}", line)?;
-    Ok(())
-}
-
-// Accepting a `T` allows us to pass in `&str`, `&String`, `&ColoredString`, etc as out text_column
-// TODO: This could be a method on IonInspector
-fn output<T: Display>(
-    output: &mut OutputRef,
-    offset: Option<usize>,
-    length: Option<usize>,
-    indentation: &str,
-    hex_column: &str,
-    text_column: T,
-) -> IonResult<()> {
-    // The current implementation always writes a single line of output for the offset, length,
-    // and text columns. Only the hex column can span multiple rows.
-    // TODO: It would be nice to allow important hex bytes (e.g. type descriptors or lengths)
-    //       to be color-coded. This complicates the output function, however, as the length
-    //       of a colored string is not the same as its display length. We would need to pass
-    //       uncolored strings to the output function paired with the desired color/style so
-    //       the output function could break the text into the necessary row lengths and then apply
-    //       the provided colors just before writing.
-
-    // Write the offset column
-    if let Some(offset) = offset {
-        write!(output, "{:9}{}", offset, COLUMN_DELIMITER)?;
-    } else {
-        write!(output, "{:9}{}", "", COLUMN_DELIMITER)?;
-    }
-
-    // Write the length column
-    if let Some(length) = length {
-        write!(output, "{:9}{}", length, COLUMN_DELIMITER)?;
-    } else {
-        write!(output, "{:9}{}", "", COLUMN_DELIMITER)?;
-    }
-
-    // If the hex string is short enough to fit in a single row...
-    if hex_column.len() < HEX_COLUMN_SIZE {
-        // ...print the hex string...
-        write!(output, "{}", hex_column)?;
-        // ...and then write enough padding spaces to fill the rest of the row.
-        for _ in 0..(HEX_COLUMN_SIZE - hex_column.len()) {
+        // If we completed the slice OR we finished writing all of the requested bytes
+        if slice.is_empty() || num_bytes == bytes_to_write {
             write!(output, " ")?;
         }
-    } else {
-        // Otherwise, write the first row's worth of the hex string.
-        write!(output, "{}", &hex_column[..HEX_COLUMN_SIZE])?;
-    }
-    // Write a delimiter, the write the text Ion as the final column.
-    write!(output, "{}", COLUMN_DELIMITER)?;
-    write!(output, " ")?;
-    writeln!(output, "{}{}", indentation, text_column)?;
 
-    // Revisit our hex column. Write as many additional rows as needed.
-    let mut col_1_written = HEX_COLUMN_SIZE;
-    while col_1_written < hex_column.len() {
-        // Padding for offset column
-        write!(output, "{:9}{}", "", COLUMN_DELIMITER)?;
-        // Padding for length column
-        write!(output, "{:9}{}", "", COLUMN_DELIMITER)?;
-        let remaining_bytes = hex_column.len() - col_1_written;
-        let bytes_to_write = min(remaining_bytes, HEX_COLUMN_SIZE);
-        let next_slice_to_write = &hex_column[col_1_written..(col_1_written + bytes_to_write)];
-        write!(output, "{}", next_slice_to_write)?;
-        for _ in 0..(HEX_COLUMN_SIZE - bytes_to_write) {
-            write!(output, " ")?;
+        if slice.is_empty() {
+            // This slice has been exhausted, we should resume from the beginning of the next one.
+            self.slices_written += 1;
         }
-        writeln!(output, "{}", COLUMN_DELIMITER)?;
-        col_1_written += HEX_COLUMN_SIZE;
-        // No need to write anything for the text column since it's the last one.
-    }
-    Ok(())
-}
 
-fn closing_delimiter_for(container_type: IonType) -> &'static str {
-    match container_type {
-        IonType::List => "]",
-        IonType::SExp => ")",
-        IonType::Struct => "}",
-        _ => panic!("Attempted to close non-container type {:?}", container_type),
+        Ok(bytes_to_write)
     }
-}
 
-fn to_hex(buffer: &mut String, bytes: &[u8]) {
-    if bytes.is_empty() {
-        return;
+    /// Returns a reference to the [`IonBytes`] from which the next bytes should be pulled.
+    fn current_slice(&mut self) -> Option<&mut IonBytes<'a>> {
+        if self.is_empty() {
+            return None;
+        }
+        Some(&mut self.slices[self.slices_written])
     }
-    write!(buffer, "{:02x}", bytes[0]).unwrap();
-    for byte in &bytes[1..] {
-        write!(buffer, " {:02x}", *byte).unwrap();
+
+    /// Returns `true` if all of the slices have been exhausted.
+    fn is_empty(&self) -> bool {
+        self.slices_written == self.slices.len()
     }
 }
 
-fn join_into<T: Display>(
-    buffer: &mut String,
-    delimiter: &str,
-    mut values: impl Iterator<Item = IonResult<T>>,
-) -> IonResult<()> {
-    if let Some(first) = values.next() {
-        write!(buffer, "{}", first?).unwrap();
+/// Converts the given byte slice to a string containing hex-encoded bytes
+fn hex_contents(source: &[u8]) -> String {
+    if source.is_empty() {
+        return String::new();
     }
-    for value in values {
-        write!(buffer, "{}{}", delimiter, value?).unwrap();
+    use std::fmt::Write;
+    let mut buffer = String::new();
+    let bytes = source.iter();
+
+    let mut is_first = true;
+    for byte in bytes {
+        if is_first {
+            write!(buffer, "{:02X?}", byte).unwrap();
+            is_first = false;
+            continue;
+        }
+        write!(buffer, " {:02X?}", byte).unwrap();
     }
-    Ok(())
+    buffer
 }
