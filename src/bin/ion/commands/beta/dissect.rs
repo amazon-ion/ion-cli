@@ -2,24 +2,21 @@ use std::fmt::Display;
 use std::fs::File;
 use std::io;
 use std::io::{BufWriter, Write};
-use std::ptr::write;
 use std::str::FromStr;
 
 use anyhow::{bail, Context, Result};
 use clap::{Arg, ArgMatches, Command};
-use ion_schema::external::ion_rs::text::text_formatter::IonValueFormatter;
 use memmap::MmapOptions;
 use new_ion_rs::*;
-use new_ion_rs::lazy::any_encoding::{AnyEncoding, LazyRawValueKind};
+use new_ion_rs::lazy::any_encoding::{AnyEncoding, LazyRawAnyStruct, LazyRawValueKind};
 use new_ion_rs::lazy::binary::raw::value::LazyRawBinaryValue_1_0;
-use new_ion_rs::lazy::decoder::{HasRange, HasSpan, LazyRawFieldName, LazyRawStruct};
+use new_ion_rs::lazy::decoder::{HasRange, HasSpan, LazyRawContainer, LazyRawFieldName, LazyRawStruct};
 use new_ion_rs::lazy::encoder::LazyRawWriter;
-use new_ion_rs::lazy::encoder::value_writer::SequenceWriter;
-use new_ion_rs::lazy::encoder::write_as_ion::WriteAsIon;
+use new_ion_rs::lazy::encoder::text::v1_0::writer::LazyRawTextWriter_1_0;
 use new_ion_rs::lazy::encoding::TextEncoding_1_0;
 use new_ion_rs::lazy::expanded::ExpandedValueSource;
 use new_ion_rs::lazy::expanded::r#struct::ExpandedStructSource;
-use new_ion_rs::lazy::expanded::sequence::ExpandedListSource;
+use new_ion_rs::lazy::expanded::sequence::{ExpandedListSource, ExpandedSExpSource};
 use new_ion_rs::lazy::r#struct::LazyStruct;
 use new_ion_rs::lazy::sequence::{LazyList, LazySExp};
 use new_ion_rs::lazy::system_reader::LazySystemAnyReader;
@@ -81,7 +78,6 @@ complete value will be displayed.",
             )
     }
 
-    #[cfg(not(target_os = "windows"))] // TODO find a cross-platform pager implementation.
     fn set_up_pager(&self) {
         // Direct output to the pager specified by the PAGER environment variable, or "less -FIRX"
         // if the environment variable is not set. Note: a pager is not used if the output is not
@@ -90,6 +86,7 @@ complete value will be displayed.",
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
+        #[cfg(not(target_os = "windows"))] // TODO find a cross-platform pager implementation.
         self.set_up_pager();
 
         // --skip-bytes has a default value, so we can unwrap this safely.
@@ -242,7 +239,7 @@ fn inspect_file(
     match ion_data {
         // Pattern match the byte array to verify it starts with a binary IVM for 1.0 or 1.1
         [0xE0, 0x01, 0x00 | 0x01, 0xEA, ..] => {
-            let mut inspector = IonInspector::new(ion_data, output, bytes_to_skip, limit_bytes)?;
+            let mut inspector = IonInspector::new(output, bytes_to_skip, limit_bytes)?;
             // This inspects all values at the top level, recursing as necessary.
             inspector.inspect_top_level(&mut reader)?;
         }
@@ -256,11 +253,6 @@ fn inspect_file(
     Ok(())
 }
 
-const IVM_HEX: &str = "e0 01 00 ea";
-const IVM_TEXT: &str = "// Ion 1.0 Version Marker";
-// System events (IVM, symtabs) are always at the top level.
-const SYSTEM_EVENT_INDENTATION: &str = "";
-const LEVEL_INDENTATION: &str = "  "; // 2 spaces per level
 const TEXT_WRITER_INITIAL_BUFFER_SIZE: usize = 128;
 
 const VERTICAL_LINE: &str = "│";
@@ -274,77 +266,79 @@ const ROW_SEPARATOR: &str = r#"├──────────────┼�
 const FINAL_ROW_SEPARATOR: &str = r#"└──────────────┴──────────────┴─────────────────────────┘
 "#;
 
-const ROW_CONTINUATION: &str = r#"│              │              │"#;
-
 struct IonInspector<'a, 'b> {
     output: &'a mut OutputRef<'b>,
     bytes_to_skip: usize,
+    skip_complete: bool,
     limit_bytes: usize,
-    // Reusable buffer for formatting bytes as hex
-    hex_buffer: String,
-    // Reusable buffer for formatting text
-    text_buffer: String,
-    // Reusable buffer for colorizing text
-    color_buffer: String,
-    // Reusable buffer for tracking indentation
-    indentation_buffer: String,
     // Text Ion writer for formatting scalar values
-    text_writer: ApplicationWriter<TextEncoding_1_0, Vec<u8>>,
+    text_writer: LazyRawTextWriter_1_0<Vec<u8>>,
 }
 
 const BYTES_PER_ROW: usize = 8;
 
 impl<'a, 'b> IonInspector<'a, 'b> {
     fn new(
-        input: &'a [u8],
         out: &'a mut OutputRef<'b>,
         bytes_to_skip: usize,
         limit_bytes: usize,
     ) -> IonResult<IonInspector<'a, 'b>> {
-        let text_writer = ApplicationWriter::<TextEncoding_1_0, _>::with_config(
-            WriteConfig::<TextEncoding_1_0>::new(TextKind::Compact), Vec::with_capacity(TEXT_WRITER_INITIAL_BUFFER_SIZE))?;
+        let text_writer = WriteConfig::<TextEncoding_1_0>::new(TextKind::Compact)
+            .build(Vec::with_capacity(TEXT_WRITER_INITIAL_BUFFER_SIZE))?;
         let inspector = IonInspector {
             output: out,
             bytes_to_skip,
+            skip_complete: bytes_to_skip == 0,
             limit_bytes,
-            hex_buffer: String::new(),
-            text_buffer: String::new(),
-            color_buffer: String::new(),
-            indentation_buffer: String::new(),
             text_writer,
         };
         Ok(inspector)
     }
 
+    fn write_offset_length_and_bytes(&mut self, offset: impl Display, length: impl Display, formatter: &mut BytesFormatter) -> Result<()> {
+        write!(self.output, "{VERTICAL_LINE} {offset:12} {VERTICAL_LINE} {length:12} {VERTICAL_LINE} ")?;
+        formatter.write_row(self.output)?;
+        write!(self.output, "{VERTICAL_LINE} ")?;
+        Ok(())
+    }
+
+    fn write_blank_offset_length_and_bytes(&mut self) -> Result<()> {
+        let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![]);
+        self.write_offset_length_and_bytes("", "", &mut formatter)
+    }
+
     fn inspect_top_level(&mut self, reader: &mut LazySystemAnyReader<&'a [u8]>) -> Result<()> {
-        let mut item_number: usize = 0;
         self.output.write_all(HEADER.as_bytes())?;
+        let mut is_first_item = true;
         loop {
             let item = reader.next_item()?;
+            if !is_first_item && !matches!(item, SystemStreamItem::EndOfStream) {
+                write!(self.output, "{ROW_SEPARATOR}")?;
+            }
             match item {
                 SystemStreamItem::SymbolTable(lazy_struct) => {
-                    self.inspect_annotations(0, lazy_struct.as_value())?;
-                    self.inspect_struct(0, "", lazy_struct)?;
+                    let lazy_value = lazy_struct.as_value();
+                    if self.should_skip(lazy_value) {
+                        // As long as we're skipping top level values, we need to defer writing
+                        // the first row separator.
+                        is_first_item = true;
+                        continue;
+                    } else {
+                        self.inspect_value(0, "", lazy_value)?;
+                    }
                 }
                 SystemStreamItem::Value(lazy_value) => {
-                    self.inspect_value(0, "", lazy_value)?;
+                    if self.should_skip(lazy_value) {
+                        // As long as we're skipping top level values, we need to defer writing
+                        // the first row separator.
+                        is_first_item = true;
+                        continue;
+                    } else {
+                        self.inspect_value(0, "", lazy_value)?;
+                    }
                 }
                 SystemStreamItem::VersionMarker(major, minor) => {
-                    let mut ivm_color_spec = ColorSpec::new();
-                    ivm_color_spec.set_fg(Some(Color::Yellow)).set_intense(true);
-                    write!(self.output, "{VERTICAL_LINE} {:12} {VERTICAL_LINE} {:12} {VERTICAL_LINE}", "", 4)?;
-                    self.output.set_color(&ivm_color_spec)?;
-                    write!(self.output, " EA 01 {minor:02X?} 00")?;
-                    self.output.reset()?;
-                    write!(self.output, "             {VERTICAL_LINE} ")?;
-                    self.output.set_color(&ivm_color_spec)?;
-                    write!(self.output, "$ion_{major}_{minor}")?;
-                    self.output.reset()?;
-                    self.with_style(comment_style(), |out| {
-                        write!(out, " // Version marker\n")?;
-                        Ok(())
-                    })?;
-                    self.output.reset()?;
+                    self.inspect_ivm(major, minor)?;
                 }
                 SystemStreamItem::EndOfStream => {
                     self.output.write_all(FINAL_ROW_SEPARATOR.as_bytes())?;
@@ -352,23 +346,40 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                 }
                 _ => unimplemented!("a new SystemStreamItem variant was added")
             }
-            if !matches!(item, SystemStreamItem::EndOfStream) {
-                write!(self.output, "{ROW_SEPARATOR}")?;
-            }
+            is_first_item = false;
         }
         Ok(())
     }
 
-    fn nm(&mut self, depth: usize) -> Result<()> {
-        const INDENTATION: &'static str = "· ";
-        for _ in 0..depth {
-            self.output.write_all(INDENTATION.as_bytes())?;
+    fn should_skip(&mut self, value: LazyValue<'_, AnyEncoding>) -> bool {
+        match value.lower().source() {
+            ExpandedValueSource::ValueLiteral(raw_value) => raw_value.range().end < self.bytes_to_skip,
+            _ => todo!(),
         }
+    }
+
+    fn inspect_ivm(&mut self, major: u8, minor: u8) -> Result<()> {
+        // TODO: Plumb IVM span/range through to the reader. In the meantime, we leave 'offset'
+        //       blank and make our own bytes slice
+        let offset = "";
+        let ivm_bytes = &[0xEA, major, minor, 0xE0];
+
+        let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![IonBytes::new(BytesKind::VersionMarker, ivm_bytes)]);
+        self.write_offset_length_and_bytes(offset, 4, &mut formatter)?;
+        self.with_style(BytesKind::VersionMarker.style(), |out| {
+            write!(out, "$ion_{major}_{minor}")?;
+            Ok(())
+        })?;
+
+        self.with_style(comment_style(), |out| {
+            write!(out, " // Version marker\n")?;
+            Ok(())
+        })?;
+        self.output.reset()?;
         Ok(())
     }
 
     fn write_indentation(&mut self, depth: usize) -> Result<()> {
-        const INDENTATION: &'static str = "  ";
         const INDENTATION_WITH_GUIDE: &'static str = "· ";
         if depth == 0 {
             return Ok(());
@@ -390,7 +401,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         let value_ref = value.read()?;
         if value.is_container() {
             match value_ref {
-                SExp(sexp) => self.inspect_sexp(sexp),
+                SExp(sexp) => self.inspect_sexp(depth, delimiter, sexp),
                 List(list) => self.inspect_list(depth, delimiter, list),
                 Struct(struct_) => self.inspect_struct(depth, delimiter, struct_),
                 _ => unreachable!("confirmed it was a container before reading")
@@ -404,7 +415,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                             self.inspect_binary_1_0_scalar(depth, delimiter, value, bin_val)?;
                         }
                         Binary_1_1(_) => todo!(),
-                        Text_1_0(_) | Text_1_1(_) => unreachable!("A binary IVM was found at the beginning of the stream.")
+                        Text_1_0(_) | Text_1_1(_) => unreachable!("text value")
                     }
                 }
                 ExpandedValueSource::Template(_, _) => { todo!() }
@@ -414,28 +425,56 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         }
     }
 
-    fn inspect_sexp(&self, sexp: LazySExp<'_, AnyEncoding>) -> Result<()> {
-        todo!()
+    fn inspect_sexp<'x>(&mut self, depth: usize, delimiter: &str, sexp: LazySExp<'x, AnyEncoding>) -> Result<()> {
+        use ExpandedSExpSource::*;
+        let raw_sexp = match sexp.lower().source() {
+            ValueLiteral(raw_sexp) => raw_sexp,
+            Template(_, _, _, _) => todo!()
+        };
+
+        use LazyRawValueKind::*;
+        match raw_sexp.as_value().kind() {
+            Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
+            Binary_1_0(v) => self.inspect_binary_1_0_sexp(depth, delimiter, sexp, v),
+            Binary_1_1(_) => todo!(),
+        }
     }
 
-    fn inspect_list(&mut self, depth: usize, delimiter: &str, list: LazyList<'_, AnyEncoding>) -> Result<()> {
+    fn inspect_list<'x>(&mut self, depth: usize, delimiter: &str, list: LazyList<'x, AnyEncoding>) -> Result<()> {
+        use ExpandedListSource::*;
         let raw_list = match list.lower().source() {
-            ExpandedListSource::ValueLiteral(raw_list) => raw_list,
-            ExpandedListSource::Template(_, _, _, _) => todo!()
+            ValueLiteral(raw_list) => raw_list,
+            Template(_, _, _, _) => todo!()
         };
 
-        let raw_value = match raw_list.as_value().kind() {
-            LazyRawValueKind::Text_1_0(_) => todo!(),
-            LazyRawValueKind::Binary_1_0(v) => v,
-            LazyRawValueKind::Text_1_1(_) => todo!(),
-            LazyRawValueKind::Binary_1_1(_) => todo!(),
-        };
+        use LazyRawValueKind::*;
+        match raw_list.as_value().kind() {
+            Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
+            Binary_1_0(v) => self.inspect_binary_1_0_list(depth, delimiter, list, v),
+            Binary_1_1(_) => todo!(),
+        }
+    }
 
+    fn inspect_binary_1_0_sexp<'x>(&mut self, depth: usize, delimiter: &str, sexp: LazySExp<'x, AnyEncoding>, raw_value: LazyRawBinaryValue_1_0) -> Result<()> {
+        self.inspect_binary_1_0_sequence(depth, "(", "", ")", delimiter, sexp.iter(), raw_value)
+    }
+
+    fn inspect_binary_1_0_list<'x>(&mut self, depth: usize, delimiter: &str, list: LazyList<'x, AnyEncoding>, raw_value: LazyRawBinaryValue_1_0) -> Result<()> {
+        self.inspect_binary_1_0_sequence(depth, "[", ",", "]", delimiter, list.iter(), raw_value)
+    }
+
+    fn inspect_binary_1_0_sequence<'x>(&mut self,
+                                       depth: usize,
+                                       opening_delimiter: &str,
+                                       value_delimiter: &str,
+                                       closing_delimiter: &str,
+                                       trailing_delimiter: &str,
+                                       values: impl IntoIterator<Item=IonResult<LazyValue<'x, AnyEncoding>>>,
+                                       raw_value: LazyRawBinaryValue_1_0,
+    ) -> Result<()> {
         let range = raw_value.range();
         let offset = range.start;
         let length = range.len();
-
-        write!(self.output, "{VERTICAL_LINE} {offset:12} {VERTICAL_LINE} {length:12} {VERTICAL_LINE} ")?;
 
         let opcode_bytes: &[u8] = &[raw_value.opcode()];
         let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![
@@ -443,28 +482,37 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             IonBytes::new(BytesKind::TrailingLength, raw_value.length_as_var_uint()),
         ]);
 
-        formatter.write_row(self.output)?;
-
-        write!(self.output, "{VERTICAL_LINE} ")?;
+        self.write_offset_length_and_bytes(offset, length, &mut formatter)?;
 
         self.write_indentation(depth)?;
         self.with_style(text_ion_style(), |out| {
-            write!(out, "[\n")?;
+            write!(out, "{opening_delimiter}\n")?;
             Ok(())
         })?;
 
-        for value_res in list.iter() {
-            self.inspect_value(depth + 1, ",", value_res?)?;
+        let mut has_printed_skip_message = false;
+        for value_res in values {
+            let value = value_res?;
+            if self.should_skip(value) {
+                if !has_printed_skip_message {
+                    self.write_blank_offset_length_and_bytes()?;
+                    self.write_indentation(depth)?;
+                    self.with_style(comment_style(), |out| {
+                        write!(out, " // ...skipping values...\n")?;
+                        Ok(())
+                    })?;
+                    has_printed_skip_message = true;
+                }
+            }
+            self.inspect_value(depth + 1, value_delimiter, value)?;
         }
 
-        write!(self.output, "{VERTICAL_LINE} {:12} {VERTICAL_LINE} {:12} {VERTICAL_LINE} {:23} {VERTICAL_LINE} ", "", "", "")?;
+        self.write_blank_offset_length_and_bytes()?;
         self.write_indentation(depth)?;
         self.with_style(text_ion_style(), |out| {
-            write!(out, "]{delimiter}\n")?;
+            write!(out, "{closing_delimiter}{trailing_delimiter}\n")?;
             Ok(())
-        })?;
-
-        Ok(())
+        })
     }
 
     fn inspect_struct(&mut self, depth: usize, delimiter: &str, struct_: LazyStruct<'_, AnyEncoding>) -> Result<()> {
@@ -474,16 +522,17 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         };
 
         use LazyRawValueKind::*;
-        let raw_value = match raw_struct.as_value().kind() {
-            Binary_1_0(v) => v,
+        match raw_struct.as_value().kind() {
+            Binary_1_0(v) => self.inspect_binary_1_0_struct(depth, delimiter, struct_, raw_struct, v),
             Binary_1_1(_) => todo!(),
             Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
-        };
+        }
+    }
+
+    fn inspect_binary_1_0_struct(&mut self, depth: usize, delimiter: &str, struct_: LazyStruct<AnyEncoding>, raw_struct: LazyRawAnyStruct, raw_value: LazyRawBinaryValue_1_0) -> Result<()> {
         let range = raw_value.range();
         let offset = range.start;
         let length = range.len();
-
-        write!(self.output, "{VERTICAL_LINE} {offset:12} {VERTICAL_LINE} {length:12} {VERTICAL_LINE} ")?;
 
         let opcode_bytes: &[u8] = &[raw_value.opcode()];
         let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![
@@ -491,9 +540,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             IonBytes::new(BytesKind::TrailingLength, raw_value.length_as_var_uint()),
         ]);
 
-        formatter.write_row(self.output)?;
-
-        write!(self.output, "{VERTICAL_LINE} ")?;
+        self.write_offset_length_and_bytes(offset, length, &mut formatter)?;
 
         self.write_indentation(depth)?;
         self.with_style(text_ion_style(), |out| {
@@ -502,19 +549,19 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         })?;
         for (raw_field_result, field_result) in raw_struct.iter().zip(struct_.iter()) {
             let (raw_field, field) = (raw_field_result?, field_result?);
-            let (raw_name, raw_value) = raw_field.expect_name_value()?;
+            let (raw_name, _raw_value) = raw_field.expect_name_value()?;
             let name = field.name()?;
 
+            // Field name row
             let range = raw_name.range();
             let raw_name_bytes = raw_name.span();
             let offset = range.start;
             let length = range.len();
-            write!(self.output, "{VERTICAL_LINE} {offset:12} {VERTICAL_LINE} {length:12} {VERTICAL_LINE} ")?;
             let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![
                 IonBytes::new(BytesKind::FieldId, raw_name_bytes)
             ]);
-            formatter.write_row(self.output)?;
-            write!(self.output, "{VERTICAL_LINE} ")?;
+            self.write_offset_length_and_bytes(offset, length, &mut formatter)?;
+
             self.write_indentation(depth + 1)?;
             self.with_style(field_id_style(), |out| {
                 IoFmtShim::new(out).value_formatter().format_symbol(name)?;
@@ -534,13 +581,12 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             })?;
             self.inspect_value(depth + 1, ",", field.value())?;
         }
-        write!(self.output, "{VERTICAL_LINE} {:12} {VERTICAL_LINE} {:12} {VERTICAL_LINE} {:23} {VERTICAL_LINE} ", "", "", "")?;
+        self.write_blank_offset_length_and_bytes()?;
         self.write_indentation(depth)?;
         self.with_style(text_ion_style(), |out| {
             write!(out, "}}{delimiter}\n")?;
             Ok(())
-        })?;
-        Ok(())
+        })
     }
 
     fn inspect_annotations(&mut self, depth: usize, value: LazyValue<AnyEncoding>) -> Result<()> {
@@ -563,14 +609,12 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         let range = encoded_annotations.range();
         let offset = range.start;
         let length = range.len();
-        write!(self.output, "{VERTICAL_LINE} {offset:12} {VERTICAL_LINE} {length:12} {VERTICAL_LINE} ")?;
 
         let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![
             IonBytes::new(BytesKind::AnnotationsHeader, encoded_annotations.header_bytes()),
             IonBytes::new(BytesKind::AnnotationsSequence, encoded_annotations.sequence_bytes()),
         ]);
-        formatter.write_row(self.output)?;
-        write!(self.output, "{VERTICAL_LINE} ")?;
+        self.write_offset_length_and_bytes(offset, length, &mut formatter)?;
 
         self.write_indentation(depth)?;
         self.with_style(annotations_style(), |out| {
@@ -599,24 +643,21 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         Ok(())
     }
 
-    fn inspect_binary_1_0_scalar(&mut self, mut depth: usize, delimiter: &str, value: LazyValue<AnyEncoding>, raw_value: LazyRawBinaryValue_1_0) -> Result<()> {
+    fn inspect_binary_1_0_scalar(&mut self, depth: usize, delimiter: &str, value: LazyValue<AnyEncoding>, raw_value: LazyRawBinaryValue_1_0) -> Result<()> {
+        if value.has_annotations() {
+            self.inspect_binary_1_0_annotations(depth, value, raw_value)?;
+        }
+
         let opcode_slice = &[raw_value.opcode()];
         let opcode_bytes = IonBytes::new(BytesKind::Opcode, opcode_slice);
         let length_bytes = IonBytes::new(BytesKind::TrailingLength, raw_value.length_as_var_uint());
         let body_bytes = IonBytes::new(BytesKind::ValueBody, raw_value.value_body().unwrap());
 
-        if value.has_annotations() {
-            self.inspect_binary_1_0_annotations(depth, value, raw_value)?;
-        }
-
         let offset = raw_value.range().start;
         let length = raw_value.range().len();
-        write!(self.output, "{VERTICAL_LINE} {offset:12} {VERTICAL_LINE} {length:12} {VERTICAL_LINE} ")?;
-
         let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![opcode_bytes, length_bytes, body_bytes]);
 
-        formatter.write_row(self.output)?;
-        write!(self.output, "{VERTICAL_LINE} ")?;
+        self.write_offset_length_and_bytes(offset, length, &mut formatter)?;
         self.write_indentation(depth)?;
 
         let style = text_ion_style();
@@ -680,12 +721,12 @@ fn annotations_style() -> ColorSpec {
 #[derive(Copy, Clone, Debug)]
 enum BytesKind {
     FieldId,
-    FieldName,
     Opcode,
     TrailingLength,
     ValueBody,
     AnnotationsHeader,
     AnnotationsSequence,
+    VersionMarker,
 }
 
 impl BytesKind {
@@ -693,7 +734,11 @@ impl BytesKind {
         use BytesKind::*;
         let mut color = ColorSpec::new();
         match self {
-            FieldId | FieldName =>
+            VersionMarker =>
+                color
+                    .set_fg(Some(Color::Yellow))
+                    .set_intense(true),
+            FieldId =>
                 color
                     .set_fg(Some(Color::Cyan))
                     .set_intense(true),
@@ -797,7 +842,7 @@ impl<'a> BytesFormatter<'a> {
     }
 
     fn write_bytes_from_current_slice(&mut self, num_bytes: usize, output: &mut impl WriteColor) -> Result<usize> {
-        let Some(mut slice) = self.current_slice() else {
+        let Some(slice) = self.current_slice() else {
             // No more to write
             return Ok(0);
         };
@@ -843,57 +888,6 @@ impl<'a> BytesFormatter<'a> {
         self.slices_written == self.slices.len()
     }
 }
-//
-// impl <'a, 'b: 'a> BytesFormatter<'a, 'b> {
-//     pub fn new(inspector: &'a mut IonInspector<'b>) -> Self {
-//         Self { formatted_bytes: vec![], bytes_written: 0, inspector }
-//     }
-//
-//     pub fn output(&mut self) -> &mut OutputRef {
-//         &mut self.inspector.output
-//     }
-//
-//     pub fn format_text_ion_value(&mut self, value: impl WriteAsIon) -> Result<()> {
-//         let writer = &mut self.inspector.text_writer;
-//         writer.output_mut().clear();
-//         writer.write(value)?;
-//         writer.flush()?;
-//         self.inspector.output.write_all(writer.output())?;
-//         Ok(())
-//     }
-//
-//     fn format_annotations_opcode(&mut self, opcode: u8) {
-//         let formatted = format!("{opcode:0X?}").bright_white().bold().on_magenta();
-//         self.formatted_bytes.push(formatted);
-//     }
-//
-//     fn format_opcode(&mut self, opcode: u8) {
-//         let formatted = format!("{opcode:0X?}").bright_white().bold().on_blue();
-//         self.formatted_bytes.push(formatted);
-//     }
-//
-//     fn format_value_length(&mut self, length_bytes: &[u8]) {
-//         for byte in length_bytes {
-//             self.formatted_bytes.push(format!("{byte:0X?}").blue().bold().on_bright_white());
-//         }
-//     }
-//
-//     fn format_value_body(&mut self, body_bytes: &[u8]) {
-//         for byte in body_bytes {
-//             self.formatted_bytes.push(format!("{byte:0X?}").white());
-//         }
-//     }
-//
-//     fn write_one_row(&mut self) -> Result<()> {
-//         write!(self.inspector.output, " ")?;
-//         for byte in self.formatted_bytes[self.bytes_written..].iter().take(8) {
-//             write!(self.inspector.output, "{} ", byte)?;
-//             self.bytes_written += 1;
-//         }
-//         Ok(())
-//     }
-//
-// }
 
 fn hex_contents(source: &[u8]) -> String {
     if source.is_empty() {
@@ -901,7 +895,7 @@ fn hex_contents(source: &[u8]) -> String {
     }
     use std::fmt::Write;
     let mut buffer = String::new();
-    let mut bytes = source.iter();
+    let bytes = source.iter();
 
     let mut is_first = true;
     for byte in bytes {
