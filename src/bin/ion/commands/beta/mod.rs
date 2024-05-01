@@ -9,8 +9,10 @@ pub mod primitive;
 pub mod schema;
 pub mod symtab;
 pub mod to;
+pub mod dissect;
 
 use crate::commands::beta::count::CountCommand;
+use crate::commands::beta::dissect::DissectCommand;
 use crate::commands::beta::from::FromNamespace;
 #[cfg(feature = "experimental-code-gen")]
 use crate::commands::beta::generate::GenerateCommand;
@@ -36,6 +38,7 @@ impl IonCliCommand for BetaNamespace {
     fn subcommands(&self) -> Vec<Box<dyn IonCliCommand>> {
         vec![
             Box::new(CountCommand),
+            Box::new(DissectCommand),
             Box::new(InspectCommand),
             Box::new(PrimitiveCommand),
             Box::new(SchemaNamespace),
