@@ -355,17 +355,15 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
 
                 self.verify_and_update_abstract_data_type(
                     if isl_type.name() == "list" {
-                        let abstract_data_type = AbstractDataType::Sequence {
+                        AbstractDataType::Sequence {
                             element_type: type_name.clone(),
                             sequence_type: "list".to_string(),
-                        };
-                        abstract_data_type
+                        }
                     } else if isl_type.name() == "sexp" {
-                        let abstract_data_type = AbstractDataType::Sequence {
+                        AbstractDataType::Sequence {
                             element_type: type_name.clone(),
                             sequence_type: "sexp".to_string(),
-                        };
-                        abstract_data_type
+                        }
                     } else {
                         AbstractDataType::Value
                     },
