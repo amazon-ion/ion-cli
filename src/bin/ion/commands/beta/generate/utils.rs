@@ -9,7 +9,23 @@ use std::fmt::{Display, Formatter};
 #[derive(Serialize)]
 pub struct Field {
     pub(crate) name: String,
-    pub(crate) value_type: String,
+    // The value_type represents the AbstractDatType for given field. When given ISL has constraints, that lead to open ended types,
+    // this will be ste to None, Otherwise set to Some(ABSTRACT_DATA_TYPE_NAME).
+    // e.g For below ISL type:
+    // ```
+    // type::{
+    //   name: list_type,
+    //   type: list // since this doesn't have `element` constraint defined it will be set `value_type` to None
+    // }
+    // ```
+    // Following will be the `Field` value for this ISL type:
+    // Field {
+    //     name: value,
+    //     value_type: None,
+    //     isl_type_name: "list"
+    // }
+    // Code generation process results into an Error when `value_type` is set to `None`
+    pub(crate) value_type: Option<String>,
     pub(crate) isl_type_name: String,
 }
 
@@ -27,13 +43,13 @@ pub trait Language {
     fn file_name_for_type(name: &str) -> String;
 
     /// Maps the given ISL type to a target type name
-    fn target_type(ion_schema_type: &IonSchemaType) -> String;
+    fn target_type(ion_schema_type: &IonSchemaType) -> Option<String>;
 
     /// Provides given target type as sequence
     /// e.g.
     ///     target_type = "Foo" returns "ArrayList<Foo>"
     ///     target_type = "Foo" returns "Vec<Foo>"
-    fn target_type_as_sequence(target_type: &str) -> String;
+    fn target_type_as_sequence(target_type: &Option<String>) -> Option<String>;
 
     /// Returns the [Case] based on programming languages
     /// e.g.  
@@ -66,29 +82,29 @@ impl Language for JavaLanguage {
         name.to_case(Case::UpperCamel)
     }
 
-    fn target_type(ion_schema_type: &IonSchemaType) -> String {
+    fn target_type(ion_schema_type: &IonSchemaType) -> Option<String> {
         use IonSchemaType::*;
-        match ion_schema_type {
-            Int => "int",
-            String | Symbol => "String",
-            Float => "double",
-            Bool => "boolean",
-            Blob | Clob => "byte[]",
-            List | SExp => "Object",
-            SchemaDefined(name) => name,
-        }
-        .to_string()
+        Some(
+            match ion_schema_type {
+                Int => "int",
+                String | Symbol => "String",
+                Float => "double",
+                Bool => "boolean",
+                Blob | Clob => "byte[]",
+                List | SExp => return None,
+                SchemaDefined(name) => name,
+            }
+            .to_string(),
+        )
     }
 
-    fn target_type_as_sequence(target_type: &str) -> String {
-        match JavaLanguage::wrapper_class(target_type) {
-            Some(wrapper_class_name) => {
-                format!("ArrayList<{}>", wrapper_class_name)
+    fn target_type_as_sequence(target_type: &Option<String>) -> Option<String> {
+        target_type.as_ref().map(|target_type_name| {
+            match JavaLanguage::wrapper_class(target_type_name) {
+                Some(wrapper_name) => format!("ArrayList<{}>", wrapper_name),
+                None => format!("ArrayList<{}>", target_type_name),
             }
-            None => {
-                format!("ArrayList<{}>", target_type)
-            }
-        }
+        })
     }
 
     fn field_name_case() -> Case {
@@ -107,12 +123,12 @@ impl Language for JavaLanguage {
 }
 
 impl JavaLanguage {
-    fn wrapper_class(primitive_data_type_name: &str) -> Option<&str> {
-        match primitive_data_type_name {
-            "int" => Some("Integer"),
-            "bool" => Some("Boolean"),
-            "double" => Some("Double"),
-            "long" => Some("Long"),
+    fn wrapper_class(primitive_data_type: &str) -> Option<String> {
+        match primitive_data_type {
+            "int" => Some("Integer".to_string()),
+            "bool" => Some("Boolean".to_string()),
+            "double" => Some("Double".to_string()),
+            "long" => Some("Long".to_string()),
             _ => {
                 // for any other non-primitive types return None
                 None
@@ -142,22 +158,26 @@ impl Language for RustLanguage {
         "ion_generated_code".to_string()
     }
 
-    fn target_type(ion_schema_type: &IonSchemaType) -> String {
+    fn target_type(ion_schema_type: &IonSchemaType) -> Option<String> {
         use IonSchemaType::*;
-        match ion_schema_type {
-            Int => "i64",
-            String | Symbol => "String",
-            Float => "f64",
-            Bool => "bool",
-            Blob | Clob => "Vec<u8>",
-            List | SExp => "T",
-            SchemaDefined(name) => name,
-        }
-        .to_string()
+        Some(
+            match ion_schema_type {
+                Int => "i64",
+                String | Symbol => "String",
+                Float => "f64",
+                Bool => "bool",
+                Blob | Clob => "Vec<u8>",
+                List | SExp => return None,
+                SchemaDefined(name) => name,
+            }
+            .to_string(),
+        )
     }
 
-    fn target_type_as_sequence(target_type: &str) -> String {
-        format!("Vec<{}>", target_type)
+    fn target_type_as_sequence(target_type: &Option<String>) -> Option<String> {
+        target_type
+            .as_ref()
+            .map(|target_type_name| format!("Vec<{}>", target_type_name))
     }
 
     fn field_name_case() -> Case {

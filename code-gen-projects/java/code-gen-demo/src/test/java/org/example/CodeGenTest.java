@@ -48,9 +48,9 @@ class CodeGenTest {
     @Test void getterAndSetterTestForNestedStruct() {
          // getter tests for `NestedStruct`
          ArrayList<Integer> a = new ArrayList<Integer>();
-                  a.add(1);
-                  a.add(2);
-                  a.add(3);
+         a.add(1);
+         a.add(2);
+         a.add(3);
          NestedStruct n = new NestedStruct("hello", 12, new AnonymousType1(false, new AnonymousType2(a)));
          assertEquals("hello", n.getA(), "n.getA() should return \"hello\"");
          assertEquals(12, n.getB(), "n.getB() should return `12`");

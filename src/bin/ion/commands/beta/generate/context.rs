@@ -39,7 +39,9 @@ pub enum AbstractDataType {
     // ```
     Value,
     // A series of zero or more values whose type is described by the nested `element_type`
-    // and sequence type is described by nested `sequence_type` (e.g. a list)
+    // and sequence type is described by nested `sequence_type` (e.g. a list).
+    // If there is no `element` constraint present in schema type then `element_type` will be None.
+    // If there is no `type` constraint present in schema type then `sequence_type` will be None.
     // e.g. Given below ISL,
     // ```
     // type::{
@@ -54,8 +56,8 @@ pub enum AbstractDataType {
     // }
     // ```
     Sequence {
-        element_type: String,
-        sequence_type: String,
+        element_type: Option<String>,
+        sequence_type: Option<String>,
     },
     // A collection of field name/value pairs (e.g. a map)
     // the nested boolean represents whether the struct has closed fields or not
@@ -80,16 +82,16 @@ pub enum AbstractDataType {
 }
 
 impl AbstractDataType {
-    pub fn element_type(&self) -> Option<&String> {
+    pub fn element_type(&self) -> Option<String> {
         match self {
-            AbstractDataType::Sequence { element_type, .. } => Some(element_type),
+            AbstractDataType::Sequence { element_type, .. } => element_type.to_owned(),
             _ => None,
         }
     }
 
-    pub fn sequence_type(&self) -> Option<&String> {
+    pub fn sequence_type(&self) -> Option<String> {
         match self {
-            AbstractDataType::Sequence { sequence_type, .. } => Some(sequence_type),
+            AbstractDataType::Sequence { sequence_type, .. } => sequence_type.to_owned(),
             _ => None,
         }
     }

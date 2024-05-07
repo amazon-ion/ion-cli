@@ -231,6 +231,19 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             )?;
         }
 
+        // if any field in `tera_fields` contains a `None` `value_type` then it means there is a constraint that leads to open ended types.
+        // Return error in such case.
+        if tera_fields.iter().any(
+            |Field {
+                 name: _,
+                 value_type,
+                 isl_type_name: _,
+             }| value_type.is_none(),
+        ) {
+            return invalid_abstract_data_type_error("Currently code generation does not support open ended types. \
+            Error can be due to a missing `type` constraint or `element` constraint in the type definition.");
+        }
+
         // add fields for template
         // TODO: verify the `occurs` value within a field, by default the fields are optional.
         if let Some(abstract_data_type) = &code_gen_context.abstract_data_type {
@@ -281,7 +294,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     }
 
     /// Provides name of the type reference that will be used for generated abstract data type
-    fn type_reference_name(&mut self, isl_type_ref: &IslTypeRef) -> CodeGenResult<String> {
+    fn type_reference_name(&mut self, isl_type_ref: &IslTypeRef) -> CodeGenResult<Option<String>> {
         Ok(match isl_type_ref {
             IslTypeRef::Named(name, _) => {
                 let schema_type: IonSchemaType = name.into();
@@ -294,7 +307,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 let name = self.next_anonymous_type_name();
                 self.generate_abstract_data_type(&name, type_def)?;
 
-                name
+                Some(name)
             }
         })
     }
@@ -320,17 +333,27 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 self.verify_and_update_abstract_data_type(
                     AbstractDataType::Sequence {
                         element_type: type_name.to_owned(),
-                        sequence_type: "list".to_string(),
+                        sequence_type: None,
                     },
                     tera_fields,
                     code_gen_context,
                 )?;
-                self.generate_struct_field(
-                    tera_fields,
-                    L::target_type_as_sequence(&type_name),
-                    isl_type.name(),
-                    "value",
-                )?;
+
+                // if the abstract data type is a sequence then pass the type name as the updated `element_type`.
+                if let Some(AbstractDataType::Sequence {
+                    element_type,
+                    sequence_type: Some(_),
+                }) = &code_gen_context.abstract_data_type
+                {
+                    self.generate_struct_field(
+                        tera_fields,
+                        L::target_type_as_sequence(element_type),
+                        isl_type.name(),
+                        "value",
+                    )?;
+                } else {
+                    self.generate_struct_field(tera_fields, None, isl_type.name(), "value")?;
+                }
             }
             IslConstraintValue::Fields(fields, content_closed) => {
                 // TODO: Check for `closed` annotation on fields and based on that return error while reading if there are extra fields.
@@ -357,12 +380,12 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     if isl_type.name() == "list" {
                         AbstractDataType::Sequence {
                             element_type: type_name.clone(),
-                            sequence_type: "list".to_string(),
+                            sequence_type: Some("list".to_string()),
                         }
                     } else if isl_type.name() == "sexp" {
                         AbstractDataType::Sequence {
                             element_type: type_name.clone(),
-                            sequence_type: "sexp".to_string(),
+                            sequence_type: Some("sexp".to_string()),
                         }
                     } else {
                         AbstractDataType::Value
@@ -394,7 +417,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     fn generate_struct_field(
         &mut self,
         tera_fields: &mut Vec<Field>,
-        abstract_data_type_name: String,
+        abstract_data_type_name: Option<String>,
         isl_type_name: String,
         field_name: &str,
     ) -> CodeGenResult<()> {
@@ -451,7 +474,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     element_type,
                     sequence_type,
                 } if abstract_data_type != &current_abstract_data_type
-                    && (element_type == "Object" || element_type == "T")
+                    && (element_type.is_none())
                     && matches!(
                         &current_abstract_data_type,
                         &AbstractDataType::Sequence { .. }
@@ -462,11 +485,8 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     // so remove all previous fields that allows `Object` and update with current abstract_data_type.
                     tera_fields.pop();
                     code_gen_context.with_abstract_data_type(AbstractDataType::Sequence {
-                        element_type: current_abstract_data_type
-                            .element_type()
-                            .unwrap()
-                            .to_string(),
-                        sequence_type: sequence_type.to_string(),
+                        element_type: current_abstract_data_type.element_type(),
+                        sequence_type: sequence_type.to_owned(),
                     });
                 }
                 // In the case when a `type` constraint occurs before `element` constraint. The element type for the sequence
@@ -486,10 +506,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 // and `sequence_type` as per `type` constraint.
                 AbstractDataType::Sequence { element_type, .. }
                     if abstract_data_type != &current_abstract_data_type
-                        && (current_abstract_data_type.element_type()
-                            == Some(&"Object".to_string())
-                            || current_abstract_data_type.element_type()
-                                == Some(&"T".to_string()))
+                        && (current_abstract_data_type.element_type().is_none())
                         && matches!(
                             &current_abstract_data_type,
                             &AbstractDataType::Sequence { .. }
@@ -501,11 +518,8 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     // which needs to be updated within `abstract_data_type` as well.
                     tera_fields.pop();
                     code_gen_context.with_abstract_data_type(AbstractDataType::Sequence {
-                        element_type: element_type.to_string(),
-                        sequence_type: current_abstract_data_type
-                            .sequence_type()
-                            .unwrap()
-                            .to_string(),
+                        element_type: element_type.to_owned(),
+                        sequence_type: current_abstract_data_type.sequence_type(),
                     })
                 }
                 _ if abstract_data_type != &current_abstract_data_type => {
