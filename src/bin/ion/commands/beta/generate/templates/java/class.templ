@@ -86,11 +86,11 @@ public final class {{ target_kind_name }} {
             {# Reads `Sequence` class with a single field `value` that is an `ArrayList` #}
             {% if abstract_data_type["Sequence"].sequence_type == "list" %}
                 if(reader.getType() != IonType.LIST) {
-                    throw new IonException("Expected list, found" + reader.getType() + "while reading {{ target_kind_name }}.");
+                    throw new IonException("Expected list, found " + reader.getType() + " while reading {{ target_kind_name }}.");
                 }
             {% elif abstract_data_type["Sequence"].sequence_type == "sexp" %}
                 if(reader.getType() != IonType.SEXP) {
-                   throw new IonException("Expected sexpression, found" + reader.getType() + "while reading {{ target_kind_name }}.");
+                   throw new IonException("Expected sexpression, found " + reader.getType() + " while reading {{ target_kind_name }}.");
                 }
             {% endif %}
             reader.stepIn();

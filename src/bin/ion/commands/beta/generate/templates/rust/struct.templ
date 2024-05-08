@@ -43,7 +43,7 @@ impl {{ target_kind_name }} {
                         {% endfor %}
                      _ => {
                         {% if abstract_data_type["Structure"] %}
-                            return deserialization_error(
+                            return validation_error(
                                 "Can not read field name:{{ field.name }} for {{ target_kind_name }} as it doesn't exist in the given schema type definition."
                             );
                         {% endif %}
@@ -55,13 +55,13 @@ impl {{ target_kind_name }} {
         {% elif abstract_data_type is object and abstract_data_type is containing("Sequence")  %}
             {% if abstract_data_type["Sequence"].sequence_type == "list" %}
                 if reader.ion_type() != Some(IonType::List) {
-                    return deserialization_error(format!(
+                    return validation_error(format!(
                        "Expected list, found {} while reading {{ target_kind_name }}.", reader.ion_type().unwrap()
                     ));
                 }
             {% elif abstract_data_type["Sequence"].sequence_type == "sexp" %}
                 if reader.ion_type() != Some(IonType::SExp) {
-                   return deserialization_error(format!(
+                   return validation_error(format!(
                        "Expected sexpression, found {} while reading {{ target_kind_name }}.", reader.ion_type().unwrap()
                    ));
                 }
@@ -82,7 +82,7 @@ impl {{ target_kind_name }} {
              };
              reader.step_out()?;
         {% else %}
-            return deserialization_error("Can not resolve read API template for {{ target_kind_name }}");
+            return validation_error("Can not resolve read API template for {{ target_kind_name }}");
         {% endif %}
      Ok(abstract_data_type)
     }

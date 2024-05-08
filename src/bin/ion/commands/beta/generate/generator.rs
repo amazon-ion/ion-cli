@@ -233,13 +233,10 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
 
         // if any field in `tera_fields` contains a `None` `value_type` then it means there is a constraint that leads to open ended types.
         // Return error in such case.
-        if tera_fields.iter().any(
-            |Field {
-                 name: _,
-                 value_type,
-                 isl_type_name: _,
-             }| value_type.is_none(),
-        ) {
+        if tera_fields
+            .iter()
+            .any(|Field { value_type, .. }| value_type.is_none())
+        {
             return invalid_abstract_data_type_error("Currently code generation does not support open ended types. \
             Error can be due to a missing `type` constraint or `element` constraint in the type definition.");
         }
