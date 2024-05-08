@@ -1,4 +1,4 @@
-use crate::commands::beta::generate::context::{AbstractDataType, CodeGenContext};
+use crate::commands::beta::generate::context::{AbstractDataType, CodeGenContext, SequenceType};
 use crate::commands::beta::generate::result::{invalid_abstract_data_type_error, CodeGenResult};
 use crate::commands::beta::generate::utils::{Field, JavaLanguage, Language, RustLanguage};
 use crate::commands::beta::generate::utils::{IonSchemaType, Template};
@@ -377,12 +377,12 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     if isl_type.name() == "list" {
                         AbstractDataType::Sequence {
                             element_type: type_name.clone(),
-                            sequence_type: Some("list".to_string()),
+                            sequence_type: Some(SequenceType::List),
                         }
                     } else if isl_type.name() == "sexp" {
                         AbstractDataType::Sequence {
                             element_type: type_name.clone(),
-                            sequence_type: Some("sexp".to_string()),
+                            sequence_type: Some(SequenceType::SExp),
                         }
                     } else {
                         AbstractDataType::Value

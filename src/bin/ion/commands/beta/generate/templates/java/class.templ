@@ -84,11 +84,11 @@ public final class {{ target_kind_name }} {
             reader.stepOut();
         {% elif abstract_data_type is object and abstract_data_type is containing("Sequence") %}
             {# Reads `Sequence` class with a single field `value` that is an `ArrayList` #}
-            {% if abstract_data_type["Sequence"].sequence_type == "list" %}
+            {% if abstract_data_type["Sequence"].sequence_type == "List" %}
                 if(reader.getType() != IonType.LIST) {
                     throw new IonException("Expected list, found " + reader.getType() + " while reading {{ target_kind_name }}.");
                 }
-            {% elif abstract_data_type["Sequence"].sequence_type == "sexp" %}
+            {% elif abstract_data_type["Sequence"].sequence_type == "SExp" %}
                 if(reader.getType() != IonType.SEXP) {
                    throw new IonException("Expected sexpression, found " + reader.getType() + " while reading {{ target_kind_name }}.");
                 }
@@ -144,7 +144,7 @@ public final class {{ target_kind_name }} {
              writer.stepOut();
          {% elif abstract_data_type is object and abstract_data_type is containing("Sequence") %}
             {# Writes `Sequence` class with a single field `value` that is an `ArrayList` as an Ion sequence #}
-            {% if abstract_data_type["Sequence"].sequence_type == "list" %}
+            {% if abstract_data_type["Sequence"].sequence_type == "List" %}
                 writer.stepIn(IonType.LIST);
             {% else %}
                 writer.stepIn(IonType.SEXP);

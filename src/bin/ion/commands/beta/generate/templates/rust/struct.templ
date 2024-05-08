@@ -53,13 +53,13 @@ impl {{ target_kind_name }} {
             }
             reader.step_out()?;
         {% elif abstract_data_type is object and abstract_data_type is containing("Sequence")  %}
-            {% if abstract_data_type["Sequence"].sequence_type == "list" %}
+            {% if abstract_data_type["Sequence"].sequence_type == "List" %}
                 if reader.ion_type() != Some(IonType::List) {
                     return validation_error(format!(
                        "Expected list, found {} while reading {{ target_kind_name }}.", reader.ion_type().unwrap()
                     ));
                 }
-            {% elif abstract_data_type["Sequence"].sequence_type == "sexp" %}
+            {% elif abstract_data_type["Sequence"].sequence_type == "SExp" %}
                 if reader.ion_type() != Some(IonType::SExp) {
                    return validation_error(format!(
                        "Expected sexpression, found {} while reading {{ target_kind_name }}.", reader.ion_type().unwrap()
@@ -109,7 +109,7 @@ impl {{ target_kind_name }} {
             {% endfor %}
             writer.step_out()?;
         {% elif abstract_data_type is object and abstract_data_type is containing("Sequence")  %}
-            {% if abstract_data_type["Sequence"].sequence_type == "list" %}
+            {% if abstract_data_type["Sequence"].sequence_type == "List" %}
                 writer.step_in(IonType::List)?;
             {% else %}
                 writer.step_in(IonType::SExp)?;
