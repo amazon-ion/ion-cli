@@ -1,0 +1,25 @@
+/// Represents serde result
+pub type SerdeResult<T> = Result<T, SerdeError>;
+
+/// Represents an error found during code generation
+#[derive(Debug)]
+pub enum SerdeError {
+    // Represents error found while reading or writing Ion data using Ion reader or writer.
+    IonError { source: IonError },
+    // Represents error found while validating Ion data in `read_from` API for given data model.
+    ValidationError { description: String },
+}
+
+/// A convenience method for creating an SerdeError::ValidationError
+/// with the provided description text.
+pub fn validation_error<T, S: AsRef<str>>(description: S) -> SerdeResult<T> {
+    Err(SerdeError::ValidationError {
+        description: description.as_ref().to_string(),
+    })
+}
+
+impl From<IonError> for SerdeError {
+    fn from(value: IonError) -> Self {
+        SerdeError::IonError { source: value }
+    }
+}

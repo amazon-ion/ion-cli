@@ -246,7 +246,8 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     r#"
         type::{
          name: sequence_struct,
-         element: string // this will be a sequence field in struct
+         element: string, // this will be a sequence field in struct
+         type: list
         }
     "#,
     &["value: Vec<String>"],
@@ -317,9 +318,9 @@ fn test_code_generation_in_rust(
         assert!(contents.contains(expected_accessor));
     }
     // verify that it generates read-write APIs
-    assert!(contents.contains("pub fn read_from(reader: &mut Reader) -> IonResult<Self> {"));
+    assert!(contents.contains("pub fn read_from(reader: &mut Reader) -> SerdeResult<Self> {"));
     assert!(contents
-        .contains("pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> IonResult<()> {"));
+        .contains("pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> SerdeResult<()> {"));
     Ok(())
 }
 
@@ -355,7 +356,8 @@ fn test_code_generation_in_rust(
     r#"
         type::{
          name: sequence_struct,
-         element: string // this will be a sequence field in struct
+         element: string, // this will be a sequence field in struct
+         type: list
         }
     "#,
     &["private ArrayList<String> value;"],

@@ -1,5 +1,10 @@
 use anyhow::Result;
+use assert_cmd::Command;
+use rstest::rstest;
+use std::fs;
+use std::fs::File;
 use std::io::Write;
+use tempfile::TempDir;
 
 #[cfg(feature = "experimental-code-gen")]
 #[test]
@@ -82,5 +87,51 @@ fn roundtrip_tests_for_generated_code_cargo() -> Result<()> {
         .unwrap();
 
     assert!(cargo_test_output.status.success());
+    Ok(())
+}
+
+#[cfg(feature = "experimental-code-gen")]
+#[rstest]
+#[case::any_element_list(
+    r#"
+        type::{
+         name: any_element_list,
+         type: list, // this doesn't specify the type for elements in the list with `element` constraint
+        }
+    "#,
+)]
+#[case::any_sequence_type(
+    r#"
+        type::{
+         name: any_sequence_type,
+         element: int, // this doesn't specify the type of sequence with `type` constraint
+        }
+    "#
+)]
+/// Calls ion-cli beta generate with different unsupported schema types. Verify that `generate` subcommand returns an error for these schema types.
+fn test_unsupported_schema_types_failures(#[case] test_schema: &str) -> Result<()> {
+    let mut cmd = Command::cargo_bin("ion")?;
+    let temp_dir = TempDir::new()?;
+    let input_schema_path = temp_dir.path().join("test_schema.isl");
+    let mut input_schema_file = File::create(&input_schema_path)?;
+    input_schema_file.write(test_schema.as_bytes())?;
+    input_schema_file.flush()?;
+    cmd.args([
+        "beta",
+        "generate",
+        "--schema",
+        "test_schema.isl",
+        "--output",
+        temp_dir.path().to_str().unwrap(),
+        "--language",
+        "java",
+        "--namespace",
+        "org.example",
+        "--directory",
+        temp_dir.path().to_str().unwrap(),
+    ]);
+    let command_assert = cmd.assert();
+    // Code generation process should return an error for unsupported schema types
+    command_assert.failure();
     Ok(())
 }

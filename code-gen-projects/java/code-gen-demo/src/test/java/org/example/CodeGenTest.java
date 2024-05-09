@@ -26,7 +26,7 @@ class CodeGenTest {
          a.add("foo");
          a.add("bar");
          a.add("baz");
-         StructWithFields s = new StructWithFields("hello", 12, new AnonymousType2(a), 10e2);
+         StructWithFields s = new StructWithFields("hello", 12, new AnonymousType3(a), 10e2);
 
          // getter tests for `StructWithFields`
          assertEquals("hello", s.getA(), "s.getA() should return \"hello\"");
@@ -39,7 +39,7 @@ class CodeGenTest {
          assertEquals("hi", s.getA(), "s.getA() should return \"hi\"");
          s.setB(6);
          assertEquals(6, s.getB(), "s.getB() should return `6`");
-         s.setC(new AnonymousType2(new ArrayList<String>()));
+         s.setC(new AnonymousType3(new ArrayList<String>()));
          assertEquals(true, s.getC().getValue().isEmpty(), "s.getC().isEmpty() should return `true`");
          s.setD(11e3);
          assertEquals(11e3 ,s.getD(), "s.getD() should return `11e3`");
@@ -47,10 +47,15 @@ class CodeGenTest {
 
     @Test void getterAndSetterTestForNestedStruct() {
          // getter tests for `NestedStruct`
-         NestedStruct n = new NestedStruct("hello", 12, new AnonymousType1(false));
+         ArrayList<Integer> a = new ArrayList<Integer>();
+         a.add(1);
+         a.add(2);
+         a.add(3);
+         NestedStruct n = new NestedStruct("hello", 12, new AnonymousType1(false, new AnonymousType2(a)));
          assertEquals("hello", n.getA(), "n.getA() should return \"hello\"");
          assertEquals(12, n.getB(), "n.getB() should return `12`");
          assertEquals(false, n.getC().getD(), "n.getC().getD() should return `false`");
+         assertEquals(3, n.getC().getE().getValue().size(), "n.getC().getE().getValue().size() should return ArrayList fo size 3");
 
          // setter tests for `NestedStruct`
          n.setA("hi");

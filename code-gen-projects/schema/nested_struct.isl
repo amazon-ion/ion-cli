@@ -5,7 +5,8 @@ type::{
     B: int,
     C: {
         fields: {
-            D: bool
+            D: bool,
+            E: { type: list, element: int }
         }
     }
  }

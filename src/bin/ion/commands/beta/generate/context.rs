@@ -38,7 +38,10 @@ pub enum AbstractDataType {
     // }
     // ```
     Value,
-    // A series of zero or more values whose type is described by the nested `String` (e.g. a list)
+    // A series of zero or more values whose type is described by the nested `element_type`
+    // and sequence type is described by nested `sequence_type` (e.g. List or SExp).
+    // If there is no `element` constraint present in schema type then `element_type` will be None.
+    // If there is no `type` constraint present in schema type then `sequence_type` will be None.
     // e.g. Given below ISL,
     // ```
     // type::{
@@ -52,7 +55,10 @@ pub enum AbstractDataType {
     //    value: Vec<i64>
     // }
     // ```
-    Sequence(String),
+    Sequence {
+        element_type: Option<String>,
+        sequence_type: Option<SequenceType>,
+    },
     // A collection of field name/value pairs (e.g. a map)
     // the nested boolean represents whether the struct has closed fields or not
     // e.g. Given below ISL,
@@ -75,6 +81,22 @@ pub enum AbstractDataType {
     Structure(bool),
 }
 
+impl AbstractDataType {
+    pub fn element_type(&self) -> Option<String> {
+        match self {
+            AbstractDataType::Sequence { element_type, .. } => element_type.to_owned(),
+            _ => None,
+        }
+    }
+
+    pub fn sequence_type(&self) -> Option<SequenceType> {
+        match self {
+            AbstractDataType::Sequence { sequence_type, .. } => sequence_type.to_owned(),
+            _ => None,
+        }
+    }
+}
+
 impl Display for AbstractDataType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -82,9 +104,17 @@ impl Display for AbstractDataType {
             "{}",
             match self {
                 AbstractDataType::Value => "single value struct",
-                AbstractDataType::Sequence(_) => "sequence value struct",
+                AbstractDataType::Sequence { .. } => "sequence value struct",
                 AbstractDataType::Structure(_) => "struct",
             }
         )
     }
+}
+
+/// Represents a sequenced type which could either be a list or s-expression.
+/// This is used by `AbstractDataType` to represent sequence type for `Sequence` variant.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub enum SequenceType {
+    List,
+    SExp,
 }

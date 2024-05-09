@@ -4,5 +4,6 @@
  B: 12,
  C: {
     D: 1e0, // expected type: bool
+    E: [1, 2, 3]
  }
 }

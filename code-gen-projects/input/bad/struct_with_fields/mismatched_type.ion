@@ -2,7 +2,7 @@
 {
  A: "hello",
  B: false, // expected field type: int
- C: ["foo", "bar", "baz"],
+ C: ("foo" "bar" "baz"),
  D: 10e2
 }
 
