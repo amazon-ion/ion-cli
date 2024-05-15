@@ -1,9 +1,5 @@
-{# Includes the macros for anonymous types that will be added as child classes #}
-{% import "anonymous_type.templ"  as macros %}
-use {{ target_kind_name | snake }}::{{ target_kind_name }};
-pub mod  {{ target_kind_name | snake }} {
-    use super::*;
-
+{# following macro defines an anonymous type as children class for its parent type definition #}
+{% macro anonymous_type(target_kind_name, fields, abstract_data_type, nested_anonymous_types) -%}
     #[derive(Debug, Clone, Default)]
     pub struct {{ target_kind_name }} {
     {% for field in fields -%}
@@ -133,7 +129,7 @@ pub mod  {{ target_kind_name | snake }} {
         }
     }
 
-    {% for inline_type in anonymous_types -%}
-        {{ macros::anonymous_type(target_kind_name=inline_type.target_kind_name, fields=inline_type.fields, abstract_data_type=inline_type.abstract_data_type, nested_anonymous_types=inline_type.anonymous_types) }}
+    {% for inline_type in nested_anonymous_types -%}
+        {{ self::anonymous_type(target_kind_name=inline_type.target_kind_name, fields=inline_type.fields, abstract_data_type=inline_type.abstract_data_type, nested_anonymous_types=inline_type.anonymous_types) }}
     {% endfor -%}
-}
+{% endmacro %}
