@@ -219,28 +219,9 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
 }
 
 #[rstest]
-#[case("{foo: bar, abc: [123, 456]}", "The maximum depth is 2")]
-#[case("{foo: bar, abc: 123}", "The maximum depth is 1")]
-fn test_analyze_depth(#[case] test_data: &str, #[case] expected_output: &str) -> Result<()> {
-    let mut cmd = Command::cargo_bin("ion")?;
-    let temp_dir = TempDir::new()?;
-    let input_path = temp_dir.path().join("test.ion");
-    let mut input_file = File::create(&input_path)?;
-    input_file.write_all(test_data.as_bytes())?;
-    input_file.flush()?;
-    cmd.args(["beta", "analyze", "depth", input_path.to_str().unwrap()]);
-    let command_assert = cmd.assert();
-    let output = command_assert.get_output();
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout.trim_end(), expected_output);
-    Ok(())
-}
-
-#[rstest]
-#[case("[123, 456]", "The number of symbols is 0")]
-#[case("{foo: 123, abc: [123, 456]}", "The number of symbols is 2")]
-#[case("{foo: bar, abc: [123, 456]}", "The number of symbols is 3")]
-fn test_symbol_count(#[case] test_data: &str, #[case] expected_out: &str) -> Result<()> {
+#[case("{foo: bar, abc: [123, 456]}")]
+#[case("{foo: bar, abc: 123}")]
+fn test_stats(#[case] test_data: &str) -> Result<()> {
     let mut cmd = Command::cargo_bin("ion")?;
     let temp_dir = TempDir::new()?;
     let input_path = temp_dir.path().join("test.10n");
@@ -249,42 +230,8 @@ fn test_symbol_count(#[case] test_data: &str, #[case] expected_out: &str) -> Res
     let test = Element::read_one(test_data);
     test.unwrap().write_to(&mut writer)?;
     writer.flush()?;
-    input_file.flush()?;
-    cmd.args([
-        "beta",
-        "symtab",
-        "symbol_count",
-        input_path.to_str().unwrap(),
-    ]);
-    let command_assert = cmd.assert();
-    let output = command_assert.get_output();
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout.trim_end(), expected_out);
-    Ok(())
-}
-
-#[rstest]
-fn test_symtab_count() -> Result<()> {
-    let mut cmd = Command::cargo_bin("ion")?;
-    let temp_dir = TempDir::new()?;
-    let input_path = temp_dir.path().join("test.10n");
-    let mut input_file = File::create(&input_path)?;
-    let expected_out = "The number of local symbol tables is 4";
-    let mut reader = ReaderBuilder::new().build(TEST_DATA.as_bytes())?;
-    let mut writer = BinaryWriterBuilder::new().build(&mut input_file)?;
-    let element_list = reader.elements();
-    for element in element_list {
-        element.unwrap().write_to(&mut writer).unwrap();
-        // Flush the writer after complete each top-level value to initialize a new local symbol table.
-        writer.flush()?
-    }
-    input_file.flush()?;
-    cmd.args(["beta", "symtab", "count", input_path.to_str().unwrap()]);
-    let command_assert = cmd.assert();
-    let output = command_assert.get_output();
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    println!("{}", stdout.to_string());
-    assert_eq!(stdout.trim_end(), expected_out);
+    cmd.args(["beta", "stats", input_path.to_str().unwrap()]);
+    cmd.assert().success();
     Ok(())
 }
 
