@@ -1,6 +1,8 @@
 use crate::commands::beta::generate::context::{AbstractDataType, CodeGenContext, SequenceType};
 use crate::commands::beta::generate::result::{invalid_abstract_data_type_error, CodeGenResult};
-use crate::commands::beta::generate::utils::{Field, JavaLanguage, Language, RustLanguage};
+use crate::commands::beta::generate::utils::{
+    AnonymousType, Field, JavaLanguage, Language, RustLanguage,
+};
 use crate::commands::beta::generate::utils::{IonSchemaType, Template};
 use convert_case::{Case, Casing};
 use ion_schema::isl::isl_constraint::{IslConstraint, IslConstraintValue};
@@ -210,6 +212,47 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         Ok(())
     }
 
+    /// generates an anonymous type that can be part of another type definition.
+    /// This will be used by the parent type to add this anonymous type in its namespace or module.
+    fn generate_anonymous_type(
+        &mut self,
+        isl_type_name: &String,
+        isl_type: &IslType,
+        anonymous_types: &mut Vec<AnonymousType>,
+    ) -> CodeGenResult<()> {
+        // Add an object called `anonymous_types` in tera context
+        // This will have a list of `anonymous_type` where each will include fields, a target_kind_name and abstract_data_type
+        let mut tera_fields = vec![];
+        let mut code_gen_context = CodeGenContext::new();
+        let mut nested_anonymous_types = vec![];
+        let constraints = isl_type.constraints();
+        for constraint in constraints {
+            self.map_constraint_to_abstract_data_type(
+                &mut nested_anonymous_types,
+                &mut tera_fields,
+                constraint,
+                &mut code_gen_context,
+            )?;
+        }
+
+        // TODO: verify the `occurs` value within a field, by default the fields are optional.
+        if let Some(abstract_data_type) = &code_gen_context.abstract_data_type {
+            // Add the anonymous type into parent type's tera context
+            anonymous_types.push(AnonymousType {
+                target_kind_name: isl_type_name.to_case(Case::UpperCamel),
+                fields: tera_fields,
+                abstract_data_type: abstract_data_type.to_owned(),
+                anonymous_types: nested_anonymous_types,
+            });
+        } else {
+            return invalid_abstract_data_type_error(
+                "Can not determine abstract data type, constraints are mapping not mapping to an abstract data type.",
+            );
+        }
+
+        Ok(())
+    }
+
     fn generate_abstract_data_type(
         &mut self,
         isl_type_name: &String,
@@ -218,6 +261,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         let mut context = Context::new();
         let mut tera_fields = vec![];
         let mut code_gen_context = CodeGenContext::new();
+        let mut anonymous_types = vec![];
 
         // Set the ISL type name for the generated abstract data type
         context.insert("target_kind_name", &isl_type_name.to_case(Case::UpperCamel));
@@ -225,6 +269,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         let constraints = isl_type.constraints();
         for constraint in constraints {
             self.map_constraint_to_abstract_data_type(
+                &mut anonymous_types,
                 &mut tera_fields,
                 constraint,
                 &mut code_gen_context,
@@ -246,6 +291,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         if let Some(abstract_data_type) = &code_gen_context.abstract_data_type {
             context.insert("fields", &tera_fields);
             context.insert("abstract_data_type", abstract_data_type);
+            context.insert("anonymous_types", &anonymous_types);
         } else {
             return invalid_abstract_data_type_error(
                     "Can not determine abstract data type, constraints are mapping not mapping to an abstract data type.",
@@ -291,7 +337,11 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     }
 
     /// Provides name of the type reference that will be used for generated abstract data type
-    fn type_reference_name(&mut self, isl_type_ref: &IslTypeRef) -> CodeGenResult<Option<String>> {
+    fn type_reference_name(
+        &mut self,
+        isl_type_ref: &IslTypeRef,
+        anonymous_types: &mut Vec<AnonymousType>,
+    ) -> CodeGenResult<Option<String>> {
         Ok(match isl_type_ref {
             IslTypeRef::Named(name, _) => {
                 let schema_type: IonSchemaType = name.into();
@@ -302,7 +352,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             }
             IslTypeRef::Anonymous(type_def, _) => {
                 let name = self.next_anonymous_type_name();
-                self.generate_abstract_data_type(&name, type_def)?;
+                self.generate_anonymous_type(&name, type_def, anonymous_types)?;
 
                 Some(name)
             }
@@ -319,13 +369,14 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     /// Maps the given constraint value to an abstract data type
     fn map_constraint_to_abstract_data_type(
         &mut self,
+        anonymous_types: &mut Vec<AnonymousType>,
         tera_fields: &mut Vec<Field>,
         constraint: &IslConstraint,
         code_gen_context: &mut CodeGenContext,
     ) -> CodeGenResult<()> {
         match constraint.constraint() {
             IslConstraintValue::Element(isl_type, _) => {
-                let type_name = self.type_reference_name(isl_type)?;
+                let type_name = self.type_reference_name(isl_type, anonymous_types)?;
 
                 self.verify_and_update_abstract_data_type(
                     AbstractDataType::Sequence {
@@ -360,7 +411,8 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     code_gen_context,
                 )?;
                 for (name, value) in fields.iter() {
-                    let type_name = self.type_reference_name(value.type_reference())?;
+                    let type_name =
+                        self.type_reference_name(value.type_reference(), anonymous_types)?;
 
                     self.generate_struct_field(
                         tera_fields,
@@ -371,7 +423,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 }
             }
             IslConstraintValue::Type(isl_type) => {
-                let type_name = self.type_reference_name(isl_type)?;
+                let type_name = self.type_reference_name(isl_type, anonymous_types)?;
 
                 self.verify_and_update_abstract_data_type(
                     if isl_type.name() == "list" {
