@@ -216,7 +216,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     /// This will be used by the parent type to add this anonymous type in its namespace or module.
     fn generate_anonymous_type(
         &mut self,
-        isl_type_name: &String,
+        type_name: &String,
         isl_type: &IslType,
         anonymous_types: &mut Vec<AnonymousType>,
     ) -> CodeGenResult<()> {
@@ -239,14 +239,14 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         if let Some(abstract_data_type) = &code_gen_context.abstract_data_type {
             // Add the anonymous type into parent type's tera context
             anonymous_types.push(AnonymousType {
-                target_kind_name: isl_type_name.to_case(Case::UpperCamel),
+                target_kind_name: type_name.to_case(Case::UpperCamel),
                 fields: tera_fields,
                 abstract_data_type: abstract_data_type.to_owned(),
                 anonymous_types: nested_anonymous_types,
             });
         } else {
             return invalid_abstract_data_type_error(
-                "Can not determine abstract data type, constraints are mapping not mapping to an abstract data type.",
+                "Can not determine abstract data type, specified constraints do not map to an abstract data type.",
             );
         }
 
@@ -294,7 +294,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             context.insert("anonymous_types", &anonymous_types);
         } else {
             return invalid_abstract_data_type_error(
-                    "Can not determine abstract data type, constraints are mapping not mapping to an abstract data type.",
+                    "Can not determine abstract data type, specified constraints do not map to an abstract data type.",
                 );
         }
 
