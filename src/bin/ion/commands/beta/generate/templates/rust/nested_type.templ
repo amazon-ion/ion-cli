@@ -1,5 +1,5 @@
 {# following macro defines an anonymous type as children class for its parent type definition #}
-{% macro anonymous_type(target_kind_name, fields, abstract_data_type, nested_anonymous_types) -%}
+{% macro nested_type(target_kind_name, fields, abstract_data_type, nested_anonymous_types) -%}
     #[derive(Debug, Clone, Default)]
     pub struct {{ target_kind_name }} {
     {% for field in fields -%}
@@ -130,6 +130,6 @@
     }
 
     {% for inline_type in nested_anonymous_types -%}
-        {{ self::anonymous_type(target_kind_name=inline_type.target_kind_name, fields=inline_type.fields, abstract_data_type=inline_type.abstract_data_type, nested_anonymous_types=inline_type.anonymous_types) }}
+        {{ self::nested_type(target_kind_name=inline_type.target_kind_name, fields=inline_type.fields, abstract_data_type=inline_type.abstract_data_type, nested_anonymous_types=inline_type.nested_types) }}
     {% endfor -%}
 {% endmacro %}

@@ -29,15 +29,15 @@ pub struct Field {
     pub(crate) isl_type_name: String,
 }
 
-/// Represents an anonymous type that can be a part of another type definition.
-/// This will be used by the template engine to add these intermediate data models for anonymous types
+/// Represents an nested type that can be a part of another type definition.
+/// This will be used by the template engine to add these intermediate data models for nested types
 /// in to the parent type definition's module/namespace.
 #[derive(Serialize)]
-pub struct AnonymousType {
+pub struct NestedType {
     pub(crate) target_kind_name: String,
     pub(crate) fields: Vec<Field>,
     pub(crate) abstract_data_type: AbstractDataType,
-    pub(crate) anonymous_types: Vec<AnonymousType>,
+    pub(crate) nested_types: Vec<NestedType>,
 }
 
 pub trait Language {

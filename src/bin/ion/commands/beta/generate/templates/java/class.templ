@@ -1,5 +1,5 @@
 {# Includes the macros for anonymous types that will be added as child classes #}
-{% import "anonymous_type.templ"  as macros %}
+{% import "nested_type.templ"  as macros %}
 
 package {{ namespace }};
 import java.util.ArrayList;
@@ -22,11 +22,11 @@ public class {{ target_kind_name }} {
     {% endfor %}
 
     {% for field in fields %}
-        {% if field.value_type is containing("AnonymousType") %}
+        {% if field.value_type is containing("NestedType") %}
           public void set{% filter upper_camel %}{{ field.name }}{% endfilter %}(
-          {{ macros::define_params_for_anonymous_type(anonymous_types=anonymous_types, field=field, abstract_data_type=abstract_data_type, initial_field_name=field.name) }}
+          {{ macros::define_params_for_anonymous_type(nested_types=nested_types, field=field, abstract_data_type=abstract_data_type, initial_field_name=field.name) }}
           ) {
-          {{ macros::initialize_anonymous_type(anonymous_types=anonymous_types, field=field, abstract_data_type=abstract_data_type) }}
+          {{ macros::initialize_anonymous_type(nested_types=nested_types, field=field, abstract_data_type=abstract_data_type) }}
           this.{{ field.name | camel }} = {{ field.name | camel }};
           return;
         {% else %}
@@ -174,7 +174,7 @@ public class {{ target_kind_name }} {
         {% endif %}
     }
 
-    {% for inline_type in anonymous_types -%}
-        {{ macros::anonymous_type(target_kind_name=inline_type.target_kind_name, fields=inline_type.fields, abstract_data_type=inline_type.abstract_data_type, nested_anonymous_types=inline_type.anonymous_types) }}
+    {% for inline_type in nested_types -%}
+        {{ macros::nested_type(target_kind_name=inline_type.target_kind_name, fields=inline_type.fields, abstract_data_type=inline_type.abstract_data_type, nested_anonymous_types=inline_type.nested_types) }}
     {% endfor -%}
 }

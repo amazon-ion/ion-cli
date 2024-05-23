@@ -1,5 +1,5 @@
 {# following macro defines an anonymous type as children class for its parent type definition #}
-{% macro anonymous_type(target_kind_name, fields, abstract_data_type, nested_anonymous_types) -%}
+{% macro nested_type(target_kind_name, fields, abstract_data_type, nested_anonymous_types) -%}
     public static class {{ target_kind_name }} {
     {% for field in fields -%}
            private {{ field.value_type }} {{ field.name | camel }};
@@ -14,11 +14,11 @@
 
 
     {% for field in fields %}
-        {% if field.value_type is containing("AnonymousType") -%}
+        {% if field.value_type is containing("NestedType") -%}
           public void set{% filter upper_camel -%}{{ field.name }}{% endfilter -%}(
-          {{ self::define_params_for_anonymous_type(anonymous_types=nested_anonymous_types, field=field, abstract_data_type=abstract_data_type, initial_field_name=field.name) }}
+          {{ self::define_params_for_anonymous_type(nested_types=nested_anonymous_types, field=field, abstract_data_type=abstract_data_type, initial_field_name=field.name) }}
           ) {
-          {{ self::initialize_anonymous_type(anonymous_types=nested_anonymous_types, field=field, abstract_data_type=abstract_data_type) }}
+          {{ self::initialize_anonymous_type(nested_types=nested_anonymous_types, field=field, abstract_data_type=abstract_data_type) }}
           this.{{ field.name | camel }} = {{ field.name | camel }};
           return;
         {% else -%}
@@ -167,14 +167,14 @@
     }
 
         {% for inline_type in nested_anonymous_types -%}
-            {{ self::anonymous_type(target_kind_name=inline_type.target_kind_name, fields=inline_type.fields, abstract_data_type=inline_type.abstract_data_type, nested_anonymous_types=inline_type.anonymous_types) }}
+            {{ self::nested_type(target_kind_name=inline_type.target_kind_name, fields=inline_type.fields, abstract_data_type=inline_type.abstract_data_type, nested_anonymous_types=inline_type.nested_types) }}
         {% endfor -%}
     }
-{% endmacro anonymous_type -%}
+{% endmacro nested_type -%}
 
 {# following macro defines statements to initialize anonymous types for setter methods #}
-{% macro initialize_anonymous_type(anonymous_types, field, abstract_data_type) %}
-        {% set map = anonymous_types | group_by(attribute="target_kind_name") %}
+{% macro initialize_anonymous_type(nested_types, field, abstract_data_type) %}
+        {% set map = nested_types | group_by(attribute="target_kind_name") %}
         {% if abstract_data_type is object and abstract_data_type is containing("Sequence") %}
             {% set inline_type = map[abstract_data_type["Sequence"].element_type][0] %}
         {% else %}
@@ -187,16 +187,16 @@
 {% endmacro %}
 
 {# following macro defines arguments to setter methods for anonymous types #}
-{% macro define_params_for_anonymous_type(anonymous_types, field, abstract_data_type, initial_field_name) %}
-    {% set map = anonymous_types | group_by(attribute="target_kind_name") %}
+{% macro define_params_for_anonymous_type(nested_types, field, abstract_data_type, initial_field_name) %}
+    {% set map = nested_types | group_by(attribute="target_kind_name") %}
     {% if abstract_data_type is object and abstract_data_type is containing("Sequence") %}
       {% set inline_type = map[abstract_data_type["Sequence"].element_type][0] %}
     {% else -%}
       {% set inline_type = map[field.value_type][0] %}
     {% endif -%}
     {% for inline_type_field in inline_type.fields | sort(attribute="name") %}
-        {% if inline_type_field.value_type is containing("AnonymousType") %}
-          {{ self::define_params_for_anonymous_type(anonymous_types=inline_type.anonymous_types, field=inline_type_field, abstract_data_type=inline_type.abstract_data_type, initial_field_name=initial_field_name) }}
+        {% if inline_type_field.value_type is containing("NestedType") %}
+          {{ self::define_params_for_anonymous_type(nested_types=inline_type.nested_types, field=inline_type_field, abstract_data_type=inline_type.abstract_data_type, initial_field_name=initial_field_name) }}
         {% else %}
            {% if inline_type_field.name == "value" and not initial_field_name == field.name %}
                 {{ inline_type_field.value_type }} {{ field.name | camel }}
