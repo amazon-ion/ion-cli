@@ -1,6 +1,8 @@
 use crate::commands::beta::generate::context::{AbstractDataType, CodeGenContext, SequenceType};
 use crate::commands::beta::generate::result::{invalid_abstract_data_type_error, CodeGenResult};
-use crate::commands::beta::generate::utils::{Field, JavaLanguage, Language, RustLanguage};
+use crate::commands::beta::generate::utils::{
+    Field, JavaLanguage, Language, NestedType, RustLanguage,
+};
 use crate::commands::beta::generate::utils::{IonSchemaType, Template};
 use convert_case::{Case, Casing};
 use ion_schema::isl::isl_constraint::{IslConstraint, IslConstraintValue};
@@ -24,8 +26,8 @@ pub(crate) struct CodeGenerator<'a, L: Language> {
     // This field is used by Java code generation to get the namespace for generated code.
     // For Rust code generation, this will be set to None.
     namespace: Option<&'a str>,
-    // Represents a counter for naming anonymous type definitions
-    pub(crate) anonymous_type_counter: usize,
+    // Represents a counter for naming nested type definitions
+    pub(crate) nested_type_counter: usize,
     phantom: PhantomData<L>,
 }
 
@@ -56,7 +58,7 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
         Self {
             output,
             namespace: None,
-            anonymous_type_counter: 0,
+            nested_type_counter: 0,
             tera,
             phantom: PhantomData,
         }
@@ -74,7 +76,7 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
         Self {
             output,
             namespace: Some(namespace),
-            anonymous_type_counter: 0,
+            nested_type_counter: 0,
             tera,
             phantom: PhantomData,
         }
@@ -164,8 +166,8 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         schema_system: &mut SchemaSystem,
     ) -> CodeGenResult<()> {
         for authority in authorities {
-            // Sort the directory paths to ensure anonymous type names are always ordered based
-            // on directory path. (anonymous type name uses a counter in its name to represent that type)
+            // Sort the directory paths to ensure nested type names are always ordered based
+            // on directory path. (nested type name uses a counter in its name to represent that type)
             let mut paths = fs::read_dir(authority)?.collect::<Result<Vec<_>, _>>()?;
             paths.sort_by_key(|dir| dir.path());
             for schema_file in paths {
@@ -210,6 +212,47 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         Ok(())
     }
 
+    /// generates an nested type that can be part of another type definition.
+    /// This will be used by the parent type to add this nested type in its namespace or module.
+    fn generate_nested_type(
+        &mut self,
+        type_name: &String,
+        isl_type: &IslType,
+        nested_types: &mut Vec<NestedType>,
+    ) -> CodeGenResult<()> {
+        // Add an object called `nested_types` in tera context
+        // This will have a list of `nested_type` where each will include fields, a target_kind_name and abstract_data_type
+        let mut tera_fields = vec![];
+        let mut code_gen_context = CodeGenContext::new();
+        let mut nested_anonymous_types = vec![];
+        let constraints = isl_type.constraints();
+        for constraint in constraints {
+            self.map_constraint_to_abstract_data_type(
+                &mut nested_anonymous_types,
+                &mut tera_fields,
+                constraint,
+                &mut code_gen_context,
+            )?;
+        }
+
+        // TODO: verify the `occurs` value within a field, by default the fields are optional.
+        if let Some(abstract_data_type) = &code_gen_context.abstract_data_type {
+            // Add the nested type into parent type's tera context
+            nested_types.push(NestedType {
+                target_kind_name: type_name.to_case(Case::UpperCamel),
+                fields: tera_fields,
+                abstract_data_type: abstract_data_type.to_owned(),
+                nested_types: nested_anonymous_types,
+            });
+        } else {
+            return invalid_abstract_data_type_error(
+                "Can not determine abstract data type, specified constraints do not map to an abstract data type.",
+            );
+        }
+
+        Ok(())
+    }
+
     fn generate_abstract_data_type(
         &mut self,
         isl_type_name: &String,
@@ -218,6 +261,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         let mut context = Context::new();
         let mut tera_fields = vec![];
         let mut code_gen_context = CodeGenContext::new();
+        let mut nested_types = vec![];
 
         // Set the ISL type name for the generated abstract data type
         context.insert("target_kind_name", &isl_type_name.to_case(Case::UpperCamel));
@@ -225,6 +269,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         let constraints = isl_type.constraints();
         for constraint in constraints {
             self.map_constraint_to_abstract_data_type(
+                &mut nested_types,
                 &mut tera_fields,
                 constraint,
                 &mut code_gen_context,
@@ -246,9 +291,10 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         if let Some(abstract_data_type) = &code_gen_context.abstract_data_type {
             context.insert("fields", &tera_fields);
             context.insert("abstract_data_type", abstract_data_type);
+            context.insert("nested_types", &nested_types);
         } else {
             return invalid_abstract_data_type_error(
-                    "Can not determine abstract data type, constraints are mapping not mapping to an abstract data type.",
+                    "Can not determine abstract data type, specified constraints do not map to an abstract data type.",
                 );
         }
 
@@ -291,7 +337,11 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     }
 
     /// Provides name of the type reference that will be used for generated abstract data type
-    fn type_reference_name(&mut self, isl_type_ref: &IslTypeRef) -> CodeGenResult<Option<String>> {
+    fn type_reference_name(
+        &mut self,
+        isl_type_ref: &IslTypeRef,
+        nested_types: &mut Vec<NestedType>,
+    ) -> CodeGenResult<Option<String>> {
         Ok(match isl_type_ref {
             IslTypeRef::Named(name, _) => {
                 let schema_type: IonSchemaType = name.into();
@@ -301,31 +351,32 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 unimplemented!("Imports in schema are not supported yet!");
             }
             IslTypeRef::Anonymous(type_def, _) => {
-                let name = self.next_anonymous_type_name();
-                self.generate_abstract_data_type(&name, type_def)?;
+                let name = self.next_nested_type_name();
+                self.generate_nested_type(&name, type_def, nested_types)?;
 
                 Some(name)
             }
         })
     }
 
-    /// Provides the name of the next anonymous type
-    fn next_anonymous_type_name(&mut self) -> String {
-        self.anonymous_type_counter += 1;
-        let name = format!("AnonymousType{}", self.anonymous_type_counter);
+    /// Provides the name of the next nested type
+    fn next_nested_type_name(&mut self) -> String {
+        self.nested_type_counter += 1;
+        let name = format!("NestedType{}", self.nested_type_counter);
         name
     }
 
     /// Maps the given constraint value to an abstract data type
     fn map_constraint_to_abstract_data_type(
         &mut self,
+        nested_types: &mut Vec<NestedType>,
         tera_fields: &mut Vec<Field>,
         constraint: &IslConstraint,
         code_gen_context: &mut CodeGenContext,
     ) -> CodeGenResult<()> {
         match constraint.constraint() {
             IslConstraintValue::Element(isl_type, _) => {
-                let type_name = self.type_reference_name(isl_type)?;
+                let type_name = self.type_reference_name(isl_type, nested_types)?;
 
                 self.verify_and_update_abstract_data_type(
                     AbstractDataType::Sequence {
@@ -360,7 +411,8 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     code_gen_context,
                 )?;
                 for (name, value) in fields.iter() {
-                    let type_name = self.type_reference_name(value.type_reference())?;
+                    let type_name =
+                        self.type_reference_name(value.type_reference(), nested_types)?;
 
                     self.generate_struct_field(
                         tera_fields,
@@ -371,7 +423,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 }
             }
             IslConstraintValue::Type(isl_type) => {
-                let type_name = self.type_reference_name(isl_type)?;
+                let type_name = self.type_reference_name(isl_type, nested_types)?;
 
                 self.verify_and_update_abstract_data_type(
                     if isl_type.name() == "list" {

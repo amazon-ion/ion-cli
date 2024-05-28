@@ -26,7 +26,13 @@ class CodeGenTest {
          a.add("foo");
          a.add("bar");
          a.add("baz");
-         StructWithFields s = new StructWithFields("hello", 12, new AnonymousType3(a), 10e2);
+         StructWithFields s = new StructWithFields();
+
+         // set all the fields of `StructWithFields`
+         s.setA("hello");
+         s.setB(12);
+         s.setC(a);
+         s.setD(10e2);
 
          // getter tests for `StructWithFields`
          assertEquals("hello", s.getA(), "s.getA() should return \"hello\"");
@@ -39,7 +45,7 @@ class CodeGenTest {
          assertEquals("hi", s.getA(), "s.getA() should return \"hi\"");
          s.setB(6);
          assertEquals(6, s.getB(), "s.getB() should return `6`");
-         s.setC(new AnonymousType3(new ArrayList<String>()));
+         s.setC(new ArrayList<String>());
          assertEquals(true, s.getC().getValue().isEmpty(), "s.getC().isEmpty() should return `true`");
          s.setD(11e3);
          assertEquals(11e3 ,s.getD(), "s.getD() should return `11e3`");
@@ -51,7 +57,14 @@ class CodeGenTest {
          a.add(1);
          a.add(2);
          a.add(3);
-         NestedStruct n = new NestedStruct("hello", 12, new AnonymousType1(false, new AnonymousType2(a)));
+         NestedStruct n = new NestedStruct();
+
+         // set all the fields of `NestedStruct`
+         n.setA("hello");
+         n.setB(12);
+         n.setC(false, a);
+
+         // getter tests for `NestedStruct`
          assertEquals("hello", n.getA(), "n.getA() should return \"hello\"");
          assertEquals(12, n.getB(), "n.getB() should return `12`");
          assertEquals(false, n.getC().getD(), "n.getC().getD() should return `false`");
@@ -64,6 +77,8 @@ class CodeGenTest {
          assertEquals(6, n.getB(), "s.getB() should return `6`");
          n.getC().setD(true);
          assertEquals(true, n.getC().getD(), "s.getC().getD() should return `true`");
+         n.getC().setE(new ArrayList<Integer>());
+         assertEquals(0, n.getC().getE().getValue().size(), "s.getC().getE().getValue().size() should return ArrayList fo size 0");
     }
 
     @Test void roundtripGoodTestForStructWithFields() throws IOException {

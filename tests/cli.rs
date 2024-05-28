@@ -270,17 +270,17 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     &["reference: OtherType"],
     &["pub fn reference(&self) -> &OtherType {"]
 )]
-#[case::struct_with_anonymous_type(
+#[case::struct_with_nested_type(
     r#"
         type::{
-         name: struct_with_anonymous_type,
+         name: struct_with_nested_type,
          fields: {
-            anonymous_type: { type: int }
+            nested_type: { type: int }
          }
         }
     "#,
-    &["anonymous_type: AnonymousType1"],
-    &["pub fn anonymous_type(&self) -> &AnonymousType1 {"]
+    &["nested_type: NestedType1"],
+    &["pub fn nested_type(&self) -> &NestedType1 {"]
 )]
 /// Calls ion-cli beta generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
 fn test_code_generation_in_rust(
@@ -382,17 +382,17 @@ fn test_code_generation_in_rust(
     &["public OtherType getReference() {"]
 )]
 #[case(
-    "StructWithAnonymousType",
+    "StructWithNestedType",
     r#"
         type::{
-         name: struct_with_anonymous_type,
+         name: struct_with_nested_type,
          fields: {
-            anonymous_type: { type: int }
+            nested_type: { type: int }
          }
         }
     "#,
-    &["private AnonymousType1 anonymousType;"],
-    &["public AnonymousType1 getAnonymousType() {"]
+    &["private NestedType1 nestedType;"],
+    &["public NestedType1 getNestedType() {"]
 )]
 /// Calls ion-cli beta generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
 fn test_code_generation_in_java(
