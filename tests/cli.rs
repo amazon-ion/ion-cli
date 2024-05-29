@@ -279,8 +279,8 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
          }
         }
     "#,
-    &["nested_type: NestedType1"],
-    &["pub fn nested_type(&self) -> &NestedType1 {"]
+    &["nested_type: i64"],
+    &["pub fn nested_type(&self) -> &i64 {"]
 )]
 /// Calls ion-cli beta generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
 fn test_code_generation_in_rust(
@@ -391,8 +391,8 @@ fn test_code_generation_in_rust(
          }
         }
     "#,
-    &["private NestedType1 nestedType;"],
-    &["public NestedType1 getNestedType() {"]
+    &["private int nestedType;"],
+    &["public int getNestedType() {"]
 )]
 /// Calls ion-cli beta generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
 fn test_code_generation_in_java(
