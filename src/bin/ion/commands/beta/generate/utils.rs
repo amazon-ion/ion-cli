@@ -133,6 +133,8 @@ impl Language for JavaLanguage {
     fn template_name(template: &Template) -> String {
         match template {
             Template::Struct => "class".to_string(),
+            Template::Scalar => "scalar".to_string(),
+            Template::Sequence => "sequence".to_string(),
         }
     }
 }
@@ -206,6 +208,8 @@ impl Language for RustLanguage {
     fn template_name(template: &Template) -> String {
         match template {
             Template::Struct => "struct".to_string(),
+            Template::Scalar => "scalar".to_string(),
+            Template::Sequence => "sequence".to_string(),
         }
     }
 }
@@ -223,7 +227,9 @@ impl Display for RustLanguage {
 ///
 /// [tera]: <https://docs.rs/tera/latest/tera/>
 pub enum Template {
-    Struct, // Represents a template for a Rust struct or Java class
+    Struct,   // Represents a template for a Rust struct or Java class with Ion struct value
+    Sequence, // Represents a template for a Rust struct or Java class with Ion sequence value
+    Scalar,   // Represents a template for a Rust struct or Java class with Ion scalar value
 }
 
 impl TryFrom<Option<&AbstractDataType>> for Template {
@@ -231,7 +237,11 @@ impl TryFrom<Option<&AbstractDataType>> for Template {
 
     fn try_from(value: Option<&AbstractDataType>) -> Result<Self, Self::Error> {
         match value {
-            Some(_) => Ok(Template::Struct),
+            Some(abstract_data_type) => match abstract_data_type {
+                AbstractDataType::Value => Ok(Template::Scalar),
+                AbstractDataType::Sequence { .. } => Ok(Template::Sequence),
+                AbstractDataType::Structure(_) => Ok(Template::Struct),
+            },
             None => invalid_abstract_data_type_error(
                 "Can not get a template without determining data model first.",
             ),

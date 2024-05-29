@@ -31,114 +31,52 @@ pub mod  {{ target_kind_name | snake }} {
 
         pub fn read_from(reader: &mut Reader) -> SerdeResult<Self> {
             let mut abstract_data_type = {{ target_kind_name }}::default();
-            {% if abstract_data_type == "Value"%}
-                abstract_data_type.value = {% if fields[0].value_type | is_built_in_type == false %}
-                                                {{ fields[0].value_type }}::read_from(reader)?;
-                                            {% else %}
-                                                reader.read_{% if fields[0].isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ fields[0].value_type | lower | replace(from="string", to ="str") }}()?{% endif %}{% if fields[0].value_type | lower == "string" %} .to_string() {% endif %};
-                                            {% endif %}
-            {% elif abstract_data_type is object and abstract_data_type is containing("Structure") %}
-                reader.step_in()?;
-                while reader.next()? != StreamItem::Nothing {
-                    if let Some(field_name) = reader.field_name()?.text() {
-                        match field_name {
-                            {% for field in fields -%}
-                                {% if field.value_type | is_built_in_type == false %}
-                                    {% if field.value_type is containing("Vec") %}
-                                         "{{ field.name }}" => { {{ util_macros::read_as_sequence(field=field) }} }
-                                    {% else %}
-                                        "{{ field.name }}" => { abstract_data_type.{{ field.name | snake }} = {{ field.value_type }}::read_from(reader)?; }
-                                    {% endif %}
+
+            reader.step_in()?;
+            while reader.next()? != StreamItem::Nothing {
+                if let Some(field_name) = reader.field_name()?.text() {
+                    match field_name {
+                        {% for field in fields -%}
+                            {% if field.value_type | is_built_in_type == false %}
+                                {% if field.value_type is containing("Vec") %}
+                                     "{{ field.name }}" => { {{ util_macros::read_as_sequence(field=field) }} }
                                 {% else %}
-                                    "{{ field.name }}" => { abstract_data_type.{{ field.name | snake}} = reader.read_{% if field.isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ field.value_type | lower | replace(from="string", to ="str") }}()?{% endif %}{% if field.value_type | lower== "string" %} .to_string() {% endif %}; }
+                                    "{{ field.name }}" => { abstract_data_type.{{ field.name | snake }} = {{ field.value_type }}::read_from(reader)?; }
                                 {% endif %}
-                            {% endfor %}
-                         _ => {
-                            {% if abstract_data_type["Structure"] %}
-                                return validation_error(
-                                    "Can not read field name:{{ field.name }} for {{ target_kind_name }} as it doesn't exist in the given schema type definition."
-                                );
+                            {% else %}
+                                "{{ field.name }}" => { abstract_data_type.{{ field.name | snake}} = reader.read_{% if field.isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ field.value_type | lower | replace(from="string", to ="str") }}()?{% endif %}{% if field.value_type | lower== "string" %} .to_string() {% endif %}; }
                             {% endif %}
-                         }
-                        }
+                        {% endfor %}
+                     _ => {
+                        {% if abstract_data_type["Structure"] %}
+                            return validation_error(
+                                "Can not read field name:{{ field.name }} for {{ target_kind_name }} as it doesn't exist in the given schema type definition."
+                            );
+                        {% endif %}
+                     }
                     }
                 }
-                reader.step_out()?;
-            {% elif abstract_data_type is object and abstract_data_type is containing("Sequence")  %}
-                {% if abstract_data_type["Sequence"].sequence_type == "List" %}
-                    if reader.ion_type() != Some(IonType::List) {
-                        return validation_error(format!(
-                           "Expected list, found {} while reading {{ target_kind_name }}.", reader.ion_type().unwrap()
-                        ));
-                    }
-                {% elif abstract_data_type["Sequence"].sequence_type == "SExp" %}
-                    if reader.ion_type() != Some(IonType::SExp) {
-                       return validation_error(format!(
-                           "Expected sexpression, found {} while reading {{ target_kind_name }}.", reader.ion_type().unwrap()
-                       ));
-                    }
-                {% endif %}
-                 reader.step_in()?;
-
-                 abstract_data_type.value = {
-                     let mut values = vec![];
-
-                     while reader.next()? != StreamItem::Nothing {
-                        {% if abstract_data_type["Sequence"].element_type | is_built_in_type == false %}
-                            values.push({{ abstract_data_type["Sequence"].element_type }}::read_from(reader)?);
-                        {% else %}
-                            values.push(reader.read_{% if fields[0].isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ abstract_data_type["Sequence"].element_type | lower | replace(from="string", to ="str") }}()?{% endif %}{% if abstract_data_type["Sequence"].element_type | lower== "string" %} .to_string() {% endif %});
-                        {% endif %}
-                    }
-                    values
-                 };
-                 reader.step_out()?;
-            {% else %}
-                return validation_error("Can not resolve read API template for {{ target_kind_name }}");
-            {% endif %}
-         Ok(abstract_data_type)
+            }
+            reader.step_out()?;
+            Ok(abstract_data_type)
         }
 
         pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> SerdeResult<()> {
-            {% if abstract_data_type == "Value" %}
-                {% for field in fields %}
-                    {% if field.value_type | is_built_in_type == false  %}
+            writer.step_in(IonType::Struct)?;
+            {% for field in fields %}
+            writer.set_field_name("{{ field.name }}");
+                {% if field.value_type | is_built_in_type == false %}
+                    {% if field.value_type is containing("Vec") %}
+                        {{ util_macros::write_as_sequence(field=field) }}
+                    {% else %}
                         self.{{ field.name | snake }}.write_to(writer)?;
-                    {% else %}
-                        writer.write_{% if field.isl_type_name == "symbol" %}symbol{% else %}{{ field.value_type | lower }}{% endif %}(self.value.to_owned())?;
                     {% endif %}
-                {% endfor %}
-            {% elif abstract_data_type is object and abstract_data_type is containing("Structure") %}
-                writer.step_in(IonType::Struct)?;
-                {% for field in fields %}
-                writer.set_field_name("{{ field.name }}");
-                    {% if field.value_type | is_built_in_type == false %}
-                        {% if field.value_type is containing("Vec") %}
-                            {{ util_macros::write_as_sequence(field=field) }}
-                        {% else %}
-                            self.{{ field.name | snake }}.write_to(writer)?;
-                        {% endif %}
-                    {% else %}
-                        {# TODO: Change the following `to_owned` to only be used when writing i64,f32,f64,bool which require owned value as input #}
-                        writer.write_{% if field.isl_type_name == "symbol" %}symbol{% else %}{{ field.value_type | lower }}{% endif %}(self.{{ field.name | snake }}.to_owned())?;
-                    {% endif %}
-                {% endfor %}
-                writer.step_out()?;
-            {% elif abstract_data_type is object and abstract_data_type is containing("Sequence")  %}
-                {% if abstract_data_type["Sequence"].sequence_type == "List" %}
-                    writer.step_in(IonType::List)?;
                 {% else %}
-                    writer.step_in(IonType::SExp)?;
+                    {# TODO: Change the following `to_owned` to only be used when writing i64,f32,f64,bool which require owned value as input #}
+                    writer.write_{% if field.isl_type_name == "symbol" %}symbol{% else %}{{ field.value_type | lower }}{% endif %}(self.{{ field.name | snake }}.to_owned())?;
                 {% endif %}
-                for value in &self.value {
-                    {% if abstract_data_type["Sequence"].element_type | is_built_in_type  == false %}
-                        value.write_to(writer)?;
-                    {% else %}
-                       writer.write_{% if fields[0].isl_type_name == "symbol" %}symbol{% else %}{{ abstract_data_type["Sequence"].element_type | lower }}{% endif %}(value.to_owned())?;
-                    {% endif %}
-                }
-                writer.step_out()?;
-            {% endif %}
+            {% endfor %}
+            writer.step_out()?;
             Ok(())
         }
     }

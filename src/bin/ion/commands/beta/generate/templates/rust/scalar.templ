@@ -1,0 +1,42 @@
+use {{ target_kind_name | snake }}::{{ target_kind_name }};
+pub mod  {{ target_kind_name | snake }} {
+    use super::*;
+
+    #[derive(Debug, Clone, Default)]
+    pub struct {{ target_kind_name }} {
+        value: {{ fields[0].value_type }},
+    }
+
+    impl {{ target_kind_name }} {
+        pub fn new(value: {{ fields[0].value_type }}) -> Self {
+            Self {
+                value,
+            }
+        }
+
+
+        pub fn value(&self) -> &{{ fields[0].value_type }} {
+            &self.value
+        }
+
+
+        pub fn read_from(reader: &mut Reader) -> SerdeResult<Self> {
+            let mut abstract_data_type = {{ target_kind_name }}::default();
+            abstract_data_type.value = {% if fields[0].value_type | is_built_in_type == false %}
+                                            {{ fields[0].value_type }}::read_from(reader)?;
+                                        {% else %}
+                                            reader.read_{% if fields[0].isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ fields[0].value_type | lower | replace(from="string", to ="str") }}()?{% endif %}{% if fields[0].value_type | lower == "string" %} .to_string() {% endif %};
+                                        {% endif %}
+            Ok(abstract_data_type)
+        }
+
+        pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> SerdeResult<()> {
+            {% if fields[0].value_type | is_built_in_type == false  %}
+                self.value.write_to(writer)?;
+            {% else %}
+                writer.write_{% if fields[0].isl_type_name == "symbol" %}symbol{% else %}{{ fields[0].value_type | lower }}{% endif %}(self.value.to_owned())?;
+            {% endif %}
+            Ok(())
+        }
+    }
+}
