@@ -23,10 +23,14 @@ pub struct Field {
     //     name: value,
     //     value_type: None,
     //     isl_type_name: "list"
+    //     abstract_data_type: None
     // }
     // Code generation process results into an Error when `value_type` is set to `None`
     pub(crate) value_type: Option<String>,
     pub(crate) isl_type_name: String,
+    // `abstract_data_type` is only used for sequence type fields. This value provides `element_type`
+    // and `sequence_type` information for this sequence type field.
+    pub(crate) abstract_data_type: Option<AbstractDataType>,
 }
 
 /// Represents an nested type that can be a part of another type definition.

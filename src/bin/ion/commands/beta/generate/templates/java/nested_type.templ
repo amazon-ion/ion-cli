@@ -1,3 +1,5 @@
+{% import "util_macros.templ"  as util_macros %}
+
 {# following macro defines an anonymous type as children class for its parent type definition #}
 {% macro nested_type(target_kind_name, fields, abstract_data_type, nested_anonymous_types) -%}
     public static class {{ target_kind_name }} {
@@ -74,7 +76,11 @@
                                                             reader.{{ field.value_type | camel }}Value();
                                                        {% endif %}
                                                     {% else %}
-                                                        {{ field.value_type }}.readFrom(reader);
+                                                        {% if field.value_type is containing("ArrayList") %}
+                                                            {{ util_macros::read_as_sequence(field=field) }}
+                                                        {% else %}
+                                                            {{ field.value_type }}.readFrom(reader);
+                                                        {% endif %}
                                                     {% endif %}
                         break;
                     {% endfor %}
@@ -96,7 +102,7 @@
             {% endif %}
             reader.stepIn();
             value = new {{ fields[0].value_type }}();
-            {# Iterate through the `ArraList` and read each element in it based on the data type provided in `abstract_data_type[Sequence]` #}
+            {# Iterate through the `ArrayList` and read each element in it based on the data type provided in `abstract_data_type[Sequence]` #}
             while (reader.hasNext()) {
                 reader.next();
                 {% if abstract_data_type["Sequence"].element_type | is_built_in_type == false %}
@@ -142,9 +148,14 @@
              {% for field in fields %}
                  writer.setFieldName("{{ field.name }}");
                  {% if field.value_type | is_built_in_type == false %}
-                     this.{{ field.name | camel }}.writeTo(writer);
+
+                    {% if field.value_type is containing("ArrayList") %}
+                        {{ util_macros::write_as_sequence(field=field) }}
+                    {% else %}
+                        this.{{ field.name | camel }}.writeTo(writer);
+                    {% endif %}
                  {% else %}
-                     writer.write{{ field.isl_type_name | upper_camel }}(this.{{ field.name | camel }});
+                        writer.write{{ field.isl_type_name | upper_camel }}(this.{{ field.name | camel }});
                  {% endif %}
              {% endfor %}
              writer.stepOut();
