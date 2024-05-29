@@ -1,3 +1,5 @@
+{% import "util_macros.templ"  as util_macros %}
+
 {# following macro defines an anonymous type as children class for its parent type definition #}
 {% macro nested_type(target_kind_name, fields, abstract_data_type, nested_anonymous_types) -%}
     #[derive(Debug, Clone, Default)]
@@ -29,7 +31,7 @@
                 abstract_data_type.value = {% if fields[0].value_type | is_built_in_type == false %}
                                                 {{ fields[0].value_type }}::read_from(reader)?;
                                             {% else %}
-                                                reader.read_{% if fields[0].isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ fields[0].value_type | replace(from="string", to ="str") }}()?{% endif %}{% if fields[0].value_type | lower == "string" %} .to_string() {% endif %};
+                                                reader.read_{% if fields[0].isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ fields[0].value_type | lower | replace(from="string", to ="str") }}()?{% endif %}{% if fields[0].value_type | lower == "string" %} .to_string() {% endif %};
                                             {% endif %}
             {% elif abstract_data_type is object and abstract_data_type is containing("Structure") %}
                 reader.step_in()?;
@@ -38,7 +40,11 @@
                         match field_name {
                             {% for field in fields -%}
                                 {% if field.value_type | is_built_in_type == false %}
-                                     "{{ field.name }}" => { abstract_data_type.{{ field.name | snake }} = {{ field.value_type }}::read_from(reader)?; }
+                                    {% if field.value_type is containing("Vec") %}
+                                         "{{ field.name }}" => { {{ util_macros::read_as_sequence(field=field) }} }
+                                    {% else %}
+                                        "{{ field.name }}" => { abstract_data_type.{{ field.name | snake }} = {{ field.value_type }}::read_from(reader)?; }
+                                    {% endif %}
                                 {% else %}
                                     "{{ field.name }}" => { abstract_data_type.{{ field.name | snake}} = reader.read_{% if field.isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ field.value_type | lower | replace(from="string", to ="str") }}()?{% endif %}{% if field.value_type | lower== "string" %} .to_string() {% endif %}; }
                                 {% endif %}
@@ -95,7 +101,7 @@
                     {% if field.value_type | is_built_in_type == false  %}
                         self.{{ field.name | snake }}.write_to(writer)?;
                     {% else %}
-                        writer.write_{% if field.isl_type_name == "symbol" %}symbol{% else %}{{ field.value_type | lower }}{% endif %}(self.value)?;
+                        writer.write_{% if field.isl_type_name == "symbol" %}symbol{% else %}{{ field.value_type | lower }}{% endif %}(self.value.to_owned())?;
                     {% endif %}
                 {% endfor %}
             {% elif abstract_data_type is object and abstract_data_type is containing("Structure") %}
@@ -103,7 +109,11 @@
                 {% for field in fields %}
                 writer.set_field_name("{{ field.name }}");
                     {% if field.value_type | is_built_in_type == false %}
-                        self.{{ field.name | snake }}.write_to(writer)?;
+                        {% if field.value_type is containing("Vec") %}
+                            {{ util_macros::write_as_sequence(field=field) }}
+                        {% else %}
+                            self.{{ field.name | snake }}.write_to(writer)?;
+                        {% endif %}
                     {% else %}
                         {# TODO: Change the following `to_owned` to only be used when writing i64,f32,f64,bool which require owned value as input #}
                         writer.write_{% if field.isl_type_name == "symbol" %}symbol{% else %}{{ field.value_type | lower }}{% endif %}(self.{{ field.name | snake }}.to_owned())?;
