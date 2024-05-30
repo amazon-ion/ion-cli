@@ -1,5 +1,6 @@
 mod context;
 mod generator;
+mod model;
 mod result;
 mod utils;
 
