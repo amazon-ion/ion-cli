@@ -1,7 +1,7 @@
 # Code generation projects
 
-This directory contains 2 projects that are used in tests for code generator as well as served as an example of
-how to use `ion-cli` code generator under `generate` subcommand with an existing project.
+This directory contains 2 projects that are used in tests for code generation and serve as an example of
+how to use `ion-cli` code generator under the `generate` subcommand with an existing project.
 
 ## Table of contents
 
