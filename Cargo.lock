@@ -857,8 +857,8 @@ dependencies = [
  "convert_case",
  "flate2",
  "infer",
- "ion-rs 1.0.0-rc.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "ion-rs 1.0.0-rc.3 (git+https://github.com/amazon-ion/ion-rust.git)",
+ "ion-rs 1.0.0-rc.3",
+ "ion-rs 1.0.0-rc.4",
  "ion-schema",
  "matches",
  "memmap",
@@ -917,8 +917,7 @@ dependencies = [
 
 [[package]]
 name = "ion-rs"
-version = "1.0.0-rc.3"
-source = "git+https://github.com/amazon-ion/ion-rust.git#eab334e79e420d5a5928918ce7f1ac57741f9d3a"
+version = "1.0.0-rc.4"
 dependencies = [
  "arrayvec",
  "base64 0.12.3",

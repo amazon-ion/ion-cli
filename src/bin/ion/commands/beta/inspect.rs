@@ -371,7 +371,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     /// `delimiter` to a comma (`","`) and it will be appended to the value's text representation.
     fn inspect_scalar<'x>(&mut self, depth: usize, delimiter: &str, value: LazyValue<'x, AnyEncoding>) -> Result<()> {
         use ExpandedValueSource::*;
-        let value_literal = match value.lower().source() {
+        let value_literal = match value.expanded().source() {
             ValueLiteral(value_literal) => value_literal,
             // In Ion 1.0, there are no template values or constructed values so we can defer
             // implementing these.
@@ -395,7 +395,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     /// to the sexp's text representation.
     fn inspect_sexp<'x>(&mut self, depth: usize, delimiter: &str, sexp: LazySExp<'x, AnyEncoding>) -> Result<()> {
         use ExpandedSExpSource::*;
-        let raw_sexp = match sexp.lower().source() {
+        let raw_sexp = match sexp.expanded().source() {
             ValueLiteral(raw_sexp) => raw_sexp,
             Template(_, _, _, _) => todo!("Ion 1.1 template SExp")
         };
@@ -413,7 +413,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     /// to the list's text representation.
     fn inspect_list<'x>(&mut self, depth: usize, delimiter: &str, list: LazyList<'x, AnyEncoding>) -> Result<()> {
         use ExpandedListSource::*;
-        let raw_list = match list.lower().source() {
+        let raw_list = match list.expanded().source() {
             ValueLiteral(raw_list) => raw_list,
             Template(_, _, _, _) => todo!("Ion 1.1 template List")
         };
@@ -430,7 +430,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     /// a list or struct, the caller can set `delimiter` to a comma (`","`) and it will be appended
     /// to the struct's text representation.
     fn inspect_struct(&mut self, depth: usize, delimiter: &str, struct_: LazyStruct<'_, AnyEncoding>) -> Result<()> {
-        let raw_struct = match struct_.lower().source() {
+        let raw_struct = match struct_.expanded().source() {
             ExpandedStructSource::ValueLiteral(raw_struct) => raw_struct,
             ExpandedStructSource::Template(_, _, _, _, _) => todo!("Ion 1.1 template Struct")
         };
@@ -444,7 +444,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     }
 
     fn inspect_annotations(&mut self, depth: usize, value: LazyValue<AnyEncoding>) -> Result<()> {
-        let raw_value = match value.lower().source() {
+        let raw_value = match value.expanded().source() {
             ExpandedValueSource::ValueLiteral(raw_value) => raw_value,
             ExpandedValueSource::Template(_, _) => todo!("Ion 1.1 template value annotations"),
             ExpandedValueSource::Constructed(_, _) => todo!("Ion 1.1 constructed value annotations")
@@ -991,11 +991,19 @@ fn hex_contents(source: &[u8]) -> String {
     let mut is_first = true;
     for byte in bytes {
         if is_first {
-            write!(buffer, "{:02X?}", byte).unwrap();
+            write!(buffer, "{:02x?}", byte).unwrap();
             is_first = false;
             continue;
         }
-        write!(buffer, " {:02X?}", byte).unwrap();
+        write!(buffer, " {:02x?}", byte).unwrap();
     }
     buffer
+}
+
+#[test]
+fn do_it() {
+    let stdout = StandardStream::stdout(ColorChoice::Always);
+    let mut output: Box<dyn WriteColor> = Box::new(stdout.lock());
+    let mut reader = SystemReader::new(AnyEncoding, File::open("/tmp/symbols").unwrap());
+    IonInspector::new(&mut output, 0, usize::MAX).unwrap().inspect_top_level(&mut reader).unwrap()
 }

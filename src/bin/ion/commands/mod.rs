@@ -1,5 +1,6 @@
 use anyhow::anyhow;
 use clap::{crate_authors, crate_version, Arg, ArgAction, ArgMatches, Command as ClapCommand};
+
 pub mod beta;
 pub mod dump;
 
@@ -69,10 +70,6 @@ pub trait IonCliCommand {
             None
         }
     }
-
-    /// Sets up the pager (e.g. `less`)  to which long text output will be directed. The default
-    /// implementation does not configure a pager.
-    fn set_up_pager(&self) {}
 
     /// The core logic of the command.
     ///

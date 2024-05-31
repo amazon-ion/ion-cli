@@ -18,8 +18,8 @@ colored = "2.0.0"
 flate2 = "1.0"
 infer = "0.15.0"
 ion-rs = { version = "1.0.0-rc.2", features = ["experimental"] }
-#new-ion-rs = { package = "ion-rs", version = "1.0.0-rc.3", path = "../ion-rust", features = ["experimental"] }
-new-ion-rs = { package = "ion-rs", git = "https://github.com/amazon-ion/ion-rust.git", features = ["experimental"] }
+new-ion-rs = { package = "ion-rs", version = "1.0.0-rc.4", path = "../ion-rust", features = ["experimental"] }
+# new-ion-rs = { package = "ion-rs", git = "https://github.com/amazon-ion/ion-rust.git", features = ["experimental"] }
 memmap = "0.7.0"
 tempfile = "3.2.0"
 ion-schema = "0.10.0"
