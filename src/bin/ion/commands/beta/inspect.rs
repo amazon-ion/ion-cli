@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 use anyhow::{Context, Result};
 use clap::{Arg, ArgMatches, Command};
-use new_ion_rs::*;
+use ion_rs::*;
 
 use crate::commands::{IonCliCommand, WithIonCliArgument};
 

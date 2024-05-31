@@ -4,7 +4,7 @@ use clap::{Arg, ArgAction, ArgMatches, Command};
 use std::fs::File;
 use std::io;
 use std::io::{stdout, BufWriter, Write};
-use new_ion_rs::*;
+use ion_rs::*;
 
 pub struct SymtabFilterCommand;
 

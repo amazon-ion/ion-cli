@@ -5,7 +5,7 @@ use serde_json::{Map, Number, Value as JsonValue};
 use std::fs::File;
 use std::io::{stdin, stdout, BufWriter, Write};
 use std::str::FromStr;
-use new_ion_rs::*;
+use ion_rs::*;
 
 pub struct ToJsonCommand;
 

@@ -1,7 +1,7 @@
 use crate::commands::{IonCliCommand, WithIonCliArgument};
 use anyhow::{Context, Result};
 use clap::{ArgMatches, Command};
-use new_ion_rs::*;
+use ion_rs::*;
 use std::fs::File;
 use std::io::{stdin, BufReader, StdinLock};
 

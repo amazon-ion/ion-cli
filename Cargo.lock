@@ -120,12 +120,6 @@ checksum = "3441f0f7b02788e948e47f457ca01f1d7e6d92c693bc132c22b087d3141c03ff"
 
 [[package]]
 name = "base64"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
-
-[[package]]
-name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
@@ -426,17 +420,6 @@ name = "delegate"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d358e0ec5c59a5e1603b933def447096886121660fc680dc1e64a0753981fe3c"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "delegate"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ee5df75c70b95bd3aacc8e2fd098797692fb1d54121019c4de481e42f04c8a1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -857,7 +840,6 @@ dependencies = [
  "convert_case",
  "flate2",
  "infer",
- "ion-rs 1.0.0-rc.3",
  "ion-rs 1.0.0-rc.4",
  "ion-schema",
  "matches",
@@ -895,28 +877,6 @@ dependencies = [
 
 [[package]]
 name = "ion-rs"
-version = "1.0.0-rc.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4048cdda3ac98a729cdbac81a4dbcae988bdf01696da36244d65c1d234ee93a"
-dependencies = [
- "arrayvec",
- "base64 0.12.3",
- "bumpalo",
- "bytes",
- "chrono",
- "delegate 0.10.0",
- "nom",
- "num-bigint 0.4.4",
- "num-integer",
- "num-traits",
- "serde",
- "serde_with 2.3.3",
- "smallvec",
- "thiserror",
-]
-
-[[package]]
-name = "ion-rs"
 version = "1.0.0-rc.4"
 dependencies = [
  "arrayvec",
@@ -929,7 +889,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "serde",
- "serde_with 3.8.1",
+ "serde_with",
  "smallvec",
  "thiserror",
 ]
@@ -1480,22 +1440,6 @@ dependencies = [
 
 [[package]]
 name = "serde_with"
-version = "2.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07ff71d2c147a7b57362cead5e22f772cd52f6ab31cfcd9edcd7f6aeb2a0afbe"
-dependencies = [
- "base64 0.13.1",
- "chrono",
- "hex",
- "indexmap 1.9.3",
- "serde",
- "serde_json",
- "serde_with_macros 2.3.3",
- "time",
-]
-
-[[package]]
-name = "serde_with"
 version = "3.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ad483d2ab0149d5a5ebcd9972a3852711e0153d863bf5a5d0391d28883c4a20"
@@ -1508,20 +1452,8 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "serde_with_macros 3.8.1",
+ "serde_with_macros",
  "time",
-]
-
-[[package]]
-name = "serde_with_macros"
-version = "2.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "881b6f881b17d13214e5d494c939ebab463d01264ce1811e9d4ac3a882e7695f"
-dependencies = [
- "darling",
- "proc-macro2",
- "quote",
- "syn 2.0.50",
 ]
 
 [[package]]
