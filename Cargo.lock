@@ -878,6 +878,8 @@ dependencies = [
 [[package]]
 name = "ion-rs"
 version = "1.0.0-rc.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87db81c1c2e08fd2de74c8dc62fbc4d6f192a34a883dafe21a00cad7a037e3da"
 dependencies = [
  "arrayvec",
  "base64 0.12.3",

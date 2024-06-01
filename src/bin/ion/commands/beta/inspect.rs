@@ -2,6 +2,7 @@ use std::fmt::Display;
 use std::fs::File;
 use std::io;
 use std::io::Write;
+use std::ops::ControlFlow;
 use std::str::FromStr;
 
 use anyhow::{Context, Result};
@@ -15,7 +16,6 @@ use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, StandardStreamLoc
 // When writing to a named file instead of STDOUT, `inspect` will use a `FileWriter` instead.
 // `FileWriter` ignores all requests to emit TTY color escape codes.
 use crate::file_writer::FileWriter;
-
 
 // * The output stream could be STDOUT or a file handle, so we use `dyn io::Write` to abstract
 //   over the two implementations.
@@ -217,40 +217,21 @@ impl<'a, 'b> IonInspector<'a, 'b> {
 
     /// Iterates over the items in `reader`, printing a table section for each top level value.
     fn inspect_top_level<Input: IonInput>(&mut self, reader: &mut SystemReader<AnyEncoding, Input>) -> Result<()> {
+        const TOP_LEVEL_DEPTH: usize = 0;
         self.write_table_header()?;
         let mut is_first_item = true;
         let mut has_printed_skip_message = false;
         loop {
             let item = reader.next_item()?;
-            // If the next item isn't `EndOfStream`, check to see whether its final byte offset is
-            // beyond the configured number of bytes to skip before printing can begin (the value of
-            // the `--set-bytes` flag).
-            if !matches!(item, SystemStreamItem::EndOfStream(_)) && self.should_skip(item.raw_stream_item()) {
-                // If we need to skip it, print a message indicating that some number of items have been skipped.
-                if !has_printed_skip_message {
-                    self.write_skipping_message(0, "stream items")?;
-                    // We only print this message once, so remember that we've already done this.
-                    has_printed_skip_message = true;
-                }
-                // Skip ahead to the next stream item.
-                continue;
+            let is_last_item = matches!(item, SystemStreamItem::EndOfStream(_));
+
+            match self.select_action(TOP_LEVEL_DEPTH, &mut has_printed_skip_message, &item.raw_stream_item(), "stream items", "ending")? {
+                InspectorAction::Skip => continue,
+                InspectorAction::Inspect => {}
+                InspectorAction::LimitReached => break,
             }
 
-            // Also check the final byte offset to see if it goes beyond the processing limit set by
-            // the `--limit-bytes` flag.
-            if self.is_past_limit(item.raw_stream_item()) {
-                self.write_limiting_message(0, "ending")?;
-                // If the limit is reached at the top level, there's nothing more to do.
-                return Ok(());
-            }
-
-            // In most cases, we would take this opportunity to print a row separator to create
-            // a new table section for this top-level item. However, there are two exceptions we
-            // need to check for:
-            // 1. The first stream item follows the header and so does not require a row separator.
-            if !is_first_item
-                // 2. The end of the stream prints the end of the table, not a row separator.
-                && !matches!(item, SystemStreamItem::EndOfStream(_)) {
+            if !is_first_item && !is_last_item {
                 // If this item is neither the first nor last in the stream, print a row separator.
                 write!(self.output, "{ROW_SEPARATOR}")?;
             }
@@ -295,7 +276,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     ///    * `None`, then there is no stream-level entity backing the item (that is: it was the result
     ///              of a macro expansion). Checks to see if the inspector has already completed its
     ///              skipping phase on an earlier item.
-    fn should_skip<T: HasRange>(&mut self, maybe_item: Option<T>) -> bool {
+    fn should_skip<T: HasRange>(&mut self, maybe_item: &Option<T>) -> bool {
         match maybe_item {
             // If this item came from an input literal, see if the input literal ends after
             // the requested number of bytes to skip. If not, we'll move to the next one.
@@ -312,8 +293,9 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     ///    * `None`, then there is no stream-level entity backing the item. These will always be
     ///              inspected; if the e-expression that produced the value was not beyond the limit,
     ///              none of the ephemeral values it produces are either.
-    fn is_past_limit<T: HasRange>(&mut self, maybe_item: Option<T>) -> bool {
-        maybe_item.map(|item| item.range().start >= self.bytes_to_skip + self.limit_bytes).unwrap_or(false)
+    fn is_past_limit<T: HasRange>(&mut self, maybe_item: &Option<T>) -> bool {
+        let limit = self.bytes_to_skip + self.limit_bytes;
+        maybe_item.as_ref().map(|item| item.range().start >= limit).unwrap_or(false)
     }
 
     /// Convenience method to set the output stream to the specified color/style for the duration of `write_fn`
@@ -443,6 +425,23 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         }
     }
 
+    /// Inspects the struct `struct_`, including all of its fields. If this struct appears inside
+    /// a list or struct, the caller can set `delimiter` to a comma (`","`) and it will be appended
+    /// to the struct's text representation.
+    fn inspect_symbol_table(&mut self, depth: usize, delimiter: &str, struct_: LazyStruct<'_, AnyEncoding>) -> Result<()> {
+        let raw_struct = match struct_.expanded().source() {
+            ExpandedStructSource::ValueLiteral(raw_struct) => raw_struct,
+            ExpandedStructSource::Template(_, _, _, _, _) => todo!("Ion 1.1 template symbol table")
+        };
+
+        use LazyRawValueKind::*;
+        match raw_struct.as_value().kind() {
+            Binary_1_0(v) => self.inspect_binary_1_0_symbol_table(depth, delimiter, struct_, raw_struct, v),
+            Binary_1_1(_) => todo!("Binary Ion 1.1 symbol table"),
+            Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
+        }
+    }
+
     fn inspect_annotations(&mut self, depth: usize, value: LazyValue<AnyEncoding>) -> Result<()> {
         let raw_value = match value.expanded().source() {
             ExpandedValueSource::ValueLiteral(raw_value) => raw_value,
@@ -459,6 +458,24 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     }
 
     // ===== Binary Ion 1.0 ======
+
+    // When inspecting a container, the container's header gets its own row in the output table.
+    // Unlike a scalar, the bytes of the container body do not begin immediately after the header
+    // bytes.
+    // This prints the container's offset, length, and header bytes, leaving the cursor positioned
+    // at the beginning of the `Text Ion` column.
+    fn inspect_binary_1_0_container_header(&mut self, raw_value: v1_0::LazyRawBinaryValue) -> Result<()> {
+        let encoding = raw_value.encoded_data();
+        let range = encoding.range();
+
+        let opcode_bytes: &[u8] = raw_value.encoded_data().opcode_span().bytes();
+        let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![
+            IonBytes::new(BytesKind::Opcode, opcode_bytes),
+            IonBytes::new(BytesKind::TrailingLength, raw_value.encoded_data().trailing_length_span().bytes()),
+        ]);
+
+        self.write_offset_length_and_bytes(range.start, range.len(), &mut formatter)
+    }
 
     fn inspect_binary_1_0_sexp<'x>(&mut self, depth: usize, delimiter: &str, sexp: LazySExp<'x, AnyEncoding>, raw_sexp: v1_0::LazyRawBinarySExp<'x>) -> Result<()> {
         self.inspect_binary_1_0_sequence(depth, "(", "", ")", delimiter, sexp.iter(), raw_sexp, raw_sexp.as_value())
@@ -478,17 +495,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                                        nested_raw_values: impl LazyRawSequence<'x, v1_0::Binary>,
                                        raw_value: v1_0::LazyRawBinaryValue,
     ) -> Result<()> {
-        let encoding = raw_value.encoded_data();
-        let range = encoding.range();
-
-        let opcode_bytes: &[u8] = raw_value.encoded_data().opcode_span().bytes();
-        let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![
-            IonBytes::new(BytesKind::Opcode, opcode_bytes),
-            IonBytes::new(BytesKind::TrailingLength, raw_value.encoded_data().trailing_length_span().bytes()),
-        ]);
-
-        self.write_offset_length_and_bytes(range.start, range.len(), &mut formatter)?;
-
+        self.inspect_binary_1_0_container_header(raw_value)?;
         self.write_indentation(depth)?;
         self.with_style(text_ion_style(), |out| {
             write!(out, "{opening_delimiter}\n")?;
@@ -498,19 +505,12 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         let mut has_printed_skip_message = false;
         for (raw_value_res, value_res) in nested_raw_values.iter().zip(nested_values) {
             let (raw_nested_value, nested_value) = (raw_value_res?, value_res?);
-            if self.should_skip(Some(raw_nested_value)) {
-                if !has_printed_skip_message {
-                    self.write_skipping_message(depth + 1, "values")?;
-                    has_printed_skip_message = true;
-                }
-                continue;
-            }
-            if self.is_past_limit(Some(raw_nested_value)) {
-                self.write_limiting_message(depth + 1, "stepping out")?;
-                break;
+            match self.select_action(depth + 1, &mut has_printed_skip_message, &Some(raw_nested_value), "values", "stepping out")? {
+                InspectorAction::Skip => continue,
+                InspectorAction::Inspect => {}
+                InspectorAction::LimitReached => break,
             }
             self.inspect_value(depth + 1, value_delimiter, nested_value)?;
-            self.skip_complete = true;
         }
 
         self.write_blank_offset_length_and_bytes(depth)?;
@@ -520,16 +520,77 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         })
     }
 
-    fn inspect_binary_1_0_struct(&mut self, depth: usize, delimiter: &str, struct_: LazyStruct<AnyEncoding>, raw_struct: LazyRawAnyStruct, raw_value: v1_0::LazyRawBinaryValue) -> Result<()> {
-        let encoding = raw_value.encoded_data();
-        let range = encoding.range();
+    fn select_action<T: HasRange>(&mut self,
+                                  depth: usize,
+                                  has_printed_skip_message: &mut bool,
+                                  maybe_item: &Option<T>,
+                                  name_of_skipped_item: &str,
+                                  name_of_limit_action: &str,
+    ) -> Result<InspectorAction> {
+        if self.should_skip(maybe_item) {
+            if !*has_printed_skip_message {
+                self.write_skipping_message(depth, name_of_skipped_item)?;
+                *has_printed_skip_message = true;
+            }
+            return Ok(InspectorAction::Skip);
+        }
+        self.skip_complete = true;
 
+        if self.is_past_limit(maybe_item) {
+            self.write_limiting_message(depth, name_of_limit_action)?;
+            return Ok(InspectorAction::LimitReached);
+        }
+
+        Ok(InspectorAction::Inspect)
+    }
+
+    /// Inspects all values (however deeply nested) starting at the current level.
+    fn inspect_binary_1_0_field(&mut self, depth: usize, has_printed_skip_message: &mut bool, raw_field: LazyRawFieldExpr<AnyEncoding>, field: LazyField<AnyEncoding>) -> Result<ControlFlow<()>> {
+        let (raw_name, _raw_value) = raw_field.expect_name_value()?;
+        let name = field.name()?;
+
+        match self.select_action(depth, has_printed_skip_message, &Some(raw_field), "fields", "stepping out")? {
+            InspectorAction::Skip => return Ok(ControlFlow::Continue(())),
+            InspectorAction::Inspect => {}
+            InspectorAction::LimitReached => return Ok(ControlFlow::Break(())),
+        }
+
+        // ===== Field name =====
+        let range = raw_name.range();
+        let raw_name_bytes = raw_name.span().bytes();
+        let offset = range.start;
+        let length = range.len();
         let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![
-            IonBytes::new(BytesKind::Opcode, encoding.opcode_span().bytes()),
-            IonBytes::new(BytesKind::TrailingLength, encoding.trailing_length_span().bytes()),
+            IonBytes::new(BytesKind::FieldId, raw_name_bytes)
         ]);
+        self.write_offset_length_and_bytes(offset, length, &mut formatter)?;
 
-        self.write_offset_length_and_bytes(range.start, range.len(), &mut formatter)?;
+        self.write_indentation(depth)?;
+        self.with_style(field_id_style(), |out| {
+            IoValueFormatter::new(out).value_formatter().format_symbol(name)?;
+            Ok(())
+        })?;
+        write!(self.output, ": ")?;
+        // Print a text Ion comment showing how the field name was encoded, ($SID or text)
+        self.with_style(comment_style(), |out| {
+            match raw_name.read()? {
+                RawSymbolRef::SymbolId(sid) => {
+                    write!(out, " // ${sid}\n")
+                }
+                RawSymbolRef::Text(_) => {
+                    write!(out, " // <text>\n")
+                }
+            }?;
+            Ok(())
+        })?;
+
+        // ===== Field value =====
+        self.inspect_value(depth, ",", field.value())?;
+        Ok(ControlFlow::Continue(()))
+    }
+
+    fn inspect_binary_1_0_struct(&mut self, depth: usize, delimiter: &str, struct_: LazyStruct<AnyEncoding>, raw_struct: LazyRawAnyStruct, raw_value: v1_0::LazyRawBinaryValue) -> Result<()> {
+        self.inspect_binary_1_0_container_header(raw_value)?;
 
         self.write_indentation(depth)?;
         self.with_style(text_ion_style(), |out| {
@@ -538,55 +599,10 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         })?;
         let mut has_printed_skip_message = false;
         for (raw_field_result, field_result) in raw_struct.iter().zip(struct_.iter()) {
-            let (raw_field, field) = (raw_field_result?, field_result?);
-            let (raw_name, raw_value) = raw_field.expect_name_value()?;
-            let name = field.name()?;
-
-            if self.should_skip(Some(raw_value)) {
-                if !has_printed_skip_message {
-                    self.write_skipping_message(depth + 1, "fields")?;
-                    has_printed_skip_message = true;
-                }
-                continue;
+            match self.inspect_binary_1_0_field(depth + 1, &mut has_printed_skip_message, raw_field_result?, field_result?)? {
+                ControlFlow::Continue(_) => {}
+                ControlFlow::Break(_) => break,
             }
-            self.skip_complete = true;
-
-            if self.is_past_limit(Some(raw_field)) {
-                self.write_limiting_message(depth + 1, "stepping out")?;
-                break;
-            }
-
-            // ===== Field name =====
-            let range = raw_name.range();
-            let raw_name_bytes = raw_name.span().bytes();
-            let offset = range.start;
-            let length = range.len();
-            let mut formatter = BytesFormatter::new(BYTES_PER_ROW, vec![
-                IonBytes::new(BytesKind::FieldId, raw_name_bytes)
-            ]);
-            self.write_offset_length_and_bytes(offset, length, &mut formatter)?;
-
-            self.write_indentation(depth + 1)?;
-            self.with_style(field_id_style(), |out| {
-                IoValueFormatter::new(out).value_formatter().format_symbol(name)?;
-                Ok(())
-            })?;
-            write!(self.output, ": ")?;
-            // Print a text Ion comment showing how the field name was encoded, ($SID or text)
-            self.with_style(comment_style(), |out| {
-                match raw_name.read()? {
-                    RawSymbolRef::SymbolId(sid) => {
-                        write!(out, " // ${sid}\n")
-                    }
-                    RawSymbolRef::Text(_) => {
-                        write!(out, " // <text>\n")
-                    }
-                }?;
-                Ok(())
-            })?;
-
-            // ===== Field value =====
-            self.inspect_value(depth + 1, ",", field.value())?;
         }
         // ===== Closing delimiter =====
         self.write_blank_offset_length_and_bytes(depth)?;
@@ -594,6 +610,11 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             write!(out, "}}{delimiter}\n")?;
             Ok(())
         })
+    }
+
+
+    fn inspect_binary_1_0_symbol_table(&mut self, depth: usize, delimiter: &str, struct_: LazyStruct<AnyEncoding>, raw_struct: LazyRawAnyStruct, raw_value: v1_0::LazyRawBinaryValue) -> Result<()> {
+        todo!()
     }
 
     fn inspect_binary_1_0_annotations(&mut self, depth: usize, value: LazyValue<AnyEncoding>, raw_value: v1_0::LazyRawBinaryValue) -> Result<()> {
@@ -749,6 +770,15 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             Ok(())
         })
     }
+}
+
+pub enum InspectorAction {
+    /// The current value appears before the offset specified by `--skip-bytes`. Ignore it.
+    Skip,
+    /// The current value appears after `--skip-bytes` and before `--limit-bytes`. Inspect it.
+    Inspect,
+    /// The current value appears after `--limit-bytes`, stop inspecting values.
+    LimitReached,
 }
 
 // ===== Named styles =====
