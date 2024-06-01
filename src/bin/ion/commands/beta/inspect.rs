@@ -7,7 +7,7 @@ use std::str::FromStr;
 use anyhow::{Context, Result};
 use clap::{Arg, ArgMatches, Command};
 use ion_rs::*;
-use ion_rs::v1_0::LazyRawBinaryValue;
+use ion_rs::v1_0::{LazyRawBinaryValue, RawValueRef};
 
 use crate::commands::{IonCliCommand, WithIonCliArgument};
 
@@ -197,15 +197,16 @@ const TEXT_WRITER_INITIAL_BUFFER_SIZE: usize = 128;
 // The number of hex-encoded bytes to show in each row of the `Binary Ion` column.
 const BYTES_PER_ROW: usize = 8;
 
-// Friendly trait alias (by way of an empty extension) for a closure that takes an output reference
-// and a value and writes a comment for that value.
-trait CommentFn<'x>: FnMut(&mut OutputRef, LazyValue<'x, AnyEncoding>) -> Result<()> {}
+/// Friendly trait alias (by way of an empty extension) for a closure that takes an output reference
+/// and a value and writes a comment for that value. Returns `true` if it wrote a comment, `false`
+/// otherwise.
+trait CommentFn<'x>: FnMut(&mut OutputRef, LazyValue<'x, AnyEncoding>) -> Result<bool> {}
 
-impl<'x, F> CommentFn<'x> for F where F: FnMut(&mut OutputRef, LazyValue<'x, AnyEncoding>) -> Result<()> {}
+impl<'x, F> CommentFn<'x> for F where F: FnMut(&mut OutputRef, LazyValue<'x, AnyEncoding>) -> Result<bool> {}
 
 /// Returns a `CommentFn` implementation that does nothing.
 fn no_comment<'x>() -> impl CommentFn<'x> {
-    |_, _| Ok(())
+    |_, _| Ok(false)
 }
 
 impl<'a, 'b> IonInspector<'a, 'b> {
@@ -707,9 +708,15 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         let (raw_name, raw_value) = raw_field.expect_name_value()?;
         self.inspect_binary_1_0_field_name(SYMBOL_LIST_DEPTH, raw_name, field.name()?)?;
         let symbols_list = match field.value().read()? {
-            ValueRef::Symbol(s) if s == "$ion_symbol_table" => return self.inspect_value(SYMBOL_LIST_DEPTH, ",", field.value(), |out, _value| Ok(out.write_all(b" // Append new symbols")?)),
+            ValueRef::Symbol(s) if s == "$ion_symbol_table" => return self.inspect_value(SYMBOL_LIST_DEPTH, ",", field.value(), |out, _value| {
+                out.write_all(b" // Appends new symbols")?;
+                Ok(true)
+            }),
             ValueRef::List(list) => list,
-            _ => return self.inspect_value(SYMBOL_LIST_DEPTH, ",", field.value(), |out, _value| Ok(out.write_all(b" // Invalid, ignored")?)),
+            _ => return self.inspect_value(SYMBOL_LIST_DEPTH, ",", field.value(), |out, _value| {
+                out.write_all(b" // Invalid, ignored")?;
+                Ok(true)
+            }),
         };
 
         let raw_symbols_list = raw_value.read()?.expect_list()?;
@@ -744,7 +751,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                     _other => write!(out, " // -> ${next_symbol_id} (no text)"),
                 }?;
                 next_symbol_id += 1;
-                Ok(())
+                Ok(true)
             })?;
             self.output.reset()?;
         }
@@ -829,7 +836,13 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         self.output.reset()?;
 
         self.output.set_color(&comment_style())?;
-        comment_fn(self.output, value)?;
+        let wrote_comment = comment_fn(self.output, value)?;
+        if let RawValueRef::Symbol(RawSymbolRef::SymbolId(symbol_id)) = raw_value.read()? {
+            match wrote_comment {
+                true => write!(self.output, " (${symbol_id})"),
+                false => write!(self.output, " // ${symbol_id}"),
+            }?;
+        }
         self.output.reset()?;
 
         while !formatter.is_empty() {
