@@ -1,7 +1,7 @@
-use termcolor::{ColorSpec, WriteColor};
+use std::fs::File;
 use std::io;
 use std::io::{BufWriter, Write};
-use std::fs::File;
+use termcolor::{ColorSpec, WriteColor};
 
 /// A buffered `io::Write` implementation that implements [`WriteColor`] by reporting that it does
 /// not support TTY escape sequences and treating all requests to change or reset the current color
@@ -22,7 +22,9 @@ pub struct FileWriter {
 
 impl FileWriter {
     pub fn new(file: File) -> Self {
-        Self { inner: BufWriter::new(file) }
+        Self {
+            inner: BufWriter::new(file),
+        }
     }
 }
 

@@ -1,10 +1,10 @@
 use crate::commands::{IonCliCommand, WithIonCliArgument};
 use anyhow::{bail, Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
+use ion_rs::*;
 use std::fs::File;
 use std::io;
 use std::io::{stdout, BufWriter, Write};
-use ion_rs::*;
 
 pub struct SymtabFilterCommand;
 
@@ -94,7 +94,7 @@ pub fn filter_out_user_data(
             SystemStreamItem::EndOfStream(_) => {
                 return Ok(());
             }
-            _ => unreachable!("#[non_exhaustive] enum, current variants covered")
+            _ => unreachable!("#[non_exhaustive] enum, current variants covered"),
         };
         // If this is a text encoding, then we need delimiting space to separate
         // IVMs from their neighboring system stream items. Consider:

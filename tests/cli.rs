@@ -2,7 +2,6 @@ use anyhow::Result;
 use assert_cmd::Command;
 use ion_rs::Element;
 use rstest::*;
-use std::fs;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::time::Duration;
@@ -213,14 +212,21 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     let command_assert = cmd.assert();
     let output = command_assert.get_output();
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout.trim_end(), expected_output);
+    assert_eq!(
+        Element::read_all(stdout.trim_end())?,
+        Element::read_all(expected_output)?
+    );
     Ok(())
 }
 
 #[cfg(feature = "experimental-code-gen")]
-#[rstest]
-#[case::simple_struct(
-    r#"
+mod code_gen_tests {
+    use super::*;
+    use std::fs;
+
+    #[rstest]
+    #[case::simple_struct(
+        r#"
         type::{
          name: simple_struct,
          fields: {
@@ -229,32 +235,32 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
          },
         }
     "#,
-    &["id: i64", "name: String"],
-    &["pub fn name(&self) -> &String {", "pub fn id(&self) -> &i64 {"]
-)]
-#[case::value_struct(
-    r#"
+        & ["id: i64", "name: String"],
+        & ["pub fn name(&self) -> &String {", "pub fn id(&self) -> &i64 {"]
+    )]
+    #[case::value_struct(
+        r#"
         type::{
          name: value_struct,
          type: int // this will be a field in struct
         }
     "#,
-    &["value: i64"],
-    &["pub fn value(&self) -> &i64 {"]
-)]
-#[case::sequence_struct(
-    r#"
+        & ["value: i64"],
+        & ["pub fn value(&self) -> &i64 {"]
+    )]
+    #[case::sequence_struct(
+        r#"
         type::{
          name: sequence_struct,
          element: string, // this will be a sequence field in struct
          type: list
         }
     "#,
-    &["value: Vec<String>"],
-    &["pub fn value(&self) -> &Vec<String> {"]
-)]
-#[case::struct_with_reference_field(
-    r#"
+        & ["value: Vec<String>"],
+        & ["pub fn value(&self) -> &Vec<String> {"]
+    )]
+    #[case::struct_with_reference_field(
+        r#"
         type::{
          name: struct_with_reference_field,
          fields: {
@@ -267,11 +273,11 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
             type: int
         }
     "#,
-    &["reference: OtherType"],
-    &["pub fn reference(&self) -> &OtherType {"]
-)]
-#[case::struct_with_nested_type(
-    r#"
+        & ["reference: OtherType"],
+        & ["pub fn reference(&self) -> &OtherType {"]
+    )]
+    #[case::struct_with_nested_type(
+        r#"
         type::{
          name: struct_with_nested_type,
          fields: {
@@ -279,56 +285,55 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
          }
         }
     "#,
-    &["nested_type: NestedType1"],
-    &["pub fn nested_type(&self) -> &NestedType1 {"]
-)]
-/// Calls ion-cli beta generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
-fn test_code_generation_in_rust(
-    #[case] test_schema: &str,
-    #[case] expected_properties: &[&str],
-    #[case] expected_accessors: &[&str],
-) -> Result<()> {
-    let mut cmd = Command::cargo_bin("ion")?;
-    let temp_dir = TempDir::new()?;
-    let input_schema_path = temp_dir.path().join("test_schema.isl");
-    let mut input_schema_file = File::create(&input_schema_path)?;
-    input_schema_file.write(test_schema.as_bytes())?;
-    input_schema_file.flush()?;
-    cmd.args([
-        "beta",
-        "generate",
-        "--schema",
-        "test_schema.isl",
-        "--output",
-        temp_dir.path().to_str().unwrap(),
-        "--language",
-        "rust",
-        "--directory",
-        temp_dir.path().to_str().unwrap(),
-    ]);
-    let command_assert = cmd.assert();
-    let output_file_path = temp_dir.path().join("ion_generated_code.rs");
-    command_assert.success();
-    let contents =
-        fs::read_to_string(output_file_path).expect("Should have been able to read the file");
-    for expected_property in expected_properties {
-        assert!(contents.contains(expected_property));
+        & ["nested_type: NestedType1"],
+        & ["pub fn nested_type(&self) -> &NestedType1 {"]
+    )]
+    /// Calls ion-cli beta generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
+    fn test_code_generation_in_rust(
+        #[case] test_schema: &str,
+        #[case] expected_properties: &[&str],
+        #[case] expected_accessors: &[&str],
+    ) -> Result<()> {
+        let mut cmd = Command::cargo_bin("ion")?;
+        let temp_dir = TempDir::new()?;
+        let input_schema_path = temp_dir.path().join("test_schema.isl");
+        let mut input_schema_file = File::create(&input_schema_path)?;
+        input_schema_file.write(test_schema.as_bytes())?;
+        input_schema_file.flush()?;
+        cmd.args([
+            "beta",
+            "generate",
+            "--schema",
+            "test_schema.isl",
+            "--output",
+            temp_dir.path().to_str().unwrap(),
+            "--language",
+            "rust",
+            "--directory",
+            temp_dir.path().to_str().unwrap(),
+        ]);
+        let command_assert = cmd.assert();
+        let output_file_path = temp_dir.path().join("ion_generated_code.rs");
+        command_assert.success();
+        let contents =
+            fs::read_to_string(output_file_path).expect("Should have been able to read the file");
+        for expected_property in expected_properties {
+            assert!(contents.contains(expected_property));
+        }
+        for expected_accessor in expected_accessors {
+            assert!(contents.contains(expected_accessor));
+        }
+        // verify that it generates read-write APIs
+        assert!(contents.contains("pub fn read_from(reader: &mut Reader) -> SerdeResult<Self> {"));
+        assert!(contents
+            .contains("pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> SerdeResult<()> {"));
+        Ok(())
     }
-    for expected_accessor in expected_accessors {
-        assert!(contents.contains(expected_accessor));
-    }
-    // verify that it generates read-write APIs
-    assert!(contents.contains("pub fn read_from(reader: &mut Reader) -> SerdeResult<Self> {"));
-    assert!(contents
-        .contains("pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> SerdeResult<()> {"));
-    Ok(())
-}
 
-#[cfg(feature = "experimental-code-gen")]
-#[rstest]
-#[case(
-    "SimpleStruct",
-    r#"
+    #[rstest]
+    #[case(
+        "SimpleStruct",
+        r#"
         type::{
          name: simple_struct,
          fields: {
@@ -337,35 +342,35 @@ fn test_code_generation_in_rust(
          }
         }
     "#,
-    &["private int id;", "private String name;"],
-    &["public String getName() {", "public int getId() {"]
-)]
-#[case(
-    "ValueStruct",
-    r#"
+        & ["private int id;", "private String name;"],
+        & ["public String getName() {", "public int getId() {"]
+    )]
+    #[case(
+        "ValueStruct",
+        r#"
         type::{
          name: value_struct,
          type: int // this will be a field in struct
         }
     "#,
-    &["private int value;"],
-    &["public int getValue() {"]
-)]
-#[case(
-    "SequenceStruct",
-    r#"
+        & ["private int value;"],
+        & ["public int getValue() {"]
+    )]
+    #[case(
+        "SequenceStruct",
+        r#"
         type::{
          name: sequence_struct,
          element: string, // this will be a sequence field in struct
          type: list
         }
     "#,
-    &["private ArrayList<String> value;"],
-    &["public ArrayList<String> getValue() {"]
-)]
-#[case(
-    "StructWithReferenceField",
-    r#"
+        & ["private ArrayList<String> value;"],
+        & ["public ArrayList<String> getValue() {"]
+    )]
+    #[case(
+        "StructWithReferenceField",
+        r#"
         type::{
          name: struct_with_reference_field,
          fields: {
@@ -378,12 +383,12 @@ fn test_code_generation_in_rust(
             type: int
         }
     "#,
-    &["private OtherType reference;"],
-    &["public OtherType getReference() {"]
-)]
-#[case(
-    "StructWithNestedType",
-    r#"
+        & ["private OtherType reference;"],
+        & ["public OtherType getReference() {"]
+    )]
+    #[case(
+        "StructWithNestedType",
+        r#"
         type::{
          name: struct_with_nested_type,
          fields: {
@@ -391,45 +396,47 @@ fn test_code_generation_in_rust(
          }
         }
     "#,
-    &["private NestedType1 nestedType;"],
-    &["public NestedType1 getNestedType() {"]
-)]
-/// Calls ion-cli beta generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
-fn test_code_generation_in_java(
-    #[case] test_name: &str,
-    #[case] test_schema: &str,
-    #[case] expected_properties: &[&str],
-    #[case] expected_accessors: &[&str],
-) -> Result<()> {
-    let mut cmd = Command::cargo_bin("ion")?;
-    let temp_dir = TempDir::new()?;
-    let input_schema_path = temp_dir.path().join("test_schema.isl");
-    let mut input_schema_file = File::create(&input_schema_path)?;
-    input_schema_file.write(test_schema.as_bytes())?;
-    input_schema_file.flush()?;
-    cmd.args([
-        "beta",
-        "generate",
-        "--schema",
-        "test_schema.isl",
-        "--output",
-        temp_dir.path().to_str().unwrap(),
-        "--language",
-        "java",
-        "--namespace",
-        "org.example",
-        "--directory",
-        temp_dir.path().to_str().unwrap(),
-    ]);
-    let command_assert = cmd.assert();
-    let output_file_path = temp_dir.path().join(format!("{}.java", test_name));
-    command_assert.success();
-    let contents = fs::read_to_string(output_file_path).expect("Can not read generated code file.");
-    for expected_property in expected_properties {
-        assert!(contents.contains(expected_property));
+        & ["private NestedType1 nestedType;"],
+        & ["public NestedType1 getNestedType() {"]
+    )]
+    /// Calls ion-cli beta generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
+    fn test_code_generation_in_java(
+        #[case] test_name: &str,
+        #[case] test_schema: &str,
+        #[case] expected_properties: &[&str],
+        #[case] expected_accessors: &[&str],
+    ) -> Result<()> {
+        let mut cmd = Command::cargo_bin("ion")?;
+        let temp_dir = TempDir::new()?;
+        let input_schema_path = temp_dir.path().join("test_schema.isl");
+        let mut input_schema_file = File::create(&input_schema_path)?;
+        input_schema_file.write(test_schema.as_bytes())?;
+        input_schema_file.flush()?;
+        cmd.args([
+            "beta",
+            "generate",
+            "--schema",
+            "test_schema.isl",
+            "--output",
+            temp_dir.path().to_str().unwrap(),
+            "--language",
+            "java",
+            "--namespace",
+            "org.example",
+            "--directory",
+            temp_dir.path().to_str().unwrap(),
+        ]);
+        let command_assert = cmd.assert();
+        let output_file_path = temp_dir.path().join(format!("{}.java", test_name));
+        command_assert.success();
+        let contents =
+            fs::read_to_string(output_file_path).expect("Can not read generated code file.");
+        for expected_property in expected_properties {
+            assert!(contents.contains(expected_property));
+        }
+        for expected_accessor in expected_accessors {
+            assert!(contents.contains(expected_accessor));
+        }
+        Ok(())
     }
-    for expected_accessor in expected_accessors {
-        assert!(contents.contains(expected_accessor));
-    }
-    Ok(())
 }

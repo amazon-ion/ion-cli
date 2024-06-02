@@ -185,8 +185,8 @@ fn auto_decompressing_reader<R>(
     mut reader: R,
     header_len: usize,
 ) -> IonResult<AutoDecompressingReader>
-    where
-        R: BufRead + 'static,
+where
+    R: BufRead + 'static,
 {
     // read header
     let mut header_bytes = vec![0; header_len];

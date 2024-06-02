@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::fmt::{Display, Formatter};
 
 /// Represents a field that will be added to generated data model.
-/// This will be used by the template engine to fill properties of a struct/classs.
+/// This will be used by the template engine to fill properties of a struct/class.
 #[derive(Serialize)]
 pub struct Field {
     pub(crate) name: String,

@@ -1,11 +1,12 @@
 use crate::commands::{IonCliCommand, WithIonCliArgument};
 use anyhow::{Context, Result};
 use clap::{ArgMatches, Command};
+use ion_rs::*;
 use serde_json::{Map, Number, Value as JsonValue};
 use std::fs::File;
 use std::io::{stdin, stdout, BufWriter, Write};
 use std::str::FromStr;
-use ion_rs::*;
+use zstd::zstd_safe::WriteBuf;
 
 pub struct ToJsonCommand;
 
@@ -60,7 +61,10 @@ impl IonCliCommand for ToJsonCommand {
     }
 }
 
-pub fn convert(reader: &mut Reader<AnyEncoding, impl IonInput>, output: &mut Box<dyn Write>) -> Result<()> {
+pub fn convert(
+    reader: &mut Reader<AnyEncoding, impl IonInput>,
+    output: &mut Box<dyn Write>,
+) -> Result<()> {
     const FLUSH_EVERY_N: usize = 100;
     let mut value_count = 0usize;
     while let Some(value) = reader.next()? {
@@ -96,13 +100,14 @@ fn to_json_value(value: LazyValue<AnyEncoding>) -> Result<JsonValue> {
             )
         }
         Timestamp(t) => JsonValue::String(t.to_string()),
-        Symbol(s) => s.text()
+        Symbol(s) => s
+            .text()
             .map(|text| JsonValue::String(text.to_owned()))
             .unwrap_or_else(|| JsonValue::Null),
         String(s) => JsonValue::String(s.text().to_owned()),
         Blob(b) | Clob(b) => {
             use base64::{engine::general_purpose as base64_encoder, Engine as _};
-            let base64_text = base64_encoder::STANDARD.encode(b.as_ref());
+            let base64_text = base64_encoder::STANDARD.encode(b.as_slice());
             JsonValue::String(base64_text)
         }
         SExp(s) => to_json_array(s.iter())?,
@@ -121,7 +126,12 @@ fn to_json_value(value: LazyValue<AnyEncoding>) -> Result<JsonValue> {
     Ok(value)
 }
 
-fn to_json_array<'a>(ion_values: impl IntoIterator<Item=IonResult<LazyValue<'a, AnyEncoding>>>) -> Result<JsonValue> {
-    let result: Result<Vec<JsonValue>> = ion_values.into_iter().flat_map(|v| v.map(to_json_value)).collect();
+fn to_json_array<'a>(
+    ion_values: impl IntoIterator<Item = IonResult<LazyValue<'a, AnyEncoding>>>,
+) -> Result<JsonValue> {
+    let result: Result<Vec<JsonValue>> = ion_values
+        .into_iter()
+        .flat_map(|v| v.map(to_json_value))
+        .collect();
     Ok(JsonValue::Array(result?))
 }
