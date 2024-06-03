@@ -1,12 +1,12 @@
 use crate::commands::{IonCliCommand, WithIonCliArgument};
 use anyhow::{Context, Result};
 use clap::{ArgMatches, Command};
-use ion_rs::{Element, ElementReader};
-use ion_rs::{Reader, ReaderBuilder};
+use ion_rs::*;
 use serde_json::{Map, Number, Value as JsonValue};
 use std::fs::File;
 use std::io::{stdin, stdout, BufWriter, Write};
 use std::str::FromStr;
+use zstd::zstd_safe::WriteBuf;
 
 pub struct ToJsonCommand;
 
@@ -45,15 +45,13 @@ impl IonCliCommand for ToJsonCommand {
             for input_file in input_file_names {
                 let file = File::open(input_file.as_str())
                     .with_context(|| format!("Could not open file '{}'", &input_file))?;
-                let mut reader = ReaderBuilder::new()
-                    .build(file)
+                let mut reader = Reader::new(AnyEncoding, file)
                     .with_context(|| format!("Input file {} was not valid Ion.", &input_file))?;
                 convert(&mut reader, &mut output)?;
             }
         } else {
             // No input files were specified, run the converter on STDIN.
-            let mut reader = ReaderBuilder::new()
-                .build(stdin().lock())
+            let mut reader = Reader::new(AnyEncoding, stdin().lock())
                 .with_context(|| "Input was not valid Ion.")?;
             convert(&mut reader, &mut output)?;
         }
@@ -63,73 +61,77 @@ impl IonCliCommand for ToJsonCommand {
     }
 }
 
-pub fn convert(reader: &mut Reader, output: &mut Box<dyn Write>) -> Result<()> {
+pub fn convert(
+    reader: &mut Reader<AnyEncoding, impl IonInput>,
+    output: &mut Box<dyn Write>,
+) -> Result<()> {
     const FLUSH_EVERY_N: usize = 100;
-    let mut element_count = 0usize;
-    for result in reader.elements() {
-        let element = result.with_context(|| "invalid input")?;
-        writeln!(output, "{}", to_json_value(&element)?)?;
-        element_count += 1;
-        if element_count % FLUSH_EVERY_N == 0 {
+    let mut value_count = 0usize;
+    while let Some(value) = reader.next()? {
+        writeln!(output, "{}", to_json_value(value)?)?;
+        value_count += 1;
+        if value_count % FLUSH_EVERY_N == 0 {
             output.flush()?;
         }
     }
     Ok(())
 }
 
-fn to_json_value(element: &Element) -> Result<JsonValue> {
-    if element.is_null() {
-        Ok(JsonValue::Null)
-    } else {
-        use ion_rs::Value::*;
-        let value = match element.value() {
-            Null(_ion_type) => JsonValue::Null,
-            Bool(b) => JsonValue::Bool(*b),
-            Int(i) => JsonValue::Number(
-                Number::from_str(&(*i).to_string())
-                    .with_context(|| format!("{element} could not be turned into a Number"))?,
-            ),
-            Float(f) => {
-                let value = *f;
-                if value.is_finite() {
-                    JsonValue::Number(
-                        Number::from_f64(value).with_context(|| {
-                            format!("{element} could not be turned into a Number")
-                        })?,
-                    )
-                } else {
-                    // +inf, -inf, and nan are not JSON numbers, and are written as null in
-                    // accordance with Ion's JSON down-conversion guidelines.
-                    JsonValue::Null
-                }
+fn to_json_value(value: LazyValue<AnyEncoding>) -> Result<JsonValue> {
+    use ValueRef::*;
+    let value = match value.read()? {
+        Null(_) => JsonValue::Null,
+        Bool(b) => JsonValue::Bool(b),
+        Int(i) => JsonValue::Number(Number::from(i.expect_i128()?)),
+        Float(f) if f.is_finite() => JsonValue::Number(Number::from_f64(f).expect("f64 is finite")),
+        // Special floats like +inf, -inf, and NaN are written as `null` in
+        // accordance with Ion's JSON down-conversion guidelines.
+        Float(_f) => JsonValue::Null,
+        Decimal(d) => {
+            let mut text = d.to_string().replace('d', "e");
+            if text.ends_with(".") {
+                // If there's a trailing "." with no digits of precision, discard it. JSON's `Number`
+                // type does not do anything with this information.
+                let _ = text.pop();
             }
-            Decimal(d) => JsonValue::Number(
-                Number::from_str(d.to_string().replace('d', "e").as_str())
-                    .with_context(|| format!("{element} could not be turned into a Number"))?,
-            ),
-            Timestamp(t) => JsonValue::String(t.to_string()),
-            Symbol(s) => s
-                .text()
-                .map(|text| JsonValue::String(text.to_owned()))
-                .unwrap_or_else(|| JsonValue::Null),
-            String(s) => JsonValue::String(s.text().to_owned()),
-            Blob(b) | Clob(b) => {
-                use base64::{engine::general_purpose as base64_encoder, Engine as _};
-                let base64_text = base64_encoder::STANDARD.encode(b.as_ref());
-                JsonValue::String(base64_text)
+            JsonValue::Number(
+                Number::from_str(text.as_str())
+                    .with_context(|| format!("{d} could not be turned into a Number"))?,
+            )
+        }
+        Timestamp(t) => JsonValue::String(t.to_string()),
+        Symbol(s) => s
+            .text()
+            .map(|text| JsonValue::String(text.to_owned()))
+            .unwrap_or_else(|| JsonValue::Null),
+        String(s) => JsonValue::String(s.text().to_owned()),
+        Blob(b) | Clob(b) => {
+            use base64::{engine::general_purpose as base64_encoder, Engine as _};
+            let base64_text = base64_encoder::STANDARD.encode(b.as_slice());
+            JsonValue::String(base64_text)
+        }
+        SExp(s) => to_json_array(s.iter())?,
+        List(l) => to_json_array(l.iter())?,
+        Struct(s) => {
+            let mut map = Map::new();
+            for field in s {
+                let field = field?;
+                let name = field.name()?.text().unwrap_or("$0").to_owned();
+                let value = to_json_value(field.value())?;
+                map.insert(name, value);
             }
-            List(s) | SExp(s) => {
-                let result: Result<Vec<JsonValue>> = s.elements().map(to_json_value).collect();
-                JsonValue::Array(result?)
-            }
-            Struct(s) => {
-                let result: Result<Map<std::string::String, JsonValue>> = s
-                    .fields()
-                    .map(|(k, v)| to_json_value(v).map(|value| (k.text().unwrap().into(), value)))
-                    .collect();
-                JsonValue::Object(result?)
-            }
-        };
-        Ok(value)
-    }
+            JsonValue::Object(map)
+        }
+    };
+    Ok(value)
+}
+
+fn to_json_array<'a>(
+    ion_values: impl IntoIterator<Item = IonResult<LazyValue<'a, AnyEncoding>>>,
+) -> Result<JsonValue> {
+    let result: Result<Vec<JsonValue>> = ion_values
+        .into_iter()
+        .flat_map(|v| v.map(to_json_value))
+        .collect();
+    Ok(JsonValue::Array(result?))
 }

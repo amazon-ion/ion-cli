@@ -17,18 +17,18 @@ clap = { version = "4.0.17", features = ["cargo"] }
 colored = "2.0.0"
 flate2 = "1.0"
 infer = "0.15.0"
-ion-rs = {version = "1.0.0-rc.2", features = ["experimental"]}
-memmap = "0.7.0"
+ion-rs = { version = "1.0.0-rc.5", features = ["experimental"] }
 tempfile = "3.2.0"
 ion-schema = "0.10.0"
 serde = { version = "1.0.163", features = ["derive"] }
-serde_json = { version = "1.0.81", features = [ "arbitrary_precision", "preserve_order" ] }
+serde_json = { version = "1.0.81", features = ["arbitrary_precision", "preserve_order"] }
 base64 = "0.21.1"
-tera = {  version = "1.18.1", optional = true }
+tera = { version = "1.18.1", optional = true }
 convert_case = { version = "0.6.0", optional = true }
 matches = "0.1.10"
 thiserror = "1.0.50"
 zstd = "0.13.0"
+termcolor = "1.4.1"
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 pager = "0.16.1"

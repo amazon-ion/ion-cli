@@ -1,4 +1,5 @@
 mod commands;
+mod file_writer;
 
 use crate::commands::beta::BetaNamespace;
 use anyhow::Result;
@@ -7,6 +8,7 @@ use ion_rs::IonError;
 use std::io::ErrorKind;
 
 use crate::commands::dump::DumpCommand;
+use crate::commands::inspect::InspectCommand;
 
 fn main() -> Result<()> {
     let root_command = RootCommand;
@@ -18,7 +20,7 @@ fn main() -> Result<()> {
             // If `ion-cli` is being invoked as part of a pipeline we want to allow the pipeline to
             // to shut off without printing an error to stderr
             Some(IonError::Io(error)) if error.source().kind() == ErrorKind::BrokenPipe => {
-                return Ok(())
+                return Ok(());
             }
             _ => return Err(e),
         }
@@ -39,6 +41,10 @@ impl IonCliCommand for RootCommand {
     }
 
     fn subcommands(&self) -> Vec<Box<dyn IonCliCommand>> {
-        vec![Box::new(BetaNamespace), Box::new(DumpCommand)]
+        vec![
+            Box::new(BetaNamespace),
+            Box::new(DumpCommand),
+            Box::new(InspectCommand),
+        ]
     }
 }

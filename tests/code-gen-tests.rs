@@ -1,12 +1,12 @@
+#![cfg(feature = "experimental-code-gen")]
+
 use anyhow::Result;
 use assert_cmd::Command;
 use rstest::rstest;
-use std::fs;
 use std::fs::File;
 use std::io::Write;
 use tempfile::TempDir;
 
-#[cfg(feature = "experimental-code-gen")]
 #[test]
 fn roundtrip_tests_for_generated_code_gradle() -> Result<()> {
     // run the gradle project defined under `code-gen-projects`,
@@ -41,7 +41,6 @@ fn roundtrip_tests_for_generated_code_gradle() -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "experimental-code-gen")]
 #[test]
 fn roundtrip_tests_for_generated_code_cargo() -> Result<()> {
     // run the cargo project defined under `code-gen-projects`,
@@ -95,7 +94,7 @@ fn roundtrip_tests_for_generated_code_cargo() -> Result<()> {
 #[cfg(feature = "experimental-code-gen")]
 #[rstest]
 #[case::any_element_list(
-    r#"
+r#"
         type::{
          name: any_element_list,
          type: list, // this doesn't specify the type for elements in the list with `element` constraint

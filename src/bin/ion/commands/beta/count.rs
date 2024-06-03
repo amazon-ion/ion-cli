@@ -25,13 +25,13 @@ impl IonCliCommand for CountCommand {
             for input_file in input_file_iter {
                 let file = File::open(input_file)
                     .with_context(|| format!("Could not open file '{}'", input_file))?;
-                let mut reader = ReaderBuilder::new().build(file)?;
+                let mut reader = Reader::new(AnyEncoding, file)?;
                 print_top_level_value_count(&mut reader)?;
             }
         } else {
             let input: StdinLock = stdin().lock();
             let buf_reader = BufReader::new(input);
-            let mut reader = ReaderBuilder::new().build(buf_reader)?;
+            let mut reader = Reader::new(AnyEncoding, buf_reader)?;
             print_top_level_value_count(&mut reader)?;
         };
 
@@ -39,15 +39,9 @@ impl IonCliCommand for CountCommand {
     }
 }
 
-fn print_top_level_value_count(reader: &mut Reader) -> Result<()> {
+fn print_top_level_value_count<I: IonInput>(reader: &mut Reader<AnyEncoding, I>) -> Result<()> {
     let mut count: usize = 0;
-    loop {
-        let item = reader
-            .next()
-            .with_context(|| "could not count values in Ion stream")?;
-        if item == StreamItem::Nothing {
-            break;
-        }
+    while let Some(_) = reader.next()? {
         count += 1;
     }
     println!("{}", count);
