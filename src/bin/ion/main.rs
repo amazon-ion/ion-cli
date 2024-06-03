@@ -1,4 +1,5 @@
 mod commands;
+mod file_writer;
 
 use crate::commands::beta::BetaNamespace;
 use anyhow::Result;
@@ -18,7 +19,7 @@ fn main() -> Result<()> {
             // If `ion-cli` is being invoked as part of a pipeline we want to allow the pipeline to
             // to shut off without printing an error to stderr
             Some(IonError::Io(error)) if error.source().kind() == ErrorKind::BrokenPipe => {
-                return Ok(())
+                return Ok(());
             }
             _ => return Err(e),
         }
