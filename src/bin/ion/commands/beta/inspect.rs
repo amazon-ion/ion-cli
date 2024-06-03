@@ -201,8 +201,7 @@ trait CommentFn<'x>: FnMut(&mut OutputRef, LazyValue<'x, AnyEncoding>) -> Result
 
 impl<'x, F> CommentFn<'x> for F where
     F: FnMut(&mut OutputRef, LazyValue<'x, AnyEncoding>) -> Result<bool>
-{
-}
+{}
 
 /// Returns a `CommentFn` implementation that does nothing.
 fn no_comment<'x>() -> impl CommentFn<'x> {
@@ -283,15 +282,6 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                 _ => unimplemented!("a new SystemStreamItem variant was added"),
             }
 
-            // Notice that we wait until _after_ the item has been inspected above to set the
-            // `skip_complete` flag. This is because the offset specified by `--skip-bytes` may
-            // have been located somewhere inside the item and the inspector needed to look for
-            // that point within its nested values. If this happens, the inspector will set the
-            // `skip_complete` flag when it reaches that offset at a deeper level of nesting.
-            // When it reaches this point, `skip_complete` will already be true. However, if the
-            // offset fell at the beginning of a top level value, the line below will set the flag
-            // for the first time.
-            self.skip_complete = true;
             is_first_item = false;
         }
         self.output.write_all(END_OF_TABLE.as_bytes())?;
@@ -321,7 +311,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     ///    * `None`, then there is no stream-level entity backing the item. These will always be
     ///              inspected; if the e-expression that produced the value was not beyond the limit,
     ///              none of the ephemeral values it produces are either.
-    fn is_past_limit<T: HasRange>(&mut self, maybe_item: &Option<T>) -> bool {
+    fn is_past_limit<T: HasRange>(&self, maybe_item: &Option<T>) -> bool {
         let limit = self.bytes_to_skip.saturating_add(self.limit_bytes);
         maybe_item
             .as_ref()
@@ -629,7 +619,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         value_delimiter: &str,
         closing_delimiter: &str,
         trailing_delimiter: &str,
-        nested_values: impl IntoIterator<Item = IonResult<LazyValue<'x, AnyEncoding>>>,
+        nested_values: impl IntoIterator<Item=IonResult<LazyValue<'x, AnyEncoding>>>,
         nested_raw_values: impl LazyRawSequence<'x, v1_0::Binary>,
         raw_value: LazyRawBinaryValue,
         mut value_comment_fn: impl CommentFn<'x>,
