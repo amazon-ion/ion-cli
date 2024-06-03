@@ -31,7 +31,10 @@ impl IonCliCommand for InspectCommand {
     }
 
     fn about(&self) -> &'static str {
-        "Displays hex-encoded binary Ion alongside its equivalent text for human-friendly debugging."
+        "Displays hex-encoded binary Ion alongside its equivalent text Ion.
+Its output prioritizes human readability and is likely to change
+between versions. Stable output for programmatic use cases is a
+non-goal."
     }
 
     fn configure_args(&self, command: Command) -> Command {
