@@ -14,7 +14,6 @@ impl IonCliCommand for SymtabFilterCommand {
     }
 
     fn about(&self) -> &'static str {
-        // XXX Currently only supports binary input
         "Filters user data out of an Ion stream, leaving only the symbol table(s) behind."
     }
 
