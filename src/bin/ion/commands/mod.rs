@@ -3,6 +3,7 @@ use clap::{crate_authors, crate_version, Arg, ArgAction, ArgMatches, Command as 
 
 pub mod beta;
 pub mod dump;
+pub mod inspect;
 
 /// Behaviors common to all Ion CLI commands, including both namespaces (groups of commands)
 /// and the commands themselves.
