@@ -201,7 +201,8 @@ trait CommentFn<'x>: FnMut(&mut OutputRef, LazyValue<'x, AnyEncoding>) -> Result
 
 impl<'x, F> CommentFn<'x> for F where
     F: FnMut(&mut OutputRef, LazyValue<'x, AnyEncoding>) -> Result<bool>
-{}
+{
+}
 
 /// Returns a `CommentFn` implementation that does nothing.
 fn no_comment<'x>() -> impl CommentFn<'x> {
@@ -619,7 +620,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         value_delimiter: &str,
         closing_delimiter: &str,
         trailing_delimiter: &str,
-        nested_values: impl IntoIterator<Item=IonResult<LazyValue<'x, AnyEncoding>>>,
+        nested_values: impl IntoIterator<Item = IonResult<LazyValue<'x, AnyEncoding>>>,
         nested_raw_values: impl LazyRawSequence<'x, v1_0::Binary>,
         raw_value: LazyRawBinaryValue,
         mut value_comment_fn: impl CommentFn<'x>,
