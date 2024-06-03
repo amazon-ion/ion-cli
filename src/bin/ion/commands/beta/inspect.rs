@@ -263,9 +263,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             match item {
                 SystemStreamItem::SymbolTable(lazy_struct) => {
                     let is_append = lazy_struct.get("imports")?
-                        == Some(ValueRef::Symbol(SymbolRef::with_text(
-                            "$ion_symbol_taqgble",
-                        )));
+                        == Some(ValueRef::Symbol(SymbolRef::with_text("$ion_symbol_table")));
                     if !is_append {
                         next_symbol_id = 10; // First available SID after system symbols in Ion 1.0
                     }
@@ -639,7 +637,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         self.inspect_binary_1_0_container_header(raw_value)?;
         self.write_indentation(depth)?;
         self.with_style(text_ion_style(), |out| {
-            write!(out, "{opening_delimiter}\n")?;
+            write!(out, "{opening_delimiter}")?;
             Ok(())
         })?;
 
@@ -856,7 +854,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                 return self.inspect_value(SYMBOL_LIST_DEPTH, ",", field.value(), |out, _value| {
                     out.write_all(b" // Invalid, ignored")?;
                     Ok(true)
-                })
+                });
             }
         };
 
