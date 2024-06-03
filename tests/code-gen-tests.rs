@@ -16,6 +16,7 @@ fn roundtrip_tests_for_generated_code_gradle() -> Result<()> {
 
     // absolute paths for gradle project and executables
     let ion_executable = env!("CARGO_BIN_EXE_ion");
+    let ion_input = format!("{}/code-gen-projects/input", env!("CARGO_MANIFEST_DIR"));
     let test_crate_path = format!(
         "{}/code-gen-projects/java/code-gen-demo",
         env!("CARGO_MANIFEST_DIR")
@@ -26,6 +27,7 @@ fn roundtrip_tests_for_generated_code_gradle() -> Result<()> {
     let gradle_output = std::process::Command::new(gradle_executable)
         .current_dir(&test_crate_path)
         .env("ION_CLI", ion_executable)
+        .env("ION_INPUT", ion_input)
         .arg("clean")
         .arg("test")
         .output()

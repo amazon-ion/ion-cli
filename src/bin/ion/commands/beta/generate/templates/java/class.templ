@@ -73,12 +73,10 @@ public class {{ target_kind_name }} {
                                                    {% else %}
                                                         reader.{{ field.value_type | camel }}Value();
                                                    {% endif %}
+                                                {% elif field.value_type is containing("ArrayList") %}
+                                                    {{ util_macros::read_as_sequence(field=field) }}
                                                 {% else %}
-                                                    {% if field.value_type is containing("ArrayList") %}
-                                                        {{ util_macros::read_as_sequence(field=field) }}
-                                                    {% else %}
-                                                        {{ field.value_type }}.readFrom(reader);
-                                                    {% endif %}
+                                                    {{ field.value_type }}.readFrom(reader);
                                                 {% endif %}
                     break;
                 {% endfor %}

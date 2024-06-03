@@ -114,7 +114,7 @@ class CodeGenTest {
     }
 
     @Test void roundtripGoodTestForStructWithFields() throws IOException {
-        File dir = new File("./../../input/good/struct_with_fields");
+        File dir = new File(System.getenv("ION_INPUT") + "/good/struct_with_fields");
         String[] fileNames = dir.list();
         for (String fileName : fileNames) {
             File f = new File(dir, fileName);
@@ -134,7 +134,7 @@ class CodeGenTest {
     }
 
     @Test void roundtripBadTestForStructWithFields() throws IOException {
-        File dir = new File("./../../input/bad/struct_with_fields");
+        File dir = new File(System.getenv("ION_INPUT") + "/bad/struct_with_fields");
         String[] fileNames = dir.list();
         for (String fileName : fileNames) {
             File f = new File(dir, fileName);
@@ -150,7 +150,7 @@ class CodeGenTest {
     }
 
     @Test void roundtripGoodTestForNestedStruct() throws IOException {
-        File dir = new File("./../../input/good/nested_struct");
+        File dir = new File(System.getenv("ION_INPUT") + "/good/nested_struct");
         String[] fileNames = dir.list();
         for (String fileName : fileNames) {
             File f = new File(dir, fileName);
@@ -170,7 +170,7 @@ class CodeGenTest {
     }
 
     @Test void roundtripBadTestForNestedStruct() throws IOException {
-        File dir = new File("./../../input/bad/nested_struct");
+        File dir = new File(System.getenv("ION_INPUT") + "/bad/nested_struct");
         String[] fileNames = dir.list();
         for (String fileName : fileNames) {
             File f = new File(dir, fileName);
@@ -186,7 +186,7 @@ class CodeGenTest {
     }
 
     @Test void roundtripGoodTestForSequence() throws IOException {
-        File dir = new File("./../../input/good/sequence");
+        File dir = new File(System.getenv("ION_INPUT") + "/good/sequence");
         String[] fileNames = dir.list();
         for (String fileName : fileNames) {
             File f = new File(dir, fileName);
@@ -206,7 +206,7 @@ class CodeGenTest {
     }
 
     @Test void roundtripBadTestForSequence() throws IOException {
-        File dir = new File("./../../input/bad/sequence");
+        File dir = new File(System.getenv("ION_INPUT") + "/bad/sequence");
         String[] fileNames = dir.list();
         for (String fileName : fileNames) {
             File f = new File(dir, fileName);
@@ -222,7 +222,7 @@ class CodeGenTest {
     }
 
     @Test void roundtripGoodTestForScalar() throws IOException {
-        File dir = new File("./../../input/good/scalar");
+        File dir = new File(System.getenv("ION_INPUT") + "/good/scalar");
         String[] fileNames = dir.list();
         for (String fileName : fileNames) {
             File f = new File(dir, fileName);
@@ -242,7 +242,7 @@ class CodeGenTest {
     }
 
     @Test void roundtripBadTestForScalar() throws IOException {
-        File dir = new File("./../../input/bad/scalar");
+        File dir = new File(System.getenv("ION_INPUT") + "/bad/scalar");
         String[] fileNames = dir.list();
         for (String fileName : fileNames) {
             File f = new File(dir, fileName);
