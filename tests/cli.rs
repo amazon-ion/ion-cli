@@ -171,35 +171,6 @@ fn run_it<S: AsRef<str>>(
     Ok(())
 }
 
-#[test]
-fn gogogo() -> Result<()> {
-    let ion = r#"
-{
-  name: "Fido",
-
-  age: years::4,
-
-  birthday: 2012-03-01T,
-
-  toys: [
-    ball,
-    rope,
-  ],
-
-  weight: pounds::41.2,
-
-  buzz: {{VG8gaW5maW5pdHkuLi4gYW5kIGJleW9uZCE=}},
-}
-"#;
-    run_it(
-        TestCase::from((ion, ion)),
-        "pretty",
-        FileMode::Named,
-        FileMode::Named,
-        InputCompress::Gz,
-    )
-}
-
 #[rstest]
 #[case(0, "")]
 #[case(2, "{foo: bar, abc: [123, 456]}\n{foo: baz, abc: [42.0, 4.3e1]}")]

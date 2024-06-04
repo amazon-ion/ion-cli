@@ -1,9 +1,8 @@
-use crate::commands::{IonCliCommand, WithIonCliArgument};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::{ArgMatches, Command};
 use ion_rs::*;
-use std::fs::File;
-use std::io::{stdin, BufReader, StdinLock};
+
+use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 
 pub struct CountCommand;
 
@@ -21,21 +20,10 @@ impl IonCliCommand for CountCommand {
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
-        if let Some(input_file_iter) = args.get_many::<String>("input") {
-            for input_file in input_file_iter {
-                let file = File::open(input_file)
-                    .with_context(|| format!("Could not open file '{}'", input_file))?;
-                let mut reader = Reader::new(AnyEncoding, file)?;
-                print_top_level_value_count(&mut reader)?;
-            }
-        } else {
-            let input: StdinLock = stdin().lock();
-            let buf_reader = BufReader::new(input);
-            let mut reader = Reader::new(AnyEncoding, buf_reader)?;
-            print_top_level_value_count(&mut reader)?;
-        };
-
-        Ok(())
+        CommandIo::new(args).for_each_input(|_output, input| {
+            let mut reader = Reader::new(AnyEncoding, input.into_source())?;
+            print_top_level_value_count(&mut reader)
+        })
     }
 }
 

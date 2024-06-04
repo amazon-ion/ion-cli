@@ -1,5 +1,12 @@
-use anyhow::anyhow;
+use crate::file_writer::FileWriter;
+use crate::input::CommandInput;
+use crate::output::CommandOutput;
+use anyhow::Result;
+use anyhow::{anyhow, Context};
 use clap::{crate_authors, crate_version, Arg, ArgAction, ArgMatches, Command as ClapCommand};
+use std::fs::File;
+use std::io::Write;
+use termcolor::{ColorChoice, StandardStream, StandardStreamLock};
 
 pub mod beta;
 pub mod cat;
@@ -103,6 +110,7 @@ pub trait WithIonCliArgument {
     fn with_input(self) -> Self;
     fn with_output(self) -> Self;
     fn with_format(self) -> Self;
+    fn with_compression_control(self) -> Self;
 }
 
 impl WithIonCliArgument for ClapCommand {
@@ -134,5 +142,91 @@ impl WithIonCliArgument for ClapCommand {
                 .value_parser(["binary", "text", "pretty", "lines"])
                 .help("Output format"),
         )
+    }
+
+    fn with_compression_control(self) -> Self {
+        self.arg(
+            Arg::new("no-auto-decompress")
+                .long("no-auto-decompress")
+                .action(ArgAction::SetTrue)
+                .help("Turn off automatic decompression detection."),
+        )
+    }
+}
+
+pub struct CommandIo<'a> {
+    args: &'a ArgMatches,
+}
+
+impl<'a> CommandIo<'a> {
+    fn new(args: &ArgMatches) -> CommandIo {
+        CommandIo { args }
+    }
+
+    fn auto_decompression_enabled(&self) -> bool {
+        if let Some(flag) = self.args.get_one::<bool>("no-auto-decompress") {
+            !*flag
+        } else {
+            true
+        }
+    }
+
+    fn command_input_for_stdin(&self) -> Result<CommandInput> {
+        const STDIN_NAME: &str = "-";
+        let stdin = std::io::stdin().lock();
+        if self.auto_decompression_enabled() {
+            CommandInput::decompress(STDIN_NAME, stdin)
+        } else {
+            CommandInput::new(STDIN_NAME, stdin)
+        }
+    }
+
+    fn command_input_for_file_name(&self, name: &str) -> Result<CommandInput> {
+        let stream = File::open(name)?;
+        if self.auto_decompression_enabled() {
+            CommandInput::decompress(name, stream)
+        } else {
+            CommandInput::new(name, stream)
+        }
+    }
+
+    fn for_each_input(
+        &mut self,
+        mut f: impl FnMut(&mut CommandOutput, CommandInput) -> Result<()>,
+    ) -> Result<()> {
+        // These types are provided by the `termcolor` crate. They wrap the normal `io::Stdout` and
+        // `io::StdOutLock` types, making it possible to write colorful text to the output stream when
+        // it's a TTY that understands formatting escape codes. These variables are declared here so
+        // the lifetime will extend through the remainder of the function. Unlike `io::StdoutLock`,
+        // the `StandardStreamLock` does not have a static lifetime.
+        let stdout: StandardStream;
+        let stdout_lock: StandardStreamLock;
+        let mut output = if let Some(output_file) = self.args.get_one::<String>("output") {
+            // If the user has specified an output file, use it.
+            let file = File::create(output_file).with_context(|| {
+                format!(
+                    "could not open file output file '{}' for writing",
+                    output_file
+                )
+            })?;
+            CommandOutput::File(FileWriter::new(file))
+        } else {
+            // Otherwise, write to STDOUT.
+            stdout = StandardStream::stdout(ColorChoice::Always);
+            stdout_lock = stdout.lock();
+            CommandOutput::StdOut(stdout_lock)
+        };
+        if let Some(input_file_names) = self.args.get_many::<String>("input") {
+            // Input files were specified, run the converter on each of them in turn
+            for input_file_name in input_file_names {
+                let input = self.command_input_for_file_name(input_file_name)?;
+                f(&mut output, input)?;
+            }
+        } else {
+            let input = self.command_input_for_stdin()?;
+            f(&mut output, input)?;
+        }
+        output.flush()?;
+        Ok(())
     }
 }

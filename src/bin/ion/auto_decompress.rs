@@ -1,60 +1,42 @@
-use ion_rs::IonResult;
+use infer::Type;
 use std::io;
-use std::io::{BufRead, BufReader, Chain, Cursor, Read};
+use std::io::{BufReader, Cursor, Read};
+
+use crate::input::CompressionDetected;
+use ion_rs::IonResult;
 
 /// Auto-detects a compressed byte stream and wraps the original reader
 /// into a reader that transparently decompresses.
-///
-// To support non-seekable readers like `Stdin`, we could have used a
-// full-blown buffering wrapper with unlimited rewinds, but since we only
-// need the first few magic bytes at offset 0, we cheat and instead make a
-// `Chain` reader from the buffered header followed by the original reader.
-//
-// The choice of `Chain` type here is not quite necessary: it could have
-// been simply `dyn BufRead`, but there is no `ToIonDataSource` trait
-// implementation for `dyn BufRead` at the moment.
-type AutoDecompressingReader = Chain<Box<dyn BufRead>, Box<dyn BufRead>>;
+pub type AutoDecompressingReader = BufReader<Box<dyn Read>>;
 
-pub fn auto_decompressing_reader<R>(
+pub fn decompress<R>(
     mut reader: R,
     header_len: usize,
-) -> IonResult<AutoDecompressingReader>
+) -> IonResult<(CompressionDetected, AutoDecompressingReader)>
 where
-    R: BufRead + 'static,
+    R: Read + 'static,
 {
     // read header
     let mut header_bytes = vec![0; header_len];
     let nread = read_reliably(&mut reader, &mut header_bytes)?;
     header_bytes.truncate(nread);
 
+    let detected_type = infer::get(&header_bytes);
+    let header = Cursor::new(header_bytes);
+    let stream = header.chain(reader);
+
     // detect compression type and wrap reader in a decompressor
-    match infer::get(&header_bytes) {
-        Some(t) => match t.extension() {
-            "gz" => {
-                // "rewind" to let the decompressor read magic bytes again
-                let header: Box<dyn BufRead> = Box::new(Cursor::new(header_bytes));
-                let chain = header.chain(reader);
-                let zreader = Box::new(BufReader::new(flate2::read::GzDecoder::new(chain)));
-                // must return a `Chain`, so prepend an empty buffer
-                let nothing: Box<dyn BufRead> = Box::new(Cursor::new(&[] as &[u8]));
-                Ok(nothing.chain(zreader))
-            }
-            "zst" => {
-                let header: Box<dyn BufRead> = Box::new(Cursor::new(header_bytes));
-                let chain = header.chain(reader);
-                let zreader = Box::new(BufReader::new(zstd::stream::read::Decoder::new(chain)?));
-                let nothing: Box<dyn BufRead> = Box::new(Cursor::new(&[] as &[u8]));
-                Ok(nothing.chain(zreader))
-            }
-            _ => {
-                let header: Box<dyn BufRead> = Box::new(Cursor::new(header_bytes));
-                Ok(header.chain(Box::new(reader)))
-            }
-        },
-        None => {
-            let header: Box<dyn BufRead> = Box::new(Cursor::new(header_bytes));
-            Ok(header.chain(Box::new(reader)))
+    match detected_type.as_ref().map(Type::extension) {
+        Some("gz") => {
+            // "rewind" to let the decompressor read magic bytes again
+            let zreader = Box::new(flate2::read::GzDecoder::new(stream));
+            Ok((CompressionDetected::Gzip, BufReader::new(zreader)))
         }
+        Some("zst") => {
+            let zreader = Box::new(zstd::stream::read::Decoder::new(stream)?);
+            Ok((CompressionDetected::Zstd, BufReader::new(zreader)))
+        }
+        _ => Ok((CompressionDetected::None, BufReader::new(Box::new(stream)))),
     }
 }
 

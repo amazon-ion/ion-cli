@@ -1,6 +1,4 @@
 use std::fmt::Display;
-use std::fs::File;
-use std::io;
 use std::io::Write;
 use std::str::FromStr;
 
@@ -9,19 +7,13 @@ use clap::{Arg, ArgMatches, Command};
 use ion_rs::v1_0::{LazyRawBinaryValue, RawValueRef};
 use ion_rs::*;
 
-use crate::commands::{IonCliCommand, WithIonCliArgument};
+use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 
 // The `inspect` command uses the `termcolor` crate to colorize its text when STDOUT is a TTY.
-use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, StandardStreamLock, WriteColor};
+use termcolor::{Color, ColorSpec, WriteColor};
 // When writing to a named file instead of STDOUT, `inspect` will use a `FileWriter` instead.
 // `FileWriter` ignores all requests to emit TTY color escape codes.
-use crate::file_writer::FileWriter;
-
-// * The output stream could be STDOUT or a file handle, so we use `dyn io::Write` to abstract
-//   over the two implementations.
-// * The Drop implementation will ensure that the output stream is flushed when the last reference
-//   is dropped, so we don't need to do that manually.
-type OutputRef<'a> = Box<dyn WriteColor + 'a>;
+use crate::output::CommandOutput;
 
 pub struct InspectCommand;
 
@@ -109,46 +101,11 @@ value start after `--skip-bytes`.
             limit_bytes = usize::MAX;
         }
 
-        // These types are provided by the `termcolor` crate. They wrap the normal `io::Stdout` and
-        // `io::StdOutLock` types, making it possible to write colorful text to the output stream when
-        // it's a TTY that understands formatting escape codes. These variables are declared here so
-        // the lifetime will extend through the remainder of the function. Unlike `io::StdoutLock`,
-        // the `StandardStreamLock` does not have a static lifetime.
-        let stdout: StandardStream;
-        let stdout_lock: StandardStreamLock<'_>;
-
-        // If the user has specified an output file, use it.
-        let mut output: OutputRef = if let Some(file_name) = args.get_one::<String>("output") {
-            let output_file = File::create(file_name)
-                .with_context(|| format!("Could not open output file '{file_name}' for writing"))?;
-            let file_writer = FileWriter::new(output_file);
-            Box::new(file_writer)
-        } else {
-            // Otherwise, write to STDOUT.
-            stdout = StandardStream::stdout(ColorChoice::Always);
-            stdout_lock = stdout.lock();
-            Box::new(stdout_lock)
-        };
-
-        // Run the inspector on each input file that was specified.
-        if let Some(input_file_iter) = args.get_many::<String>("input") {
-            for input_file_name in input_file_iter {
-                let input_file = File::open(input_file_name)
-                    .with_context(|| format!("Could not open '{}'", input_file_name))?;
-                inspect_input(
-                    input_file_name,
-                    input_file,
-                    &mut output,
-                    bytes_to_skip,
-                    limit_bytes,
-                )?;
-            }
-        } else {
-            let stdin_lock = io::stdin().lock();
-            // If no input file was specified, run the inspector on STDIN.
-            inspect_input("STDIN", stdin_lock, &mut output, bytes_to_skip, limit_bytes)?;
-        }
-        Ok(())
+        CommandIo::new(args).for_each_input(|output, input| {
+            let input_name = input.name().to_owned();
+            let input = input.into_source();
+            inspect_input(&input_name, input, output, bytes_to_skip, limit_bytes)
+        })
     }
 }
 
@@ -157,7 +114,7 @@ value start after `--skip-bytes`.
 fn inspect_input<Input: IonInput>(
     input_name: &str,
     input: Input,
-    output: &mut OutputRef,
+    output: &mut CommandOutput,
     bytes_to_skip: usize,
     limit_bytes: usize,
 ) -> Result<()> {
@@ -183,7 +140,7 @@ const END_OF_TABLE: &str = r#"
 └──────────────┴──────────────┴─────────────────────────┘"#;
 
 struct IonInspector<'a, 'b> {
-    output: &'a mut OutputRef<'b>,
+    output: &'a mut CommandOutput<'b>,
     bytes_to_skip: usize,
     skip_complete: bool,
     limit_bytes: usize,
@@ -200,10 +157,10 @@ const BYTES_PER_ROW: usize = 8;
 /// Friendly trait alias (by way of an empty extension) for a closure that takes an output reference
 /// and a value and writes a comment for that value. Returns `true` if it wrote a comment, `false`
 /// otherwise.
-trait CommentFn<'x>: FnMut(&mut OutputRef, LazyValue<'x, AnyEncoding>) -> Result<bool> {}
+trait CommentFn<'x>: FnMut(&mut CommandOutput, LazyValue<'x, AnyEncoding>) -> Result<bool> {}
 
 impl<'x, F> CommentFn<'x> for F where
-    F: FnMut(&mut OutputRef, LazyValue<'x, AnyEncoding>) -> Result<bool>
+    F: FnMut(&mut CommandOutput, LazyValue<'x, AnyEncoding>) -> Result<bool>
 {
 }
 
@@ -214,7 +171,7 @@ fn no_comment<'x>() -> impl CommentFn<'x> {
 
 impl<'a, 'b> IonInspector<'a, 'b> {
     fn new(
-        out: &'a mut OutputRef<'b>,
+        out: &'a mut CommandOutput<'b>,
         bytes_to_skip: usize,
         limit_bytes: usize,
     ) -> IonResult<IonInspector<'a, 'b>> {
@@ -328,7 +285,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     fn with_style(
         &mut self,
         style: ColorSpec,
-        write_fn: impl FnOnce(&mut OutputRef) -> Result<()>,
+        write_fn: impl FnOnce(&mut CommandOutput) -> Result<()>,
     ) -> Result<()> {
         self.output.set_color(&style)?;
         write_fn(&mut self.output)?;

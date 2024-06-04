@@ -1,10 +1,11 @@
-use crate::commands::{IonCliCommand, WithIonCliArgument};
-use anyhow::{bail, Context, Result};
+use std::io::Write;
+
+use anyhow::{bail, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_rs::*;
-use std::fs::File;
-use std::io;
-use std::io::{stdout, BufWriter, Write};
+
+use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
+use crate::output::CommandOutput;
 
 pub struct SymtabFilterCommand;
 
@@ -20,6 +21,7 @@ impl IonCliCommand for SymtabFilterCommand {
     fn configure_args(&self, command: Command) -> Command {
         command.with_input()
             .with_output()
+            .with_compression_control()
             .arg(Arg::new("lift")
                 .long("lift")
                 .short('l')
@@ -30,42 +32,17 @@ impl IonCliCommand for SymtabFilterCommand {
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
-        let mut output: Box<dyn Write> = if let Some(output_file) = args.get_one::<String>("output")
-        {
-            let file = File::create(output_file).with_context(|| {
-                format!(
-                    "could not open file output file '{}' for writing",
-                    output_file
-                )
-            })?;
-            Box::new(BufWriter::new(file))
-        } else {
-            Box::new(stdout().lock())
-        };
-
         let lift_requested = args.get_flag("lift");
-
-        if let Some(input_file_names) = args.get_many::<String>("input") {
-            // Input files were specified, run the converter on each of them in turn
-            for input_file in input_file_names {
-                let file = File::open(input_file.as_str())
-                    .with_context(|| format!("Could not open file '{}'", &input_file))?;
-                let mut system_reader = SystemReader::new(AnyEncoding, file);
-                filter_out_user_data(&mut system_reader, &mut output, lift_requested)?;
-            }
-        } else {
-            let mut system_reader = SystemReader::new(AnyEncoding, io::stdin().lock());
-            filter_out_user_data(&mut system_reader, &mut output, lift_requested)?;
-        }
-
-        output.flush()?;
-        Ok(())
+        CommandIo::new(args).for_each_input(|output, input| {
+            let mut system_reader = SystemReader::new(AnyEncoding, input.into_source());
+            filter_out_user_data(&mut system_reader, output, lift_requested)
+        })
     }
 }
 
 pub fn filter_out_user_data(
     reader: &mut SystemReader<AnyEncoding, impl IonInput>,
-    output: &mut Box<dyn Write>,
+    output: &mut CommandOutput,
     lift_requested: bool,
 ) -> Result<()> {
     loop {

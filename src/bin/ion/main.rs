@@ -1,6 +1,8 @@
 mod auto_decompress;
 mod commands;
 mod file_writer;
+mod input;
+mod output;
 mod transcribe;
 
 use crate::commands::beta::BetaNamespace;
