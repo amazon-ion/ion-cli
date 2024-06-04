@@ -40,7 +40,10 @@ impl CommandInput {
 
     /// Constructs a new [`CommandInput`] that streams data from `source` without attempting to
     /// decompress its data.
-    pub fn without_decompression(name: impl Into<String>, source: impl Read + 'static) -> Result<CommandInput> {
+    pub fn without_decompression(
+        name: impl Into<String>,
+        source: impl Read + 'static,
+    ) -> Result<CommandInput> {
         Ok(Self {
             source: BufReader::new(Box::new(source)),
             name: name.into(),
