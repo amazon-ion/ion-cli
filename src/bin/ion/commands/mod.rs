@@ -154,6 +154,7 @@ impl WithIonCliArgument for ClapCommand {
     }
 }
 
+/// Offers convenience methods for working with input and output streams.
 pub struct CommandIo<'a> {
     args: &'a ArgMatches,
 }
@@ -163,6 +164,7 @@ impl<'a> CommandIo<'a> {
         CommandIo { args }
     }
 
+    /// Returns `true` if the user has not explicitly disabled auto decompression.
     fn auto_decompression_enabled(&self) -> bool {
         if let Some(flag) = self.args.get_one::<bool>("no-auto-decompress") {
             !*flag
@@ -171,6 +173,7 @@ impl<'a> CommandIo<'a> {
         }
     }
 
+    /// Constructs a new [`CommandInput`] representing STDIN.
     fn command_input_for_stdin(&self) -> Result<CommandInput> {
         const STDIN_NAME: &str = "-";
         let stdin = std::io::stdin().lock();
@@ -181,6 +184,7 @@ impl<'a> CommandIo<'a> {
         }
     }
 
+    /// Constructs a new [`CommandInput`] representing the specified file.
     fn command_input_for_file_name(&self, name: &str) -> Result<CommandInput> {
         let stream = File::open(name)?;
         if self.auto_decompression_enabled() {
@@ -190,6 +194,8 @@ impl<'a> CommandIo<'a> {
         }
     }
 
+    /// Calls the provided closure once for each input source specified by the user.
+    /// For each invocation, provides a handle to the configured output stream.
     fn for_each_input(
         &mut self,
         mut f: impl FnMut(&mut CommandOutput, CommandInput) -> Result<()>,

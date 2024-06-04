@@ -2,6 +2,8 @@ use crate::file_writer::FileWriter;
 use std::io::Write;
 use termcolor::{ColorSpec, StandardStreamLock, WriteColor};
 
+/// Statically dispatches writes to either an output file or STDOUT while also supporting `termcolor`
+/// style escape sequences when the target is a TTY.
 pub enum CommandOutput<'a> {
     StdOut(StandardStreamLock<'a>),
     File(FileWriter),
