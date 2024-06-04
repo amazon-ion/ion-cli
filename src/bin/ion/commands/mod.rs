@@ -25,6 +25,14 @@ pub trait IonCliCommand {
     /// A brief message describing this command's functionality.
     fn about(&self) -> &'static str;
 
+    /// If `true`, prevents this command from showing up in the parent namespace's help message.
+    /// This can be helpful for deprecating names while still supporting the old alias
+    ///
+    /// Defaults to `false`.
+    fn hide_from_help_message(&self) -> bool {
+        false
+    }
+
     /// Initializes a [`ClapCommand`] representing this command and its subcommands (if any).
     ///
     /// Commands wishing to customize their `ClapCommand`'s arguments should override
@@ -42,7 +50,8 @@ pub trait IonCliCommand {
         let mut base_command = ClapCommand::new(self.name())
             .about(self.about())
             .version(crate_version!())
-            .author(crate_authors!());
+            .author(crate_authors!())
+            .hide(self.hide_from_help_message());
 
         // If there are subcommands, add them to the configuration and set 'subcommand_required'.
         if !clap_subcommands.is_empty() {

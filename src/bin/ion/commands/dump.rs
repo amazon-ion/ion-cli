@@ -17,6 +17,10 @@ impl IonCliCommand for DumpCommand {
         "Deprecated alias for the `cat` command."
     }
 
+    fn hide_from_help_message(&self) -> bool {
+        true
+    }
+
     fn configure_args(&self, command: Command) -> Command {
         CatCommand.configure_args(command)
     }
