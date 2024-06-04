@@ -189,7 +189,7 @@ impl<'a> CommandIo<'a> {
         if self.auto_decompression_enabled() {
             CommandInput::decompress(STDIN_NAME, stdin)
         } else {
-            CommandInput::new(STDIN_NAME, stdin)
+            CommandInput::without_decompression(STDIN_NAME, stdin)
         }
     }
 
@@ -199,7 +199,7 @@ impl<'a> CommandIo<'a> {
         if self.auto_decompression_enabled() {
             CommandInput::decompress(name, stream)
         } else {
-            CommandInput::new(name, stream)
+            CommandInput::without_decompression(name, stream)
         }
     }
 
