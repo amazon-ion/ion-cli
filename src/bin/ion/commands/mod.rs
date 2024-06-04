@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use clap::{crate_authors, crate_version, Arg, ArgAction, ArgMatches, Command as ClapCommand};
 
 pub mod beta;
+pub mod cat;
 pub mod dump;
 pub mod inspect;
 

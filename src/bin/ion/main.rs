@@ -1,7 +1,10 @@
+mod auto_decompress;
 mod commands;
 mod file_writer;
+mod transcribe;
 
 use crate::commands::beta::BetaNamespace;
+use crate::commands::cat::CatCommand;
 use anyhow::Result;
 use commands::IonCliCommand;
 use ion_rs::IonError;
@@ -44,6 +47,7 @@ impl IonCliCommand for RootCommand {
         vec![
             Box::new(BetaNamespace),
             Box::new(DumpCommand),
+            Box::new(CatCommand),
             Box::new(InspectCommand),
         ]
     }
