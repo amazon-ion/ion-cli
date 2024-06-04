@@ -13,7 +13,7 @@ impl IonCliCommand for CatCommand {
     }
 
     fn about(&self) -> &'static str {
-        "Prints Ion in the requested format."
+        "Prints all Ion input files to the specified output in the requested format."
     }
 
     fn configure_args(&self, command: Command) -> Command {
