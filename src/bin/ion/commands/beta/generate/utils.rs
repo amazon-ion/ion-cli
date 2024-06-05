@@ -178,7 +178,7 @@ impl Language for RustLanguage {
                 Float => "f64",
                 Bool => "bool",
                 Blob | Clob => "Vec<u8>",
-                List | SExp| Struct => return None,
+                List | SExp | Struct => return None,
                 SchemaDefined(name) => name,
             }
             .to_string(),
@@ -273,9 +273,7 @@ impl From<&str> for IonSchemaType {
             "decimal" | "timestamp" => {
                 unimplemented!("Decimal, Number and Timestamp aren't support yet!")
             }
-            "struct" => {
-                Struct
-            }
+            "struct" => Struct,
             "list" => List,
             "sexp" => SExp,
             _ => SchemaDefined(value.to_case(Case::UpperCamel)),

@@ -99,7 +99,7 @@ impl AbstractDataType {
     pub fn is_content_closed(&self) -> Option<bool> {
         match self {
             AbstractDataType::Structure(content_closed) => Some(*content_closed),
-            _ => None
+            _ => None,
         }
     }
 }

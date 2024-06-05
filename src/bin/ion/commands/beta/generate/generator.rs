@@ -587,14 +587,19 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 // ```
                 // Here, first `type` constraint would set tera_fields with `value_type: None` and with `fields` constraint this field should be popped,
                 // and modify the `content_closed` property as per `fields` constraint.
-                AbstractDataType::Structure(_) if !tera_fields.is_empty() && tera_fields[0].value_type.is_none()
-                    && matches!(
-                        &current_abstract_data_type,
-                        &AbstractDataType::Structure(_)
-                    ) => {
+                AbstractDataType::Structure(_)
+                    if !tera_fields.is_empty()
+                        && tera_fields[0].value_type.is_none()
+                        && matches!(
+                            &current_abstract_data_type,
+                            &AbstractDataType::Structure(_)
+                        ) =>
+                {
                     tera_fields.pop();
                     // unwrap here is safe because we know the current_abstract_data_type is a `Structure`
-                    code_gen_context.with_abstract_data_type(AbstractDataType::Structure(current_abstract_data_type.is_content_closed().unwrap()))
+                    code_gen_context.with_abstract_data_type(AbstractDataType::Structure(
+                        current_abstract_data_type.is_content_closed().unwrap(),
+                    ))
                 }
                 _ if abstract_data_type != &current_abstract_data_type => {
                     return invalid_abstract_data_type_error(format!("Can not determine abstract data type as current constraint {} conflicts with prior constraints for {}.", current_abstract_data_type, abstract_data_type));
