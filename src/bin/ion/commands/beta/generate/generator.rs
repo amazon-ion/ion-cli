@@ -1,5 +1,6 @@
 use crate::commands::beta::generate::context::{AbstractDataType, CodeGenContext, SequenceType};
 use crate::commands::beta::generate::result::{invalid_abstract_data_type_error, CodeGenResult};
+use crate::commands::beta::generate::templates;
 use crate::commands::beta::generate::utils::{
     Field, JavaLanguage, Language, NestedType, RustLanguage,
 };
@@ -33,12 +34,15 @@ pub(crate) struct CodeGenerator<'a, L: Language> {
 
 impl<'a> CodeGenerator<'a, RustLanguage> {
     pub fn new(output: &'a Path) -> CodeGenerator<RustLanguage> {
-        let tera = Tera::new(&format!(
-            "{}/src/bin/ion/commands/beta/generate/templates/rust/*.templ",
-            env!("CARGO_MANIFEST_DIR")
-        ))
-        .unwrap();
-
+        let mut tera = Tera::default();
+        // Add all templates using `rust_templates` module constants
+        // This allows packaging binary without the need of template resources.
+        let _ = tera.add_raw_templates(vec![
+            ("struct.templ", templates::rust::STRUCT),
+            ("import.templ", templates::rust::IMPORT),
+            ("nested_type.templ", templates::rust::NESTED_TYPE),
+            ("result.templ", templates::rust::RESULT),
+        ]);
         // Render the imports into output file
         let rendered_import = tera.render("import.templ", &Context::new()).unwrap();
         // Render the SerdeResult that is used in generated read-write APIs
@@ -67,12 +71,13 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
 
 impl<'a> CodeGenerator<'a, JavaLanguage> {
     pub fn new(output: &'a Path, namespace: &'a str) -> CodeGenerator<'a, JavaLanguage> {
-        let tera = Tera::new(&format!(
-            "{}/src/bin/ion/commands/beta/generate/templates/java/*.templ",
-            env!("CARGO_MANIFEST_DIR")
-        ))
-        .unwrap();
-
+        let mut tera = Tera::default();
+        // Add all templates using `java_templates` module constants
+        // This allows packaging binary without the need of template resources.
+        let _ = tera.add_raw_templates(vec![
+            ("class.templ", templates::java::CLASS),
+            ("nested_type.templ", templates::java::NESTED_TYPE),
+        ]);
         Self {
             output,
             namespace: Some(namespace),

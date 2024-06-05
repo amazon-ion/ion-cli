@@ -1,6 +1,7 @@
 mod context;
 mod generator;
 mod result;
+pub(crate) mod templates;
 mod utils;
 
 use crate::commands::beta::generate::generator::CodeGenerator;
