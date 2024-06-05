@@ -102,7 +102,7 @@ impl Language for JavaLanguage {
                 Float => "double",
                 Bool => "boolean",
                 Blob | Clob => "byte[]",
-                List | SExp => return None,
+                List | SExp | Struct => return None,
                 SchemaDefined(name) => name,
             }
             .to_string(),
@@ -178,7 +178,7 @@ impl Language for RustLanguage {
                 Float => "f64",
                 Bool => "bool",
                 Blob | Clob => "Vec<u8>",
-                List | SExp => return None,
+                List | SExp | Struct => return None,
                 SchemaDefined(name) => name,
             }
             .to_string(),
@@ -249,6 +249,7 @@ pub enum IonSchemaType {
     Clob,
     SExp,
     List,
+    Struct,
     SchemaDefined(String), // A user defined schema type
 }
 
@@ -272,9 +273,7 @@ impl From<&str> for IonSchemaType {
             "decimal" | "timestamp" => {
                 unimplemented!("Decimal, Number and Timestamp aren't support yet!")
             }
-            "struct" => {
-                unimplemented!("Generic containers aren't supported yet!")
-            }
+            "struct" => Struct,
             "list" => List,
             "sexp" => SExp,
             _ => SchemaDefined(value.to_case(Case::UpperCamel)),

@@ -107,6 +107,15 @@ r#"
         }
     "#
 )]
+// Currently any struct type is not supported, it requires having a `fields` constraint
+#[case::any_struct_type(
+    r#"
+        type::{
+         name: any_struct_type,
+         type: struct, // this doesn't specify `fields` of the struct
+        }
+    "#
+)]
 /// Calls ion-cli beta generate with different unsupported schema types. Verify that `generate` subcommand returns an error for these schema types.
 fn test_unsupported_schema_types_failures(#[case] test_schema: &str) -> Result<()> {
     let mut cmd = Command::cargo_bin("ion")?;

@@ -283,7 +283,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             .any(|Field { value_type, .. }| value_type.is_none())
         {
             return invalid_abstract_data_type_error("Currently code generation does not support open ended types. \
-            Error can be due to a missing `type` constraint or `element` constraint in the type definition.");
+            Error can be due to a missing `type` or `fields` or `element` constraint in the type definition.");
         }
 
         // add fields for template
@@ -436,6 +436,8 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                             element_type: type_name.clone(),
                             sequence_type: Some(SequenceType::SExp),
                         }
+                    } else if isl_type.name() == "struct" {
+                        AbstractDataType::Structure(false) // by default contents aren't closed
                     } else {
                         AbstractDataType::Value
                     },
@@ -570,6 +572,34 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                         element_type: element_type.to_owned(),
                         sequence_type: current_abstract_data_type.sequence_type(),
                     })
+                }
+                // In the case when a `type` constraint occurs before `fields` constraint. The `content_closed` property for the struct
+                // needs to be updated based on `fields` constraint.
+                // e.g. For a schema as below:
+                // ```
+                // type::{
+                //   name: struct_type,
+                //   type: struct,
+                //   fields: {}
+                //      foo: string
+                //   },
+                // }
+                // ```
+                // Here, first `type` constraint would set tera_fields with `value_type: None` and with `fields` constraint this field should be popped,
+                // and modify the `content_closed` property as per `fields` constraint.
+                AbstractDataType::Structure(_)
+                    if !tera_fields.is_empty()
+                        && tera_fields[0].value_type.is_none()
+                        && matches!(
+                            &current_abstract_data_type,
+                            &AbstractDataType::Structure(_)
+                        ) =>
+                {
+                    tera_fields.pop();
+                    // unwrap here is safe because we know the current_abstract_data_type is a `Structure`
+                    code_gen_context.with_abstract_data_type(AbstractDataType::Structure(
+                        current_abstract_data_type.is_content_closed().unwrap(),
+                    ))
                 }
                 _ if abstract_data_type != &current_abstract_data_type => {
                     return invalid_abstract_data_type_error(format!("Can not determine abstract data type as current constraint {} conflicts with prior constraints for {}.", current_abstract_data_type, abstract_data_type));
