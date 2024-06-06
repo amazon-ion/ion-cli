@@ -3,7 +3,6 @@ pub mod from;
 
 #[cfg(feature = "experimental-code-gen")]
 pub mod generate;
-pub mod head;
 pub mod primitive;
 pub mod schema;
 pub mod symtab;
@@ -13,7 +12,6 @@ use crate::commands::beta::count::CountCommand;
 use crate::commands::beta::from::FromNamespace;
 #[cfg(feature = "experimental-code-gen")]
 use crate::commands::beta::generate::GenerateCommand;
-use crate::commands::beta::head::HeadCommand;
 use crate::commands::beta::primitive::PrimitiveCommand;
 use crate::commands::beta::schema::SchemaNamespace;
 use crate::commands::beta::symtab::SymtabNamespace;
@@ -36,7 +34,6 @@ impl IonCliCommand for BetaNamespace {
             Box::new(CountCommand),
             Box::new(PrimitiveCommand),
             Box::new(SchemaNamespace),
-            Box::new(HeadCommand),
             Box::new(FromNamespace),
             Box::new(ToNamespace),
             Box::new(SymtabNamespace),

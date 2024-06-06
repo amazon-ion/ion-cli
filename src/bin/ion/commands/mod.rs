@@ -11,6 +11,7 @@ use termcolor::{ColorChoice, StandardStream, StandardStreamLock};
 pub mod beta;
 pub mod cat;
 pub mod dump;
+pub mod head;
 pub mod inspect;
 
 /// Behaviors common to all Ion CLI commands, including both namespaces (groups of commands)
@@ -51,7 +52,8 @@ pub trait IonCliCommand {
             .about(self.about())
             .version(crate_version!())
             .author(crate_authors!())
-            .hide(self.hide_from_help_message());
+            .hide(self.hide_from_help_message())
+            .with_compression_control();
 
         // If there are subcommands, add them to the configuration and set 'subcommand_required'.
         if !clap_subcommands.is_empty() {
@@ -175,8 +177,8 @@ impl<'a> CommandIo<'a> {
 
     /// Returns `true` if the user has not explicitly disabled auto decompression.
     fn auto_decompression_enabled(&self) -> bool {
-        if let Some(flag) = self.args.get_one::<bool>("no-auto-decompress") {
-            !*flag
+        if let Some(is_disabled) = self.args.get_one::<bool>("no-auto-decompress") {
+            !*is_disabled
         } else {
             true
         }

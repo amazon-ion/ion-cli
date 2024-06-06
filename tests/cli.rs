@@ -201,7 +201,6 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     input_file.write_all(test_data.as_bytes())?;
     input_file.flush()?;
     cmd.args([
-        "beta",
         "head",
         "--values",
         &number.to_string(),

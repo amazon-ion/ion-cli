@@ -17,7 +17,7 @@ clap = { version = "4.0.17", features = ["cargo"] }
 colored = "2.0.0"
 flate2 = "1.0"
 infer = "0.15.0"
-ion-rs = { version = "1.0.0-rc.5", features = ["experimental"] }
+ion-rs = { version = "1.0.0-rc.6", features = ["experimental"] }
 tempfile = "3.2.0"
 ion-schema = "0.10.0"
 serde = { version = "1.0.163", features = ["derive"] }
