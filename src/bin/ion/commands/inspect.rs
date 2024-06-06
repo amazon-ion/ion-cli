@@ -208,9 +208,6 @@ impl<'a, 'b> IonInspector<'a, 'b> {
 
         let mut is_first_item = true;
         let mut has_printed_skip_message = false;
-        // TODO: This does not account for shared symbol table imports. However, the CLI does not
-        //       yet support specifying a catalog, so it's correct enough for the moment.
-        let mut next_symbol_id = reader.symbol_table().len();
         loop {
             let item = reader.next_item()?;
             let is_last_item = matches!(item, SystemStreamItem::EndOfStream(_));
@@ -241,12 +238,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
 
             match item {
                 SystemStreamItem::SymbolTable(lazy_struct) => {
-                    let is_append = lazy_struct.get("imports")?
-                        == Some(ValueRef::Symbol(SymbolRef::with_text("$ion_symbol_table")));
-                    if !is_append {
-                        next_symbol_id = 10; // First available SID after system symbols in Ion 1.0
-                    }
-                    self.inspect_symbol_table(&mut next_symbol_id, lazy_struct)?;
+                    self.inspect_symbol_table(lazy_struct)?;
                 }
                 SystemStreamItem::Value(lazy_value) => {
                     self.inspect_value(0, "", lazy_value, no_comment())?;
@@ -484,7 +476,6 @@ impl<'a, 'b> IonInspector<'a, 'b> {
 
     fn inspect_symbol_table(
         &mut self,
-        next_symbol_id: &mut usize,
         struct_: LazyStruct<'_, AnyEncoding>,
     ) -> Result<()> {
         let value = struct_.as_value();
@@ -500,7 +491,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         use LazyRawValueKind::*;
         match raw_struct.as_value().kind() {
             Binary_1_0(v) => {
-                self.inspect_binary_1_0_symbol_table(next_symbol_id, struct_, raw_struct, v)
+                self.inspect_binary_1_0_symbol_table(struct_, raw_struct, v)
             }
             Binary_1_1(_) => todo!("Binary Ion 1.1 symbol table"),
             Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
@@ -762,7 +753,6 @@ impl<'a, 'b> IonInspector<'a, 'b> {
 
     fn inspect_binary_1_0_symbol_table(
         &mut self,
-        next_symbol_id: &mut usize,
         struct_: LazyStruct<AnyEncoding>,
         raw_struct: LazyRawAnyStruct,
         raw_value: LazyRawBinaryValue,
@@ -791,7 +781,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             )? {
                 InspectorAction::Skip => continue,
                 InspectorAction::Inspect if field.name()? == "symbols" => {
-                    self.inspect_lst_symbols_field(next_symbol_id, field, raw_field)?
+                    self.inspect_lst_symbols_field(struct_, field, raw_field)?
                 }
                 // TODO: if field.name()? == "imports" => {}
                 InspectorAction::Inspect => {
@@ -811,7 +801,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
 
     fn inspect_lst_symbols_field(
         &mut self,
-        next_symbol_id: &mut usize,
+        symtab_struct: LazyStruct<AnyEncoding>,
         field: LazyField<AnyEncoding>,
         raw_field: LazyRawFieldExpr<AnyEncoding>,
     ) -> Result<()> {
@@ -845,6 +835,16 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             Ok(())
         })?;
 
+        // TODO: This does not account for shared symbol table imports. However, the CLI does not
+        //       yet support specifying a catalog, so it's correct enough for the moment.
+        let symtab_value = symtab_struct.as_value();
+        let mut next_symbol_id = symtab_value.symbol_table().len();
+        let is_append = symtab_struct.get("imports")?
+            == Some(ValueRef::Symbol(SymbolRef::with_text("$ion_symbol_table")));
+        if !is_append {
+            next_symbol_id = 10; // First available SID after system symbols in Ion 1.0
+        }
+
         let mut has_printed_skip_message = false;
         for (raw_value_res, value_res) in nested_raw_values.zip(nested_values) {
             let (raw_nested_value, nested_value) = (raw_value_res?, value_res?);
@@ -866,7 +866,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                     ValueRef::String(_s) => write!(out, " // -> ${next_symbol_id}"),
                     _other => write!(out, " // -> ${next_symbol_id} (no text)"),
                 }?;
-                *next_symbol_id += 1;
+                next_symbol_id += 1;
                 Ok(true)
             })?;
             self.output.reset()?;
