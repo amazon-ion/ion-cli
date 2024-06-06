@@ -37,12 +37,13 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
         let mut tera = Tera::default();
         // Add all templates using `rust_templates` module constants
         // This allows packaging binary without the need of template resources.
-        let _ = tera.add_raw_templates(vec![
+        tera.add_raw_templates(vec![
             ("struct.templ", templates::rust::STRUCT),
             ("import.templ", templates::rust::IMPORT),
             ("nested_type.templ", templates::rust::NESTED_TYPE),
             ("result.templ", templates::rust::RESULT),
-        ]);
+        ])
+        .unwrap();
         // Render the imports into output file
         let rendered_import = tera.render("import.templ", &Context::new()).unwrap();
         // Render the SerdeResult that is used in generated read-write APIs
@@ -74,10 +75,11 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
         let mut tera = Tera::default();
         // Add all templates using `java_templates` module constants
         // This allows packaging binary without the need of template resources.
-        let _ = tera.add_raw_templates(vec![
+        tera.add_raw_templates(vec![
             ("class.templ", templates::java::CLASS),
             ("nested_type.templ", templates::java::NESTED_TYPE),
-        ]);
+        ])
+        .unwrap();
         Self {
             output,
             namespace: Some(namespace),
