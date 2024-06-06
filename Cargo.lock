@@ -840,7 +840,7 @@ dependencies = [
  "convert_case",
  "flate2",
  "infer",
- "ion-rs 1.0.0-rc.5",
+ "ion-rs 1.0.0-rc.6",
  "ion-schema",
  "matches",
  "pager",
@@ -876,9 +876,7 @@ dependencies = [
 
 [[package]]
 name = "ion-rs"
-version = "1.0.0-rc.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae6628b313b01f34e167393a688a78ce907ff7307cb9e4a93c9d3599cabb1b03"
+version = "1.0.0-rc.6"
 dependencies = [
  "arrayvec",
  "base64 0.12.3",

@@ -2,7 +2,7 @@ use std::fmt::Display;
 use std::io::Write;
 use std::str::FromStr;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::{Arg, ArgMatches, Command};
 use ion_rs::v1_0::{LazyRawBinaryValue, RawValueRef};
 use ion_rs::*;
@@ -161,8 +161,7 @@ trait CommentFn<'x>: FnMut(&mut CommandOutput, LazyValue<'x, AnyEncoding>) -> Re
 
 impl<'x, F> CommentFn<'x> for F where
     F: FnMut(&mut CommandOutput, LazyValue<'x, AnyEncoding>) -> Result<bool>
-{
-}
+{}
 
 /// Returns a `CommentFn` implementation that does nothing.
 fn no_comment<'x>() -> impl CommentFn<'x> {
@@ -187,21 +186,41 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         Ok(inspector)
     }
 
+    fn confirm_encoding_is_supported(&self, encoding: IonEncoding) -> Result<()> {
+        use IonEncoding::*;
+        match encoding {
+            Text_1_0 | Text_1_1 => {
+                bail!("`inspect` does not support text Ion streams.");
+            }
+            Binary_1_0 => Ok(()),
+            Binary_1_1 => bail!("`inspect` does not yet support binary Ion v1.1"),
+            // `IonEncoding` is #[non_exhaustive]
+            _ => bail!("`inspect does not yet support {}", encoding.name()),
+        }
+    }
+
     /// Iterates over the items in `reader`, printing a table section for each top level value.
     fn inspect_top_level<Input: IonInput>(
         &mut self,
         reader: &mut SystemReader<AnyEncoding, Input>,
     ) -> Result<()> {
         const TOP_LEVEL_DEPTH: usize = 0;
-        self.write_table_header()?;
+
         let mut is_first_item = true;
         let mut has_printed_skip_message = false;
+        // TODO: This does not account for shared symbol table imports. However, the CLI does not
+        //       yet support specifying a catalog, so it's correct enough for the moment.
+        let mut next_symbol_id = reader.symbol_table().len();
         loop {
-            // TODO: This does not account for shared symbol table imports. However, the CLI does not
-            //       yet support specifying a catalog, so it's correct enough for the moment.
-            let mut next_symbol_id = reader.symbol_table().len();
             let item = reader.next_item()?;
             let is_last_item = matches!(item, SystemStreamItem::EndOfStream(_));
+
+            if is_first_item {
+                // The first item in a stream cannot be ephemeral, so we can safely unwrap this.
+                let encoding = item.raw_stream_item().unwrap().encoding();
+                self.confirm_encoding_is_supported(encoding)?;
+                self.write_table_header()?;
+            }
 
             match self.select_action(
                 TOP_LEVEL_DEPTH,
@@ -227,12 +246,13 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                     if !is_append {
                         next_symbol_id = 10; // First available SID after system symbols in Ion 1.0
                     }
-                    self.inspect_symbol_table(next_symbol_id, lazy_struct)?;
+                    self.inspect_symbol_table(&mut next_symbol_id, lazy_struct)?;
                 }
                 SystemStreamItem::Value(lazy_value) => {
                     self.inspect_value(0, "", lazy_value, no_comment())?;
                 }
                 SystemStreamItem::VersionMarker(marker) => {
+                    self.confirm_encoding_is_supported(marker.encoding())?;
                     self.inspect_ivm(marker)?;
                 }
                 SystemStreamItem::EndOfStream(_) => {
@@ -464,7 +484,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
 
     fn inspect_symbol_table(
         &mut self,
-        next_symbol_id: usize,
+        next_symbol_id: &mut usize,
         struct_: LazyStruct<'_, AnyEncoding>,
     ) -> Result<()> {
         let value = struct_.as_value();
@@ -580,7 +600,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         value_delimiter: &str,
         closing_delimiter: &str,
         trailing_delimiter: &str,
-        nested_values: impl IntoIterator<Item = IonResult<LazyValue<'x, AnyEncoding>>>,
+        nested_values: impl IntoIterator<Item=IonResult<LazyValue<'x, AnyEncoding>>>,
         nested_raw_values: impl LazyRawSequence<'x, v1_0::Binary>,
         raw_value: LazyRawBinaryValue,
         mut value_comment_fn: impl CommentFn<'x>,
@@ -742,7 +762,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
 
     fn inspect_binary_1_0_symbol_table(
         &mut self,
-        next_symbol_id: usize,
+        next_symbol_id: &mut usize,
         struct_: LazyStruct<AnyEncoding>,
         raw_struct: LazyRawAnyStruct,
         raw_value: LazyRawBinaryValue,
@@ -791,7 +811,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
 
     fn inspect_lst_symbols_field(
         &mut self,
-        mut next_symbol_id: usize,
+        next_symbol_id: &mut usize,
         field: LazyField<AnyEncoding>,
         raw_field: LazyRawFieldExpr<AnyEncoding>,
     ) -> Result<()> {
@@ -846,7 +866,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                     ValueRef::String(_s) => write!(out, " // -> ${next_symbol_id}"),
                     _other => write!(out, " // -> ${next_symbol_id} (no text)"),
                 }?;
-                next_symbol_id += 1;
+                *next_symbol_id += 1;
                 Ok(true)
             })?;
             self.output.reset()?;
@@ -925,15 +945,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             BytesKind::TrailingLength,
             encoding.trailing_length_span().bytes(),
         );
-        // TODO: There is a bug in the `body_span()` method that causes it fail when the value is annotated.
-        //       When it's fixed, this can be:
-        //           let body_bytes = IonBytes::new(BytesKind::ValueBody, body_span);
-        let body_len = raw_value.encoded_data().body_range().len();
-        let total_len = raw_value.encoded_data().range().len();
-        let body_bytes = IonBytes::new(
-            BytesKind::ValueBody,
-            &encoding.span().bytes()[total_len - body_len..],
-        );
+        let body_bytes = IonBytes::new(BytesKind::ValueBody, encoding.body_span().bytes());
 
         let mut formatter =
             BytesFormatter::new(BYTES_PER_ROW, vec![opcode_bytes, length_bytes, body_bytes]);

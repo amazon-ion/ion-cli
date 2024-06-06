@@ -24,10 +24,7 @@ impl IonCliCommand for ToJsonCommand {
     fn configure_args(&self, command: Command) -> Command {
         // NOTE: it may be necessary to add format-specific options. For example, a "pretty" option
         // would make sense for JSON, but not binary formats like CBOR.
-        command
-            .with_input()
-            .with_output()
-            .with_compression_control()
+        command.with_input().with_output()
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {

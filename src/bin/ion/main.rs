@@ -13,6 +13,7 @@ use ion_rs::IonError;
 use std::io::ErrorKind;
 
 use crate::commands::dump::DumpCommand;
+use crate::commands::head::HeadCommand;
 use crate::commands::inspect::InspectCommand;
 
 fn main() -> Result<()> {
@@ -48,8 +49,9 @@ impl IonCliCommand for RootCommand {
     fn subcommands(&self) -> Vec<Box<dyn IonCliCommand>> {
         vec![
             Box::new(BetaNamespace),
-            Box::new(DumpCommand),
             Box::new(CatCommand),
+            Box::new(DumpCommand),
+            Box::new(HeadCommand),
             Box::new(InspectCommand),
         ]
     }

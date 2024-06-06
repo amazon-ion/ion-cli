@@ -21,7 +21,6 @@ impl IonCliCommand for SymtabFilterCommand {
     fn configure_args(&self, command: Command) -> Command {
         command.with_input()
             .with_output()
-            .with_compression_control()
             .arg(Arg::new("lift")
                 .long("lift")
                 .short('l')
