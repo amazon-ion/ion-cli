@@ -885,7 +885,8 @@ dependencies = [
 [[package]]
 name = "ion-rs"
 version = "1.0.0-rc.6"
-source = "git+https://github.com/amazon-ion/ion-rust.git?rev=44be8d1#44be8d1c18205579106205a5a9d5712ac97cf350"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48498fecc335cec03c72629fb886386c52f13f70195990f9f0f373411a5ac3e3"
 dependencies = [
  "arrayvec",
  "base64 0.12.3",
