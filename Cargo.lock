@@ -877,6 +877,7 @@ dependencies = [
 [[package]]
 name = "ion-rs"
 version = "1.0.0-rc.6"
+source = "git+https://github.com/amazon-ion/ion-rust.git?branch=version-bump-rc6#cd52d10668e28f8a56a29123890436aca97a618f"
 dependencies = [
  "arrayvec",
  "base64 0.12.3",
