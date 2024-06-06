@@ -161,7 +161,8 @@ trait CommentFn<'x>: FnMut(&mut CommandOutput, LazyValue<'x, AnyEncoding>) -> Re
 
 impl<'x, F> CommentFn<'x> for F where
     F: FnMut(&mut CommandOutput, LazyValue<'x, AnyEncoding>) -> Result<bool>
-{}
+{
+}
 
 /// Returns a `CommentFn` implementation that does nothing.
 fn no_comment<'x>() -> impl CommentFn<'x> {
@@ -474,10 +475,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         }
     }
 
-    fn inspect_symbol_table(
-        &mut self,
-        struct_: LazyStruct<'_, AnyEncoding>,
-    ) -> Result<()> {
+    fn inspect_symbol_table(&mut self, struct_: LazyStruct<'_, AnyEncoding>) -> Result<()> {
         let value = struct_.as_value();
         if value.has_annotations() {
             self.newline()?;
@@ -490,9 +488,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
 
         use LazyRawValueKind::*;
         match raw_struct.as_value().kind() {
-            Binary_1_0(v) => {
-                self.inspect_binary_1_0_symbol_table(struct_, raw_struct, v)
-            }
+            Binary_1_0(v) => self.inspect_binary_1_0_symbol_table(struct_, raw_struct, v),
             Binary_1_1(_) => todo!("Binary Ion 1.1 symbol table"),
             Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
         }
@@ -591,7 +587,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         value_delimiter: &str,
         closing_delimiter: &str,
         trailing_delimiter: &str,
-        nested_values: impl IntoIterator<Item=IonResult<LazyValue<'x, AnyEncoding>>>,
+        nested_values: impl IntoIterator<Item = IonResult<LazyValue<'x, AnyEncoding>>>,
         nested_raw_values: impl LazyRawSequence<'x, v1_0::Binary>,
         raw_value: LazyRawBinaryValue,
         mut value_comment_fn: impl CommentFn<'x>,
