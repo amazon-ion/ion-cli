@@ -53,7 +53,7 @@ pub trait IonCliCommand {
             .version(crate_version!())
             .author(crate_authors!())
             .hide(self.hide_from_help_message())
-            .with_compression_control();
+            .with_decompression_control();
 
         // If there are subcommands, add them to the configuration and set 'subcommand_required'.
         if !clap_subcommands.is_empty() {
@@ -121,7 +121,7 @@ pub trait WithIonCliArgument {
     fn with_input(self) -> Self;
     fn with_output(self) -> Self;
     fn with_format(self) -> Self;
-    fn with_compression_control(self) -> Self;
+    fn with_decompression_control(self) -> Self;
 }
 
 impl WithIonCliArgument for ClapCommand {
@@ -155,12 +155,18 @@ impl WithIonCliArgument for ClapCommand {
         )
     }
 
-    fn with_compression_control(self) -> Self {
+    fn with_decompression_control(self) -> Self {
+        let accepts_input = self
+            .get_arguments()
+            .any(|flag| dbg!(dbg!(flag.get_id()) == "input"));
         self.arg(
             Arg::new("no-auto-decompress")
                 .long("no-auto-decompress")
+                .default_value("false")
                 .action(ArgAction::SetTrue)
-                .help("Turn off automatic decompression detection."),
+                .help("Turn off automatic decompression detection.")
+                // Do not show this flag in `help` for commands that don't take an `--input` flag.
+                .hide(!accepts_input),
         )
     }
 }

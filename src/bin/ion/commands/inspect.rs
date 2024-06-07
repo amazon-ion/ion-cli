@@ -212,11 +212,11 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         loop {
             let item = reader.next_item()?;
             let is_last_item = matches!(item, SystemStreamItem::EndOfStream(_));
+            item.raw_stream_item()
+                .map(|i| self.confirm_encoding_is_supported(i.encoding()))
+                .unwrap_or(Ok(()))?;
 
             if is_first_item {
-                // The first item in a stream cannot be ephemeral, so we can safely unwrap this.
-                let encoding = item.raw_stream_item().unwrap().encoding();
-                self.confirm_encoding_is_supported(encoding)?;
                 self.write_table_header()?;
             }
 
@@ -227,7 +227,10 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                 "stream items",
                 "ending",
             )? {
-                InspectorAction::Skip => continue,
+                InspectorAction::Skip => {
+                    is_first_item = false;
+                    continue;
+                }
                 InspectorAction::Inspect => {}
                 InspectorAction::LimitReached => break,
             }
