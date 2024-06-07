@@ -196,7 +196,6 @@ Commands:
   help     Print this message or the help of the given subcommand(s)
 
 Options:
-      --no-auto-decompress  Turn off automatic decompression detection.
   -h, --help                Print help
   -V, --version             Print version
 ```
