@@ -1,18 +1,21 @@
-## `ion-cli`
+# `ion-cli`
+
 This repository is home to the `ion` command line tool, which provides subcommands
 for working with [the Ion data format](https://amzn.github.io/ion-docs/docs/spec.html).
 
 ## Table of contents
+
 * [Examples](#examples)
-   * [Converting between formats with `dump`](#converting-between-formats-with-dump)
-   * [Converting between Ion and other formats with `to` and `from`](#converting-between-ion-and-other-formats-with-to-and-from)
-   * [Analyzing binary Ion file encodings with `inspect`](#analyzing-binary-ion-file-encodings-with-inspect)
+    * [Viewing the contents of an Ion file](#viewing-the-contents-of-an-ion-file)
+    * [Converting between Ion formats](#converting-between-ion-formats)
+    * [Converting between Ion and other formats with `to` and `from`](#converting-between-ion-and-other-formats-with-to-and-from)
+    * [Analyzing binary Ion file encodings with `inspect`](#analyzing-binary-ion-file-encodings-with-inspect)
 * [Installation](#installation)
-   * [via `brew`](#via-brew)
-   * [via `cargo`](#via-cargo)
+    * [via `brew`](#via-brew)
+    * [via `cargo`](#via-cargo)
 * [Build Instructions](#build-instructions)
-   * [From source](#from-source)
-   * [Using Docker](#using-docker)
+    * [From source](#from-source)
+    * [Using Docker](#using-docker)
 
 ## Examples
 
@@ -22,21 +25,40 @@ evaluate the file extension.
 
 Unless otherwise noted, these commands can accept any Ion format as input.
 
-### Converting between formats with `dump`
+### Viewing the contents of an Ion file
+
+The `ion cat` command reads the contents of the specified files (or `STDIN`) sequentially
+and writes their content to `STDOUT` in the requested Ion format.
+
+```shell
+ion cat my_file.ion
+```
+
+You can use the `--format`/`-f` flag to specify the desired format. The supported formats are:
+
+* `pretty` - Generously spaced, human-friendly text Ion. This is the default.
+* `text` - Minimally spaced text Ion.
+* `lines` - Text Ion that places each value on its own line.
+* `binary`- Binary Ion
+
+### Converting between Ion formats
 
 Convert Ion text (or JSON) to Ion binary:
+
 ```shell
-ion dump --format binary my_file.ion
+ion cat --format binary my_text_file.ion -o my_binary_file.ion 
 ```
 
 Convert Ion binary to generously-spaced, human-friendly text:
+
 ```shell
-ion dump --format pretty my_file.10n
+ion cat --format pretty my_binary_file.ion -o my_text_file.ion 
 ```
 
 Convert Ion binary to minimally-spaced, compact text:
+
 ```shell
-ion dump --format text my_file.10n
+ion cat --format text my_binary_file.ion -o my_text_file.ion 
 ```
 
 ### Converting between Ion and other formats with `to` and `from`
@@ -45,18 +67,20 @@ The `beta to` and `beta from` commands can convert Ion to and from other formats
 Currently, JSON is supported.
 
 Convert Ion to JSON:
+
 ```shell
 ion beta to json my_file.10n
 ```
 
 Convert JSON to Ion:
+
 ```shell
 ion beta from json my_file.json
 ```
 
 ### Analyzing binary Ion file encodings with `inspect`
 
-The `beta inspect` command can display the hex bytes of a binary Ion file alongside
+The `inspect` command can display the hex bytes of a binary Ion file alongside
 the equivalent text Ion for easier analysis.
 
 ```shell
@@ -64,99 +88,60 @@ the equivalent text Ion for easier analysis.
 echo '{foo: null, bar: true, baz: [1, 2, 3]}' > my_file.ion
 
 # Convert the text Ion to binary Ion
-ion dump --format binary my_file.ion > my_file.10n
+ion cat --format binary my_file.ion > my_file.10n
 
 # Show the binary encoding alongside its equivalent text 
-ion beta inspect my_file.10n
-
----------------------------------------------------------------------------
- Offset   |  Length   |        Binary Ion        |         Text Ion
----------------------------------------------------------------------------
-          |         4 | e0 01 00 ea              |  // Ion 1.0 Version Marker
-        4 |         4 | ee 95 81 83              |  '$ion_symbol_table':: // $3::
-        8 |        19 | de 91                    |  {
-       10 |         1 | 86                       |    'imports': // $6:
-       11 |         2 | 71 03                    |    $ion_symbol_table, // $3
-       13 |         1 | 87                       |    'symbols': // $7:
-       14 |        13 | bc                       |    [
-       15 |         4 | 83 66 6f 6f              |       "foo",
-       19 |         4 | 83 62 61 72              |       "bar",
-       23 |         4 | 83 62 61 7a              |       "baz",
-          |           |                          |    ],
-          |           |                          |  }
-       27 |        13 | dc                       |  {
-       28 |         1 | 8a                       |    'foo': // $10:
-       29 |         1 | 0f                       |     null,
-       30 |         1 | 8b                       |    'bar': // $11:
-       31 |         1 | 11                       |     true,
-       32 |         1 | 8c                       |    'baz': // $12:
-       33 |         7 | b6                       |    [
-       34 |         2 | 21 01                    |       1,
-       36 |         2 | 21 02                    |       2,
-       38 |         2 | 21 03                    |       3,
-          |           |                          |    ],
-          |           |                          |  }
+ion inspect my_file.10n
 ```
 
-To skip to a particular offset in the stream, you can use the `--skip-bytes` flag:
+![example_inspect_output.png](images/example_inspect_output.png)
 
+----
+**The `--skip-bytes` flag**
+
+To skip to a particular offset in the stream, you can use the `--skip-bytes` flag.
+
+```shell
+ion inspect --skip-bytes 30 my_file.10n
 ```
-ion beta inspect --skip-bytes 30 my_file.10n
----------------------------------------------------------------------------
- Offset   |  Length   |        Binary Ion        |         Text Ion
----------------------------------------------------------------------------
-          |         4 | e0 01 00 ea              |  // Ion 1.0 Version Marker
-          |           | ...                      |  // Skipped 23 bytes of user-level data
-       27 |        13 | dc                       |  {
-          |           | ...                      |    // Skipped 2 bytes of user-level data
-       30 |         1 | 8b                       |    'bar': // $11:
-       31 |         1 | 11                       |    true,
-       32 |         1 | 8c                       |    'baz': // $12:
-       33 |         7 | b6                       |    [
-       34 |         2 | 21 01                    |       1,
-       36 |         2 | 21 02                    |       2,
-       38 |         2 | 21 03                    |       3,
-          |           |                          |    ],
-          |           |                          |  }
-```
+
+![img.png](images/example_inspect_skip_bytes.png)
 
 Notice that the text column adds comments indicating where data has been skipped.
 Also, if the requested index is nested inside one or more containers, the beginnings
 of those containers (along with their lengths and offsets) will still be included
 in the output.
 
+-----
+**The `--limit-bytes` flag**
+
 You can limit the amount of data that `inspect` displays by using the `--limit-bytes`
 flag:
 
 ```shell
-ion beta inspect --skip-bytes 30 --limit-bytes 2 my_file.10n
----------------------------------------------------------------------------
- Offset   |  Length   |        Binary Ion        |         Text Ion
----------------------------------------------------------------------------
-          |         4 | e0 01 00 ea              |  // Ion 1.0 Version Marker
-          |           | ...                      |  // Skipped 23 bytes of user-level data
-       27 |        13 | dc                       |  {
-          |           | ...                      |    // Skipped 2 bytes of user-level data
-       30 |         1 | 8b                       |    'bar': // $11:
-       31 |         1 | 11                       |    true,
-          |           | ...                      |    // --limit-bytes reached, stepping out.
-          |           |                          |  }
+ion inspect --skip-bytes 30 --limit-bytes 2 my_file.10n
 ```
 
+![img.png](images/example_inspect_limit_bytes.png)
+
 ### Schema subcommands
+
 All the subcommand to load or validate schema are under the `beta schema` subcommand.
 
 To load a schema:
+
 ```bash
 ion beta schema load --directory <DIRECTORY> --schema <SCHEMA_FILE> 
 ```
 
 To validate an ion value against a schema type:
+
 ```bash
 ion beta schema validate --directory <DIRECTORY> --schema <SCHEMA_FILE> --input <INPUT_FILE> --type <TYPE>
 ```
 
 For more information on how to use the schema subcommands using CLI, run the following command:
+
 ```bash
 ion beta schema help  
 ```
@@ -196,21 +181,24 @@ ion help
 You should see output that resembles the following:
 
 ```
-ion 0.4.0
-The Ion Team <ion-team@amazon.com>
+A collection of tools for working with Ion data.
 
-USAGE:
-    ion <SUBCOMMAND>
+Usage: ion [OPTIONS] <COMMAND>
 
-FLAGS:
-    -h, --help       Prints help information
-    -V, --version    Prints version information
+Commands:
+  beta     The 'beta' command is a namespace for commands whose interfaces are not yet stable.
+  cat      Prints all Ion input files to the specified output in the requested format.
+  head     Prints the specified number of top-level values in the input stream.
+  inspect  Displays hex-encoded binary Ion alongside its equivalent text Ion.
+               Its output prioritizes human readability and is likely to change
+               between versions. Stable output for programmatic use cases is a
+               non-goal.
+  help     Print this message or the help of the given subcommand(s)
 
-SUBCOMMANDS:
-    beta    The 'beta' command is a namespace for commands whose interfaces are 
-            not yet stable.
-    dump    Prints Ion in the requested format
-    help    Prints this message or the help of the given subcommand(s)
+Options:
+      --no-auto-decompress  Turn off automatic decompression detection.
+  -h, --help                Print help
+  -V, --version             Print version
 ```
 
 ## Build instructions
@@ -270,8 +258,8 @@ SUBCOMMANDS:
    # print the help message
    docker run -it --rm ion-cli:0.1.1 ion -V
 
-   # mount current directory to /data volume and dump an ion file
-   docker run -it --rm -v $PWD:/data ion-cli:0.1.1 ion dump /data/test.ion
+   # mount current directory to /data volume and cat an ion file
+   docker run -it --rm -v $PWD:/data ion-cli:0.1.1 ion cat /data/test.ion
 
    ```
 

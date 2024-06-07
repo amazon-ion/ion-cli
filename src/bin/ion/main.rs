@@ -23,8 +23,8 @@ fn main() -> Result<()> {
 
     if let Err(e) = root_command.run(&mut command_path, &args) {
         match e.downcast_ref::<IonError>() {
-            // If `ion-cli` is being invoked as part of a pipeline we want to allow the pipeline to
-            // to shut off without printing an error to stderr
+            // If `ion-cli` is being invoked as part of a pipeline we want to allow the pipeline
+            // to shut off without printing an error to STDERR.
             Some(IonError::Io(error)) if error.source().kind() == ErrorKind::BrokenPipe => {
                 return Ok(());
             }
