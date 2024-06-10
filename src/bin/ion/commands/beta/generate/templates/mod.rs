@@ -8,6 +8,18 @@ pub(crate) mod java {
         env!("CARGO_MANIFEST_DIR"),
         "/src/bin/ion/commands/beta/generate/templates/java/class.templ"
     ));
+    pub(crate) const SCALAR: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/bin/ion/commands/beta/generate/templates/java/scalar.templ"
+    ));
+    pub(crate) const SEQUENCE: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/bin/ion/commands/beta/generate/templates/java/sequence.templ"
+    ));
+    pub(crate) const UTIL_MACROS: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/bin/ion/commands/beta/generate/templates/java/util_macros.templ"
+    ));
     pub(crate) const NESTED_TYPE: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/src/bin/ion/commands/beta/generate/templates/java/nested_type.templ"
@@ -19,6 +31,18 @@ pub(crate) mod rust {
     pub(crate) const STRUCT: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/src/bin/ion/commands/beta/generate/templates/rust/struct.templ"
+    ));
+    pub(crate) const SCALAR: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/bin/ion/commands/beta/generate/templates/rust/scalar.templ"
+    ));
+    pub(crate) const SEQUENCE: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/bin/ion/commands/beta/generate/templates/rust/sequence.templ"
+    ));
+    pub(crate) const UTIL_MACROS: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/bin/ion/commands/beta/generate/templates/rust/util_macros.templ"
     ));
     pub(crate) const RESULT: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
