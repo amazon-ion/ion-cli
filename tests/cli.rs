@@ -225,7 +225,7 @@ mod code_gen_tests {
 
     #[rstest]
     #[case::simple_struct(
-        r#"
+    r#"
         type::{
          name: simple_struct,
          fields: {
@@ -234,32 +234,32 @@ mod code_gen_tests {
          },
         }
     "#,
-        & ["id: i64", "name: String"],
-        & ["pub fn name(&self) -> &String {", "pub fn id(&self) -> &i64 {"]
+    & ["id: i64", "name: String"],
+    & ["pub fn name(&self) -> &String {", "pub fn id(&self) -> &i64 {"]
     )]
     #[case::value_struct(
-        r#"
+    r#"
         type::{
          name: value_struct,
          type: int // this will be a field in struct
         }
     "#,
-        & ["value: i64"],
-        & ["pub fn value(&self) -> &i64 {"]
+    & ["value: i64"],
+    & ["pub fn value(&self) -> &i64 {"]
     )]
     #[case::sequence_struct(
-        r#"
+    r#"
         type::{
          name: sequence_struct,
          element: string, // this will be a sequence field in struct
          type: list
         }
     "#,
-        & ["value: Vec<String>"],
-        & ["pub fn value(&self) -> &Vec<String> {"]
+    & ["value: Vec<String>"],
+    & ["pub fn value(&self) -> &Vec<String> {"]
     )]
     #[case::struct_with_reference_field(
-        r#"
+    r#"
         type::{
          name: struct_with_reference_field,
          fields: {
@@ -272,11 +272,11 @@ mod code_gen_tests {
             type: int
         }
     "#,
-        & ["reference: OtherType"],
-        & ["pub fn reference(&self) -> &OtherType {"]
+    & ["reference: OtherType"],
+    & ["pub fn reference(&self) -> &OtherType {"]
     )]
     #[case::struct_with_nested_type(
-        r#"
+    r#"
         type::{
          name: struct_with_nested_type,
          fields: {
@@ -284,8 +284,8 @@ mod code_gen_tests {
          }
         }
     "#,
-        & ["nested_type: NestedType1"],
-        & ["pub fn nested_type(&self) -> &NestedType1 {"]
+    & ["nested_type: i64"],
+    & ["pub fn nested_type(&self) -> &i64 {"]
     )]
     /// Calls ion-cli beta generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
     fn test_code_generation_in_rust(
@@ -331,8 +331,8 @@ mod code_gen_tests {
 
     #[rstest]
     #[case(
-        "SimpleStruct",
-        r#"
+    "SimpleStruct",
+    r#"
         type::{
          name: simple_struct,
          fields: {
@@ -341,35 +341,35 @@ mod code_gen_tests {
          }
         }
     "#,
-        & ["private int id;", "private String name;"],
-        & ["public String getName() {", "public int getId() {"]
+    & ["private int id;", "private String name;"],
+    & ["public String getName() {", "public int getId() {"]
     )]
     #[case(
-        "ValueStruct",
-        r#"
+    "ValueStruct",
+    r#"
         type::{
          name: value_struct,
          type: int // this will be a field in struct
         }
     "#,
-        & ["private int value;"],
-        & ["public int getValue() {"]
+    & ["private int value;"],
+    & ["public int getValue() {"]
     )]
     #[case(
-        "SequenceStruct",
-        r#"
+    "SequenceStruct",
+    r#"
         type::{
          name: sequence_struct,
          element: string, // this will be a sequence field in struct
          type: list
         }
     "#,
-        & ["private ArrayList<String> value;"],
-        & ["public ArrayList<String> getValue() {"]
+    & ["private ArrayList<String> value;"],
+    & ["public ArrayList<String> getValue() {"]
     )]
     #[case(
-        "StructWithReferenceField",
-        r#"
+    "StructWithReferenceField",
+    r#"
         type::{
          name: struct_with_reference_field,
          fields: {
@@ -382,12 +382,12 @@ mod code_gen_tests {
             type: int
         }
     "#,
-        & ["private OtherType reference;"],
-        & ["public OtherType getReference() {"]
+    & ["private OtherType reference;"],
+    & ["public OtherType getReference() {"]
     )]
     #[case(
-        "StructWithNestedType",
-        r#"
+    "StructWithNestedType",
+    r#"
         type::{
          name: struct_with_nested_type,
          fields: {
@@ -395,8 +395,8 @@ mod code_gen_tests {
          }
         }
     "#,
-        & ["private NestedType1 nestedType;"],
-        & ["public NestedType1 getNestedType() {"]
+    & ["private int nestedType;"],
+    & ["public int getNestedType() {"]
     )]
     /// Calls ion-cli beta generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
     fn test_code_generation_in_java(

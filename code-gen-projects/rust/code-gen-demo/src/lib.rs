@@ -85,4 +85,70 @@ mod tests {
 
         Ok(())
     }
+
+    #[test_resources("../../input/good/scalar/**/*.ion")]
+    fn roundtrip_good_test_generated_code_scalar(file_name: &str) -> SerdeResult<()> {
+        let ion_string = fs::read_to_string(file_name).unwrap();
+        let mut reader = ReaderBuilder::new().build(ion_string.clone())?;
+        let mut buffer = Vec::new();
+        let mut text_writer = TextWriterBuilder::default().build(&mut buffer)?;
+        // read given Ion value using Ion reader
+        reader.next()?;
+        let scalar: Scalar = Scalar::read_from(&mut reader)?;
+        // write the generated abstract data type using Ion writer
+        scalar.write_to(&mut text_writer)?;
+        text_writer.flush()?;
+        // compare given Ion value with round tripped Ion value written using abstract data type's `write_to` API
+        assert_eq!(
+            Element::read_one(text_writer.output().as_slice())?,
+            (Element::read_one(&ion_string)?)
+        );
+
+        Ok(())
+    }
+
+    #[test_resources("../../input/bad/scalar/**/*.ion")]
+    fn roundtrip_bad_test_generated_code_scalar(file_name: &str) -> SerdeResult<()> {
+        let ion_string = fs::read_to_string(file_name).unwrap();
+        let mut reader = ReaderBuilder::new().build(ion_string.clone())?;
+        // read given Ion value using Ion reader
+        reader.next()?;
+        let result = Scalar::read_from(&mut reader);
+        assert!(result.is_err());
+
+        Ok(())
+    }
+
+    #[test_resources("../../input/good/sequence/**/*.ion")]
+    fn roundtrip_good_test_generated_code_sequence(file_name: &str) -> SerdeResult<()> {
+        let ion_string = fs::read_to_string(file_name).unwrap();
+        let mut reader = ReaderBuilder::new().build(ion_string.clone())?;
+        let mut buffer = Vec::new();
+        let mut text_writer = TextWriterBuilder::default().build(&mut buffer)?;
+        // read given Ion value using Ion reader
+        reader.next()?;
+        let sequence: Sequence = Sequence::read_from(&mut reader)?;
+        // write the generated abstract data type using Ion writer
+        sequence.write_to(&mut text_writer)?;
+        text_writer.flush()?;
+        // compare given Ion value with round tripped Ion value written using abstract data type's `write_to` API
+        assert_eq!(
+            Element::read_one(text_writer.output().as_slice())?,
+            (Element::read_one(&ion_string)?)
+        );
+
+        Ok(())
+    }
+
+    #[test_resources("../../input/bad/sequence/**/*.ion")]
+    fn roundtrip_bad_test_generated_code_sequence(file_name: &str) -> SerdeResult<()> {
+        let ion_string = fs::read_to_string(file_name).unwrap();
+        let mut reader = ReaderBuilder::new().build(ion_string.clone())?;
+        // read given Ion value using Ion reader
+        reader.next()?;
+        let result = Sequence::read_from(&mut reader);
+        assert!(result.is_err());
+
+        Ok(())
+    }
 }

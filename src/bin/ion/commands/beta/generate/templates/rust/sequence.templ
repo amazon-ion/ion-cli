@@ -1,0 +1,63 @@
+use {{ target_kind_name | snake }}::{{ target_kind_name }};
+pub mod  {{ target_kind_name | snake }} {
+    use super::*;
+
+    #[derive(Debug, Clone, Default)]
+    pub struct {{ target_kind_name }} {
+        value: {{ fields[0].value_type }},
+    }
+
+    impl {{ target_kind_name }} {
+        pub fn new(value: {{ fields[0].value_type }}) -> Self {
+            Self {
+                value,
+            }
+        }
+
+
+        pub fn value(&self) -> &{{ fields[0].value_type }} {
+            &self.value
+        }
+
+
+        pub fn read_from(reader: &mut Reader) -> SerdeResult<Self> {
+            let mut abstract_data_type = {{ target_kind_name }}::default();
+
+            if reader.ion_type() != Some(IonType::{{ abstract_data_type["Sequence"].sequence_type }}) {
+               return validation_error(format!(
+                   "Expected {{ abstract_data_type["Sequence"].sequence_type }}, found {} while reading {{ target_kind_name }}.", reader.ion_type().unwrap()
+               ));
+            }
+
+             reader.step_in()?;
+
+             abstract_data_type.value = {
+                 let mut values = vec![];
+
+                 while reader.next()? != StreamItem::Nothing {
+                    {% if abstract_data_type["Sequence"].element_type | is_built_in_type == false %}
+                        values.push({{ abstract_data_type["Sequence"].element_type }}::read_from(reader)?);
+                    {% else %}
+                        values.push(reader.read_{% if fields[0].isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ abstract_data_type["Sequence"].element_type | lower | replace(from="string", to ="str") }}()?{% endif %}{% if abstract_data_type["Sequence"].element_type | lower== "string" %} .to_string() {% endif %});
+                    {% endif %}
+                }
+                values
+             };
+             reader.step_out()?;
+             Ok(abstract_data_type)
+        }
+
+        pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> SerdeResult<()> {
+            writer.step_in(IonType::{{ abstract_data_type["Sequence"].sequence_type  }})?;
+            for value in &self.value {
+                {% if abstract_data_type["Sequence"].element_type | is_built_in_type  == false %}
+                    value.write_to(writer)?;
+                {% else %}
+                   writer.write_{% if fields[0].isl_type_name == "symbol" %}symbol{% else %}{{ abstract_data_type["Sequence"].element_type | lower }}{% endif %}(value.to_owned())?;
+                {% endif %}
+            }
+            writer.step_out()?;
+            Ok(())
+        }
+    }
+}

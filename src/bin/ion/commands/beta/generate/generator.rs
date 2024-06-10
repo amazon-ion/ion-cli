@@ -394,6 +394,50 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     code_gen_context,
                 )?;
 
+                // Verify that the current type doesn't contains any nested types and that they are also of sequence or scalar type.
+                // if found nested sequence/scalar types then remove them from nested types and set the sequence or scalar as a field in current class/struct.
+                if let Some(type_reference_name) = &type_name {
+                    if type_reference_name.contains("NestedType") {
+                        // This is a nested type. Check for the abstract data type. If it is sequence type or scalar type,
+                        // then add them into the current tera fields and remove them from `nested_types`. Scalar and sequence types
+                        // doesn't need to have a separate class/struct created for them.
+                        if let Some(nested_type) = nested_types.get_mut(0) {
+                            if matches!(
+                                nested_type.abstract_data_type,
+                                AbstractDataType::Sequence { .. }
+                            ) || nested_type.abstract_data_type == AbstractDataType::Value
+                            {
+                                // scalar and sequence types will only have 1 field. The field name here would be
+                                // replaced with current `fields` constraint's field name.
+                                // But `value_type` and ` isl_type_name` would be based on what we have in the `nested_type`.
+                                let field = nested_type.fields.pop().unwrap();
+                                self.generate_struct_field(
+                                    tera_fields,
+                                    L::target_type_as_sequence(&field.value_type),
+                                    field.isl_type_name,
+                                    "value",
+                                    Some(nested_type.abstract_data_type.to_owned()),
+                                )?;
+
+                                // change the `element_type` of current AbstractDataType::Sequence { .. }. This should be the type of nested type.
+                                if let Some(AbstractDataType::Sequence { sequence_type, .. }) =
+                                    &code_gen_context.abstract_data_type
+                                {
+                                    code_gen_context.abstract_data_type =
+                                        Some(AbstractDataType::Sequence {
+                                            element_type: field.value_type,
+                                            sequence_type: sequence_type.to_owned(),
+                                        });
+                                }
+
+                                // remove this nested type from the list as it will now be part of this field without generating separate nested type.
+                                nested_types.pop();
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+
                 // if the abstract data type is a sequence then pass the type name as the updated `element_type`.
                 if let Some(AbstractDataType::Sequence {
                     element_type,
@@ -405,9 +449,10 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                         L::target_type_as_sequence(element_type),
                         isl_type.name(),
                         "value",
+                        None,
                     )?;
                 } else {
-                    self.generate_struct_field(tera_fields, None, isl_type.name(), "value")?;
+                    self.generate_struct_field(tera_fields, None, isl_type.name(), "value", None)?;
                 }
             }
             IslConstraintValue::Fields(fields, content_closed) => {
@@ -418,14 +463,43 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     code_gen_context,
                 )?;
                 for (name, value) in fields.iter() {
-                    let type_name =
+                    let mut type_name =
                         self.type_reference_name(value.type_reference(), nested_types)?;
+                    let mut abstract_data_type = None;
+                    let mut isl_type_name = value.type_reference().name();
 
+                    if let Some(type_reference_name) = &type_name {
+                        if type_reference_name.contains("NestedType") {
+                            // This is a nested type. Check for the abstract data type. If it is sequence type or scalar type,
+                            // then add them into the current tera fields and remove them from `nested_types`. Scalar and sequence types
+                            // doesn't need to have a separate class/struct created for them.
+                            if let Some(nested_type) = nested_types.get_mut(0) {
+                                if matches!(
+                                    nested_type.abstract_data_type,
+                                    AbstractDataType::Sequence { .. }
+                                ) || nested_type.abstract_data_type == AbstractDataType::Value
+                                {
+                                    // scalar and sequence types will only have 1 field. The field name here would be
+                                    // replaced with current `fields` constraint's field name.
+                                    // But `value_type` and ` isl_type_name` would be based on what we have in the `nested_type`.
+                                    let field = nested_type.fields.pop().unwrap();
+                                    abstract_data_type =
+                                        Some(nested_type.abstract_data_type.to_owned());
+                                    isl_type_name = field.isl_type_name;
+                                    type_name = field.value_type;
+
+                                    // remove this nested type from the list as it will now be part of this field without generating separate nested type.
+                                    nested_types.pop();
+                                }
+                            }
+                        }
+                    }
                     self.generate_struct_field(
                         tera_fields,
                         type_name,
-                        value.type_reference().name(),
+                        isl_type_name,
                         name,
+                        abstract_data_type,
                     )?;
                 }
             }
@@ -452,6 +526,52 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     code_gen_context,
                 )?;
 
+                // Verify that the current type doesn't contains any nested types and that they are of sequence or scalar type.
+                // if found nested sequence/scalar types then remove them from `nested_types` and set the sequence or scalar as a field in current class/struct.
+                if let Some(type_reference_name) = &type_name {
+                    if type_reference_name.contains("NestedType") {
+                        // This is a nested type. Check for the abstract data type. If it is sequence type or scalar type,
+                        // then add them into the current tera fields and remove them from `nested_types`. Scalar and sequence types
+                        // doesn't need to have a separate class/struct created for them.
+                        if let Some(nested_type) = nested_types.get_mut(0) {
+                            if matches!(
+                                nested_type.abstract_data_type,
+                                AbstractDataType::Sequence { .. }
+                            ) || nested_type.abstract_data_type == AbstractDataType::Value
+                            {
+                                // scalar and sequence types will only have 1 field. The field name here would be
+                                // replaced with current `fields` constraint's field name.
+                                // But `value_type` and ` isl_type_name` would be based on what we have in the `nested_type`.
+                                let field = nested_type.fields.pop().unwrap();
+                                self.generate_struct_field(
+                                    tera_fields,
+                                    field.value_type,
+                                    field.isl_type_name,
+                                    "value",
+                                    Some(nested_type.abstract_data_type.to_owned()),
+                                )?;
+
+                                // Update current `abstract_data_type` according to nested type
+                                if let AbstractDataType::Sequence {
+                                    element_type: nested_element_type,
+                                    sequence_type: nested_sequence_type,
+                                } = &nested_type.abstract_data_type
+                                {
+                                    code_gen_context.abstract_data_type =
+                                        Some(AbstractDataType::Sequence {
+                                            element_type: nested_element_type.to_owned(),
+                                            sequence_type: nested_sequence_type.to_owned(),
+                                        });
+                                }
+
+                                // remove this nested type from the list as it will now be part of this field without generating separate nested type.
+                                nested_types.pop();
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+
                 // if the abstract data type is a sequence then pass the type name as the updated `element_type`.
                 if let Some(AbstractDataType::Sequence { element_type, .. }) =
                     &code_gen_context.abstract_data_type
@@ -461,9 +581,16 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                         L::target_type_as_sequence(element_type),
                         isl_type.name(),
                         "value",
+                        None,
                     )?;
                 } else {
-                    self.generate_struct_field(tera_fields, type_name, isl_type.name(), "value")?;
+                    self.generate_struct_field(
+                        tera_fields,
+                        type_name,
+                        isl_type.name(),
+                        "value",
+                        None,
+                    )?;
                 }
             }
             _ => {}
@@ -478,11 +605,15 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         abstract_data_type_name: Option<String>,
         isl_type_name: String,
         field_name: &str,
+        // This argument is used only for nested sequence type,
+        // it will be `None` in all other cases.
+        abstract_data_type: Option<AbstractDataType>,
     ) -> CodeGenResult<()> {
         tera_fields.push(Field {
             name: field_name.to_string(),
             value_type: abstract_data_type_name,
             isl_type_name,
+            abstract_data_type,
         });
         Ok(())
     }
