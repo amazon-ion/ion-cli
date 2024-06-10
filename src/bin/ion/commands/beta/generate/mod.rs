@@ -4,6 +4,8 @@ mod result;
 mod templates;
 mod utils;
 
+mod model;
+
 use crate::commands::beta::generate::generator::CodeGenerator;
 use crate::commands::beta::generate::utils::{JavaLanguage, RustLanguage};
 use crate::commands::IonCliCommand;
