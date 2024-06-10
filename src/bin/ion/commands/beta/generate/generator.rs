@@ -39,6 +39,9 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
         // This allows packaging binary without the need of template resources.
         tera.add_raw_templates(vec![
             ("struct.templ", templates::rust::STRUCT),
+            ("scalar.templ", templates::rust::SCALAR),
+            ("sequence.templ", templates::rust::SEQUENCE),
+            ("util_macros.templ", templates::rust::UTIL_MACROS),
             ("import.templ", templates::rust::IMPORT),
             ("nested_type.templ", templates::rust::NESTED_TYPE),
             ("result.templ", templates::rust::RESULT),
@@ -77,6 +80,9 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
         // This allows packaging binary without the need of template resources.
         tera.add_raw_templates(vec![
             ("class.templ", templates::java::CLASS),
+            ("scalar.templ", templates::java::SCALAR),
+            ("sequence.templ", templates::java::SEQUENCE),
+            ("util_macros.templ", templates::java::UTIL_MACROS),
             ("nested_type.templ", templates::java::NESTED_TYPE),
         ])
         .unwrap();
