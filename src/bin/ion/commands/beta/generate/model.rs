@@ -1,10 +1,10 @@
 use ion_schema::isl::isl_type::IslType;
 use std::collections::HashMap;
 use std::ops::Deref;
-// This module contains a data model that code generator cna use to render a template based on the type of the model.
-// Currently, this same data model represented is by `AbstractDataType` but it doesn't hold all the information for the template.
-// e.g. currently there are different fields in template that hold this information like fields, target_kind_name, abstract_data_type.
-// Also, current approach doesn't allow having nested sequences in the generated code. Because the `element_type` in `AbstractDataType::Sequence`
+// This module contains a data model that the code generator can use to render a template based on the type of the model.
+// Currently, this same data model is represented by `AbstractDataType` but it doesn't hold all the information for the template.
+// e.g. currently there are different fields in the template that hold this information like fields, target_kind_name, abstract_data_type.
+// Also, the current approach doesn't allow having nested sequences in the generated code. Because the `element_type` in `AbstractDataType::Sequence`
 // doesn't have information on its nested types' `element_type`. This can be resolved with below defined new data model.
 // _Note: This model will eventually use a map (FullQualifiedTypeReference, DataModel) to resolve some the references in container types(sequence or structure)._
 // TODO: This is not yet used in the implementation, modify current implementation to use this data model.
@@ -13,40 +13,41 @@ use serde::Serialize;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
-pub struct DataModel {
+pub struct AbstractDataType {
     // Represents the fully qualified name for this data model
     name: FullyQualifiedTypeName,
     // Represents doc comment for the generated code
     doc_comment: String,
     // Represents the type of the data model
     // It can be `None` for modules or packages.
-    code_gen_type: Option<Box<CodeGenType>>,
+    code_gen_type: Option<AbstractDataKind>,
     // Represents the nested types for this data model
-    nested_types: Vec<DataModel>,
+    nested_types: Vec<AbstractDataType>,
     // Represents the source ISL type which can be used to get other constraints useful for this type.
     // For example, getting the length of this sequence from `container_length` constraint or getting a `regex` value for string type.
     // This will also be useful for `text` type to verify if this is a `string` or `symbol`.
     source: Option<IslType>,
 }
 
-impl DataModel {
+impl AbstractDataType {
+    #![allow(dead_code)]
     pub fn is_scalar(&self) -> bool {
         if let Some(code_gen_type) = &self.code_gen_type {
-            return matches!(code_gen_type.deref(), CodeGenType::Scalar);
+            return matches!(code_gen_type, AbstractDataKind::Scalar);
         }
         false
     }
 
     pub fn is_sequence(&self) -> bool {
         if let Some(code_gen_type) = &self.code_gen_type {
-            return matches!(code_gen_type.deref(), CodeGenType::Sequence(_));
+            return matches!(code_gen_type, AbstractDataKind::Sequence(_));
         }
         false
     }
 
     pub fn is_structure(&self) -> bool {
         if let Some(code_gen_type) = &self.code_gen_type {
-            return matches!(code_gen_type.deref(), CodeGenType::Structure(_));
+            return matches!(code_gen_type, AbstractDataKind::Structure(_));
         }
         false
     }
@@ -67,7 +68,7 @@ pub struct FullQualifiedTypeReference {
     //      In Rust, `crate::org::example::Foo`
     type_name: FullyQualifiedTypeName,
     // For types with parameters this will represent the nested parameter
-    parameters: Box<FullQualifiedTypeReference>,
+    parameters: Option<Box<FullQualifiedTypeReference>>,
 }
 
 /// A target-language-agnostic data type that determines which template(s) to use for code generation.
@@ -75,7 +76,7 @@ pub struct FullQualifiedTypeReference {
 // TODO: Add more code gent types like sum/discriminated union, enum and map.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub enum CodeGenType {
+pub enum AbstractDataKind {
     // Represents a scalar value (e.g. a string or integer or user defined type)
     // e.g. Given below ISL,
     // ```
