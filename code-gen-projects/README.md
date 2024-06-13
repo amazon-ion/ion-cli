@@ -78,6 +78,7 @@ tasks {
     }
 }
 ```
+_Note: Code generation subcommand `generate` is under a feature flag. It is available through `brew install ion-cli --HEAD` or `cargo install ion-cli --all-features`._
 
 ## /rust
 
@@ -132,3 +133,4 @@ fn main() {
     println!("cargo:rerun-if-changed=schema/");
 }
 ```
+_Note: Code generation subcommand `generate` is under a feature flag. It is available through `brew install ion-cli --HEAD` or `cargo install ion-cli --all-features`._
