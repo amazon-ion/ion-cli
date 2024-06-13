@@ -13,6 +13,7 @@ for working with [the Ion data format](https://amzn.github.io/ion-docs/docs/spec
 * [Installation](#installation)
     * [via `brew`](#via-brew)
     * [via `cargo`](#via-cargo)
+    * [Installing experimental subcommand for code generation](#installing-experimental-subcommand-for-code-generation)
 * [Build Instructions](#build-instructions)
     * [From source](#from-source)
     * [Using Docker](#using-docker)
@@ -169,6 +170,22 @@ To install `ion-cli`, run the following command:
 
 ```shell
 cargo install ion-cli
+```
+
+### Installing experimental subcommand for code generation
+
+If you are looking into accessing all features with `brew` (including `experimental` features, currently only
+includes `generate`
+subcommand under `beta`) of `ion-cli`, run:
+
+```bash
+brew install ion-cli --HEAD
+```
+
+If you are looking into accessing all features with `cargo` (including `experimental` features) of `ion-cli`, run:
+
+```shell
+cargo install ion-cli --all-features
 ```
 
 Then make sure that `~/.cargo/bin` is on your `$PATH`. You can confirm that it
