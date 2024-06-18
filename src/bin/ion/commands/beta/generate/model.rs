@@ -64,19 +64,19 @@ pub struct FullyQualifiedTypeReference {
     // e.g. In Java, `org.example.Foo`
     //      In Rust, `crate::org::example::Foo`
     type_name: FullyQualifiedTypeName,
-    // For types with parameters this will represent the nested parameter
+    // For types with parameters this will represent the nested parameters
     parameters: Vec<FullyQualifiedTypeReference>,
 }
 
 /// A target-language-agnostic data type that determines which template(s) to use for code generation.
 #[allow(dead_code)]
-// TODO: Add more code gent types like sum/discriminated union, enum and map.
+// TODO: Add more code gen types like sum/discriminated union, enum and map.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum AbstractDataType {
-    // Represents a top level scalar type definition which also has a name attached to it.
+    // Represents a scalar type which also has a name attached to it and is nominally distinct from its base type.
     WrappedScalar(WrappedScalar),
-    // Represents a nested/inline scalar value (e.g. a string or integer or user defined type)
+    // Represents a scalar value (e.g. a string or integer or user defined type)
     Scalar(Scalar),
     // A series of zero or more values whose type is described by the nested `element_type`
     Sequence(Sequence),
@@ -86,18 +86,14 @@ pub enum AbstractDataType {
 
 impl AbstractDataType {
     #![allow(dead_code)]
-    pub fn doc_comment(&self) -> Option<String> {
+    pub fn doc_comment(&self) -> Option<&str> {
         match self {
-            AbstractDataType::WrappedScalar(WrappedScalar { doc_comment, .. }) => {
-                doc_comment.to_owned()
+            AbstractDataType::WrappedScalar(WrappedScalar { doc_comment, .. }) => Some(doc_comment),
+            AbstractDataType::Scalar(Scalar { doc_comment, .. }) => {
+                doc_comment.as_ref().map(|s| s.as_str())
             }
-            AbstractDataType::Scalar(Scalar { doc_comment, .. }) => doc_comment.to_owned(),
-            AbstractDataType::Sequence(Sequence { doc_comment, .. }) => {
-                Some(doc_comment.to_string())
-            }
-            AbstractDataType::Structure(Structure { doc_comment, .. }) => {
-                Some(doc_comment.to_string())
-            }
+            AbstractDataType::Sequence(Sequence { doc_comment, .. }) => Some(doc_comment),
+            AbstractDataType::Structure(Structure { doc_comment, .. }) => Some(doc_comment),
         }
     }
 
@@ -111,7 +107,7 @@ impl AbstractDataType {
     }
 }
 
-/// Represents a nested/inline scalar type (e.g. a string or integer or user defined type)
+/// Represents a scalar type (e.g. a string or integer or user defined type)
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Scalar {
@@ -125,11 +121,10 @@ pub struct Scalar {
     //    element: string // this is a nested scalar type
     // }
     // ```
-    // Corresponding `FullyQualifiedName` would be `vec!["String"]` and `scalar_type` would be `None`.
+    // Corresponding `FullyQualifiedName` would be `vec!["String"]`.
     name: FullyQualifiedTypeName,
     // Represents doc comment for the generated code
-    // If this is a top level scalar type definition then this will have `Some(doc_comment)`,
-    // Otherwise this is `None`.
+    // If the doc comment is provided for this scalar type then this is `Some(doc_comment)`, other it is None.
     doc_comment: Option<String>,
     // Represents the source ISL type which can be used to get other constraints useful for this type.
     // For example, getting the length of this sequence from `container_length` constraint or getting a `regex` value for string type.
@@ -139,7 +134,7 @@ pub struct Scalar {
     source: IslType,
 }
 
-/// Represents a top level scalar type definition
+/// Represents a scalar type which also has a name attached to it and is nominally distinct from its base type.
 /// e.g. Given below ISL,
 /// ```
 /// type::{
@@ -156,7 +151,7 @@ pub struct Scalar {
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct WrappedScalar {
-    // Represents the fully qualified name of this top level scalar type
+    // Represents the fully qualified name of this wrapped scalar type
     // e.g. Given below ISL,
     // ```
     // type::{
@@ -167,16 +162,13 @@ pub struct WrappedScalar {
     // Corresponding `FullyQualifiedTypeReference` would be as following:
     // ```
     // FullyQualifiedTypeReference {
-    //    type_name: vec!["Foo"], // name of the top level scalar type
-    //    parameters: vec![FullyQualifiedTypeReference {type_name: vec!["String"] }] // nested type name for the scalar value
+    //    type_name: vec!["Foo"], // name of the wrapped scalar type
+    //    parameters: vec![FullyQualifiedTypeReference {type_name: vec!["String"] }] // base type name for the scalar value
     // }
     // ```
     name: FullyQualifiedTypeReference,
-    // Represents the scalar type
     // Represents doc comment for the generated code
-    // If this is a top level scalar type definition then this will have `Some(doc_comment)`,
-    // Otherwise this is `None`.
-    doc_comment: Option<String>,
+    doc_comment: String,
     // Represents the source ISL type which can be used to get other constraints useful for this type.
     // For example, getting the length of this sequence from `container_length` constraint or getting a `regex` value for string type.
     // This will also be useful for `text` type to verify if this is a `string` or `symbol`.
@@ -186,8 +178,8 @@ pub struct WrappedScalar {
 }
 
 impl WrappedScalar {
-    pub fn fully_qualified_type_name(&self) -> FullyQualifiedTypeName {
-        self.name.type_name.to_owned()
+    pub fn fully_qualified_type_name(&self) -> &FullyQualifiedTypeName {
+        &self.name.type_name
     }
 }
 
@@ -256,9 +248,9 @@ pub struct Structure {
     // Represents whether the struct has closed fields or not
     is_closed: bool,
     // Represents the fields of the struct i.e. (field_name, field_value) pairs
-    // field_value represents the type of the value field as fully qualified name
+    // field_value represents `FieldReference` i.e. the type of the value field as fully qualified name and the presence for this field.
     // _Note: that a hashmap with (FullQualifiedTypeReference, DataModel) pairs will be stored in code generator to get information on the field_value name used here._
-    fields: HashMap<String, FullyQualifiedTypeReference>,
+    fields: HashMap<String, FieldReference>,
     // Represents the source ISL type which can be used to get other constraints useful for this type.
     // For example, getting the length of this sequence from `container_length` constraint or getting a `regex` value for string type.
     // This will also be useful for `text` type to verify if this is a `string` or `symbol`.
@@ -266,3 +258,16 @@ pub struct Structure {
     #[serde(skip_serializing)]
     source: IslType,
 }
+
+/// Represents whether the field is required or not
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+enum FieldPresence {
+    Required,
+    Optional,
+}
+
+/// Represents a reference to the field with its fully qualified name and its presence (i.e. required or optional)
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct FieldReference(FullyQualifiedTypeReference, FieldPresence);
