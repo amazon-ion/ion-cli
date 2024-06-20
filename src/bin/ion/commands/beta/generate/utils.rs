@@ -66,12 +66,6 @@ pub trait Language {
     ///     target_type = "Foo" returns "Vec<Foo>"
     fn target_type_as_sequence(target_type: &Option<String>) -> Option<String>;
 
-    /// Returns the [Case] based on programming languages
-    /// e.g.  
-    ///     Rust field name case -> [Case::Snake]
-    ///     Java field name case -> [Case::Camel]
-    fn field_name_case() -> Case;
-
     /// Returns true if the type name specified is provided by the target language implementation
     fn is_built_in_type(name: &str) -> bool;
 
@@ -120,10 +114,6 @@ impl Language for JavaLanguage {
                 None => format!("ArrayList<{}>", target_type_name),
             }
         })
-    }
-
-    fn field_name_case() -> Case {
-        Case::Camel
     }
 
     fn is_built_in_type(name: &str) -> bool {
@@ -195,10 +185,6 @@ impl Language for RustLanguage {
         target_type
             .as_ref()
             .map(|target_type_name| format!("Vec<{}>", target_type_name))
-    }
-
-    fn field_name_case() -> Case {
-        Case::Snake
     }
 
     fn is_built_in_type(name: &str) -> bool {
