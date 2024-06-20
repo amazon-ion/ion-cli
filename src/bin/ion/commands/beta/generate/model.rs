@@ -88,7 +88,9 @@ impl AbstractDataType {
     #![allow(dead_code)]
     pub fn doc_comment(&self) -> Option<&str> {
         match self {
-            AbstractDataType::WrappedScalar(WrappedScalar { doc_comment, .. }) => Some(doc_comment),
+            AbstractDataType::WrappedScalar(WrappedScalar { doc_comment, .. }) => {
+                doc_comment.as_ref().map(|s| s.as_str())
+            }
             AbstractDataType::Scalar(Scalar { doc_comment, .. }) => {
                 doc_comment.as_ref().map(|s| s.as_str())
             }
@@ -168,7 +170,8 @@ pub struct WrappedScalar {
     // ```
     name: FullyQualifiedTypeReference,
     // Represents doc comment for the generated code
-    doc_comment: String,
+    // If the doc comment is provided for this scalar type then this is `Some(doc_comment)`, other it is None.
+    doc_comment: Option<String>,
     // Represents the source ISL type which can be used to get other constraints useful for this type.
     // For example, getting the length of this sequence from `container_length` constraint or getting a `regex` value for string type.
     // This will also be useful for `text` type to verify if this is a `string` or `symbol`.
