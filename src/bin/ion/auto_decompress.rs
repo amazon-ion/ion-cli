@@ -29,7 +29,7 @@ where
     match detected_type.as_ref().map(Type::extension) {
         Some("gz") => {
             // "rewind" to let the decompressor read magic bytes again
-            let zreader = Box::new(flate2::read::GzDecoder::new(stream));
+            let zreader = Box::new(flate2::read::MultiGzDecoder::new(stream));
             Ok((CompressionDetected::Gzip, BufReader::new(zreader)))
         }
         Some("zst") => {
