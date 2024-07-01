@@ -6,8 +6,8 @@ mod utils;
 
 mod model;
 
-use crate::commands::beta::generate::generator::CodeGenerator;
-use crate::commands::beta::generate::utils::{JavaLanguage, RustLanguage};
+use crate::commands::generate::generator::CodeGenerator;
+use crate::commands::generate::utils::{JavaLanguage, RustLanguage};
 use crate::commands::IonCliCommand;
 use anyhow::{bail, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};

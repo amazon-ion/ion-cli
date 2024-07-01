@@ -8,11 +8,18 @@ use std::fs::File;
 use std::io::Write;
 use termcolor::{ColorChoice, StandardStream, StandardStreamLock};
 
-pub mod beta;
 pub mod cat;
+pub mod count;
 pub mod dump;
+pub mod from;
+#[cfg(feature = "experimental-code-gen")]
+pub mod generate;
 pub mod head;
 pub mod inspect;
+pub mod primitive;
+pub mod schema;
+pub mod symtab;
+pub mod to;
 
 /// Behaviors common to all Ion CLI commands, including both namespaces (groups of commands)
 /// and the commands themselves.

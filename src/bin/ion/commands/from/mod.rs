@@ -1,6 +1,6 @@
 use crate::commands::IonCliCommand;
 
-use crate::commands::beta::from::json::FromJsonCommand;
+use crate::commands::from::json::FromJsonCommand;
 
 pub mod json;
 

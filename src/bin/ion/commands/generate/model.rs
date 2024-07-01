@@ -7,7 +7,7 @@ use std::collections::HashMap;
 // doesn't have information on its nested types' `element_type`. This can be resolved with below defined new data model.
 // _Note: This model will eventually use a map (FullQualifiedTypeReference, DataModel) to resolve some the references in container types(sequence or structure)._
 // TODO: This is not yet used in the implementation, modify current implementation to use this data model.
-use crate::commands::beta::generate::context::SequenceType;
+use crate::commands::generate::context::SequenceType;
 use serde::Serialize;
 
 /// Represent a node in the data model tree of the generated code.

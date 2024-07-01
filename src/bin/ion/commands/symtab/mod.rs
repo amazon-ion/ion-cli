@@ -1,4 +1,4 @@
-use crate::commands::beta::symtab::filter::SymtabFilterCommand;
+use crate::commands::symtab::filter::SymtabFilterCommand;
 use crate::commands::IonCliCommand;
 
 pub mod filter;

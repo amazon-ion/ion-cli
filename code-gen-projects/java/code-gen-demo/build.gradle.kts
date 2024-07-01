@@ -41,7 +41,7 @@ tasks {
 
         commandLine(ionCli)
             .args(
-                "beta", "generate",
+                "generate",
                 "-l", "java",
                 "-n", "org.example",
                 "-d", ionSchemaSourceCodeDir,

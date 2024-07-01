@@ -1,5 +1,5 @@
-use crate::commands::beta::generate::context::AbstractDataType;
-use crate::commands::beta::generate::result::{invalid_abstract_data_type_error, CodeGenError};
+use crate::commands::generate::context::AbstractDataType;
+use crate::commands::generate::result::{invalid_abstract_data_type_error, CodeGenError};
 use convert_case::{Case, Casing};
 use serde::Serialize;
 use std::fmt::{Display, Formatter};
