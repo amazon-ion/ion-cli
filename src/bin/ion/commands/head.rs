@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::{value_parser, Arg, ArgMatches, Command};
 use ion_rs::{AnyEncoding, Reader};
 
-use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
+use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument, ION_VERSION_ARG_ID};
 use crate::transcribe::write_n_as;
 
 pub struct HeadCommand;
@@ -19,15 +19,20 @@ impl IonCliCommand for HeadCommand {
     fn configure_args(&self, command: Command) -> Command {
         // Same flags as `cat`, but with an added `--values` flag to specify the number of values to
         // write.
-        command.with_input().with_output().with_format().arg(
-            Arg::new("values")
-                .long("values")
-                .short('n')
-                .value_parser(value_parser!(usize))
-                .allow_negative_numbers(false)
-                .default_value("10")
-                .help("Specifies the number of output top-level values."),
-        )
+        command
+            .with_input()
+            .with_output()
+            .with_format()
+            .with_ion_version()
+            .arg(
+                Arg::new("values")
+                    .long("values")
+                    .short('n')
+                    .value_parser(value_parser!(usize))
+                    .allow_negative_numbers(false)
+                    .default_value("10")
+                    .help("Specifies the number of output top-level values."),
+            )
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
@@ -38,10 +43,12 @@ impl IonCliCommand for HeadCommand {
         // `clap` validates the specified format and provides a default otherwise.
         let format = args.get_one::<String>("format").unwrap();
         let num_values = *args.get_one::<usize>("values").unwrap();
+        // Safe to unwrap because it has a default value.
+        let use_ion_1_1 = args.get_one::<String>(ION_VERSION_ARG_ID).unwrap() == "1.1";
 
         CommandIo::new(args).for_each_input(|output, input| {
             let mut reader = Reader::new(AnyEncoding, input.into_source())?;
-            write_n_as(&mut reader, output, format, num_values)?;
+            write_n_as(&mut reader, output, format, use_ion_1_1, num_values)?;
             Ok(())
         })
     }

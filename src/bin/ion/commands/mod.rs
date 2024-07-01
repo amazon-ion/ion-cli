@@ -175,6 +175,8 @@ pub trait IonCliCommand {
 
 /// Argument ID for the '--unstable' / '-X' flag
 const UNSTABLE_FLAG: &str = "unstable";
+/// Argument ID for the '--ion-version' / '-v' flag
+const ION_VERSION_ARG_ID: &str = "ion-version";
 
 /// Extension methods for a [`ClapCommand`] which add flags and options that are common to
 /// commands in the Ion CLI.
@@ -182,6 +184,7 @@ pub trait WithIonCliArgument {
     fn with_input(self) -> Self;
     fn with_output(self) -> Self;
     fn with_format(self) -> Self;
+    fn with_ion_version(self) -> Self;
     fn with_decompression_control(self) -> Self;
     fn show_unstable_flag(self) -> Self;
 }
@@ -220,6 +223,26 @@ impl WithIonCliArgument for ClapCommand {
     /// All commands automatically have the "unstable" opt-in flag. This makes it visible.
     fn show_unstable_flag(self) -> Self {
         self.mut_arg(UNSTABLE_FLAG, |arg| arg.hide(false))
+    }
+
+    fn with_ion_version(self) -> Self {
+        // TODO When this arg/feature becomes stable:
+        //    Remove: show_unstable_flag()
+        //    Remove: requires(USE_UNSTABLE_FLAG)
+        //    Add:    env("ION_CLI_ION_VERSION")
+        self.show_unstable_flag()
+            .arg(
+                Arg::new(ION_VERSION_ARG_ID)
+                    .long("ion-version")
+                    // TODO: Should we find a different short version so that 'v' can be reserved
+                    //       for 'verbose' in future use?
+                    .short('v')
+                    .help("UNSTABLE! Output Ion version")
+                    .value_parser(["1.0", "1.1"])
+                    .default_value("1.0")
+                    .requires(UNSTABLE_FLAG),
+            )
+            .mut_arg(UNSTABLE_FLAG, |a| a.hide(false))
     }
 
     fn with_decompression_control(self) -> Self {
