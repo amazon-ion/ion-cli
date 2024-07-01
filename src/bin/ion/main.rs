@@ -2,6 +2,7 @@ mod auto_decompress;
 mod commands;
 mod file_writer;
 mod input;
+mod input_grouping;
 mod output;
 mod transcribe;
 
