@@ -17,7 +17,10 @@ impl IonCliCommand for CatCommand {
     }
 
     fn configure_args(&self, command: Command) -> Command {
-        command.with_input().with_output().with_format()
+        command.alias("dump")
+            .with_input()
+            .with_output()
+            .with_format()
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {

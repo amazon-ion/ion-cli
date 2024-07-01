@@ -12,7 +12,6 @@ use std::io::ErrorKind;
 
 use crate::commands::cat::CatCommand;
 use crate::commands::count::CountCommand;
-use crate::commands::dump::DumpCommand;
 use crate::commands::from::FromNamespace;
 #[cfg(feature = "experimental-code-gen")]
 use crate::commands::generate::GenerateCommand;
@@ -57,7 +56,6 @@ impl IonCliCommand for RootCommand {
         vec![
             Box::new(CatCommand),
             Box::new(CountCommand),
-            Box::new(DumpCommand),
             Box::new(FromNamespace),
             #[cfg(feature = "experimental-code-gen")]
             Box::new(GenerateCommand),

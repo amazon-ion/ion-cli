@@ -10,7 +10,6 @@ use termcolor::{ColorChoice, StandardStream, StandardStreamLock};
 
 pub mod cat;
 pub mod count;
-pub mod dump;
 pub mod from;
 #[cfg(feature = "experimental-code-gen")]
 pub mod generate;
@@ -33,14 +32,6 @@ pub trait IonCliCommand {
     /// A brief message describing this command's functionality.
     fn about(&self) -> &'static str;
 
-    /// If `true`, prevents this command from showing up in the parent namespace's help message.
-    /// This can be helpful for deprecating names while still supporting the old alias
-    ///
-    /// Defaults to `false`.
-    fn hide_from_help_message(&self) -> bool {
-        false
-    }
-
     /// Initializes a [`ClapCommand`] representing this command and its subcommands (if any).
     ///
     /// Commands wishing to customize their `ClapCommand`'s arguments should override
@@ -59,7 +50,6 @@ pub trait IonCliCommand {
             .about(self.about())
             .version(crate_version!())
             .author(crate_authors!())
-            .hide(self.hide_from_help_message())
             .with_decompression_control();
 
         // If there are subcommands, add them to the configuration and set 'subcommand_required'.

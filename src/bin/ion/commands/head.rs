@@ -2,8 +2,7 @@ use anyhow::Result;
 use clap::{value_parser, Arg, ArgMatches, Command};
 use ion_rs::{AnyEncoding, Reader};
 
-use crate::commands::cat::CatCommand;
-use crate::commands::{CommandIo, IonCliCommand};
+use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 use crate::transcribe::write_n_as;
 
 pub struct HeadCommand;
@@ -20,7 +19,7 @@ impl IonCliCommand for HeadCommand {
     fn configure_args(&self, command: Command) -> Command {
         // Same flags as `cat`, but with an added `--values` flag to specify the number of values to
         // write.
-        CatCommand.configure_args(command).arg(
+        command.with_input().with_output().with_format().arg(
             Arg::new("values")
                 .long("values")
                 .short('n')
