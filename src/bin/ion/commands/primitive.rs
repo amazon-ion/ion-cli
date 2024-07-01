@@ -14,6 +14,14 @@ impl IonCliCommand for PrimitiveCommand {
         "Prints the binary representation of an Ion encoding primitive."
     }
 
+    fn is_stable(&self) -> bool {
+        false
+    }
+
+    fn is_porcelain(&self) -> bool {
+        true
+    }
+
     fn configure_args(&self, command: Command) -> Command {
         command
             .arg(

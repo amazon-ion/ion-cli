@@ -21,6 +21,10 @@ impl IonCliCommand for ToJsonCommand {
         "Converts Ion data to JSON."
     }
 
+    fn is_stable(&self) -> bool {
+        false
+    }
+
     fn configure_args(&self, command: Command) -> Command {
         // NOTE: it may be necessary to add format-specific options. For example, a "pretty" option
         // would make sense for JSON, but not binary formats like CBOR.

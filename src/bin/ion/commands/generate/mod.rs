@@ -26,6 +26,10 @@ impl IonCliCommand for GenerateCommand {
         "Generates code using given schema file."
     }
 
+    fn is_stable(&self) -> bool {
+        false
+    }
+
     fn configure_args(&self, command: Command) -> Command {
         command
             .arg(

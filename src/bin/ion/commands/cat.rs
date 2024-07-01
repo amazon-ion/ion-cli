@@ -17,7 +17,8 @@ impl IonCliCommand for CatCommand {
     }
 
     fn configure_args(&self, command: Command) -> Command {
-        command.alias("dump")
+        command
+            .alias("dump")
             .with_input()
             .with_output()
             .with_format()

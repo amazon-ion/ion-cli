@@ -29,6 +29,10 @@ between versions. Stable output for programmatic use cases is a
 non-goal."
     }
 
+    fn is_porcelain(&self) -> bool {
+        true
+    }
+
     fn configure_args(&self, command: Command) -> Command {
         command
             .with_input()
@@ -1011,7 +1015,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         // This spacing string includes a unicode dot to make it easy to see what level of depth
         // the current value is found at. This dot is displayed with a muted color; its appearance
         // is subtle.
-        const INDENTATION_WITH_GUIDE: &'static str = "· ";
+        const INDENTATION_WITH_GUIDE: &str = "· ";
 
         let mut color_spec = ColorSpec::new();
         color_spec

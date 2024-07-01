@@ -1,11 +1,13 @@
 use crate::file_writer::FileWriter;
 use crate::input::CommandInput;
 use crate::output::CommandOutput;
+use anyhow::Context;
 use anyhow::Result;
-use anyhow::{anyhow, Context};
+use clap::builder::ValueParser;
 use clap::{crate_authors, crate_version, Arg, ArgAction, ArgMatches, Command as ClapCommand};
 use std::fs::File;
 use std::io::Write;
+use std::process;
 use termcolor::{ColorChoice, StandardStream, StandardStreamLock};
 
 pub mod cat;
@@ -23,6 +25,23 @@ pub mod to;
 /// Behaviors common to all Ion CLI commands, including both namespaces (groups of commands)
 /// and the commands themselves.
 pub trait IonCliCommand {
+    /// Indicates whether this command is stable (as opposed to unstable or experimental).
+    /// Namespaces should almost always be stable.
+    fn is_stable(&self) -> bool {
+        true
+    }
+
+    /// Whether the output format is machine-readable.
+    ///
+    /// Commands that are "plumbing" should default to putting one output (result, value, document)
+    /// on each line in a machine-readable format (file name, Ion value(s), integers, booleans)
+    /// without any prose or table formatting, etc.
+    ///
+    /// See https://git-scm.com/book/en/v2/Git-Internals-Plumbing-and-Porcelain#_plumbing_porcelain
+    fn is_porcelain(&self) -> bool {
+        false
+    }
+
     /// Returns the name of this command.
     ///
     /// This value is used for dispatch (that is: mapping the name provided on the command line
@@ -46,17 +65,49 @@ pub trait IonCliCommand {
 
         // Configure a 'base' clap configuration that has the command's name, about message,
         // version, and author.
+
         let mut base_command = ClapCommand::new(self.name())
             .about(self.about())
             .version(crate_version!())
             .author(crate_authors!())
-            .with_decompression_control();
+            .with_decompression_control()
+            .arg(
+                Arg::new(UNSTABLE_FLAG)
+                    .short('X')
+                    .long("unstable")
+                    .default_value("false")
+                    .action(ArgAction::SetTrue)
+                    .value_parser(ValueParser::bool())
+                    .help("Opt in to using an unstable feature of Ion CLI.")
+                    .display_order(usize::MAX)
+                    .hide(true),
+            );
+
+        if !self.is_stable() {
+            let about = base_command.get_about().map(|x| x.to_string());
+            if about.is_some() {
+                base_command = base_command.about(format!("(UNSTABLE) {}", about.unwrap()))
+            }
+            base_command = base_command
+                .before_help("WARNING: This command is unstable and requires explicit opt-in using '--unstable' or '-X'.");
+        }
+        if self.is_porcelain() {
+            base_command = base_command.after_help(
+                "NOTE: The output of this command is not intended to be machine-readable.",
+            );
+        }
 
         // If there are subcommands, add them to the configuration and set 'subcommand_required'.
         if !clap_subcommands.is_empty() {
+            let has_unstable_subcommand = self.subcommands().iter().any(|sc| !sc.is_stable());
+
+            if has_unstable_subcommand {
+                base_command = base_command.show_unstable_flag()
+            }
+
             base_command = base_command
                 .subcommand_required(true)
-                .subcommands(clap_subcommands);
+                .subcommands(clap_subcommands)
         }
 
         self.configure_args(base_command)
@@ -95,22 +146,35 @@ pub trait IonCliCommand {
     ///
     /// Commands should override this implementation.
     fn run(&self, command_path: &mut Vec<String>, args: &ArgMatches) -> anyhow::Result<()> {
-        let (subcommand_name, subcommand_args) = args
-            .subcommand()
-            .ok_or_else(|| anyhow!("Command '{}' expects a subcommand.", self.name()))?;
+        // Safe to unwrap because if this is a namespace are subcommands, then clap has already
+        // ensured that a known subcommand is present in args.
+        let (subcommand_name, subcommand_args) = args.subcommand().unwrap();
+        let subcommand = self.get_subcommand(subcommand_name).unwrap();
 
-        let subcommand = self.get_subcommand(subcommand_name).ok_or_else(|| {
-            anyhow!(
-                "'{}' subcommand '{}' was not recognized.",
-                self.name(),
+        match (subcommand.is_stable(), args.get_flag(UNSTABLE_FLAG)) {
+            // Warn if using an unnecessary `-X`
+            (true, true) => eprintln!(
+                "'{}' is stable and does not require opt-in",
                 subcommand_name
-            )
-        })?;
+            ),
+            // Error if missing a required `-X`
+            (false, false) => {
+                eprintln!(
+                    "'{}' is unstable and requires explicit opt-in",
+                    subcommand_name
+                );
+                process::exit(1)
+            }
+            _ => {}
+        }
 
         command_path.push(subcommand_name.to_owned());
         subcommand.run(command_path, subcommand_args)
     }
 }
+
+/// Argument ID for the '--unstable' / '-X' flag
+const UNSTABLE_FLAG: &str = "unstable";
 
 /// Extension methods for a [`ClapCommand`] which add flags and options that are common to
 /// commands in the Ion CLI.
@@ -119,6 +183,7 @@ pub trait WithIonCliArgument {
     fn with_output(self) -> Self;
     fn with_format(self) -> Self;
     fn with_decompression_control(self) -> Self;
+    fn show_unstable_flag(self) -> Self;
 }
 
 impl WithIonCliArgument for ClapCommand {
@@ -150,6 +215,11 @@ impl WithIonCliArgument for ClapCommand {
                 .value_parser(["binary", "text", "pretty", "lines"])
                 .help("Output format"),
         )
+    }
+
+    /// All commands automatically have the "unstable" opt-in flag. This makes it visible.
+    fn show_unstable_flag(self) -> Self {
+        self.mut_arg(UNSTABLE_FLAG, |arg| arg.hide(false))
     }
 
     fn with_decompression_control(self) -> Self {
