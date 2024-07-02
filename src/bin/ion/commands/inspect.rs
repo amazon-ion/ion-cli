@@ -308,7 +308,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         write_fn: impl FnOnce(&mut CommandOutput) -> Result<()>,
     ) -> Result<()> {
         self.output.set_color(&style)?;
-        write_fn(&mut self.output)?;
+        write_fn(self.output)?;
         self.output.reset()?;
         Ok(())
     }
@@ -415,11 +415,11 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     /// Inspects the s-expression `sexp`, including all of its child values. If this sexp appears
     /// in a list or struct, the caller can set `delimiter` to a comma (`","`) and it will be appended
     /// to the sexp's text representation.
-    fn inspect_sexp<'x>(
+    fn inspect_sexp(
         &mut self,
         depth: usize,
         delimiter: &str,
-        sexp: LazySExp<'x, AnyEncoding>,
+        sexp: LazySExp<'_, AnyEncoding>,
     ) -> Result<()> {
         use ExpandedSExpSource::*;
         let raw_sexp = match sexp.expanded().source() {
@@ -438,11 +438,11 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     /// Inspects the list `list`, including all of its child values. If this list appears inside
     /// a list or struct, the caller can set `delimiter` to a comma (`","`) and it will be appended
     /// to the list's text representation.
-    fn inspect_list<'x>(
+    fn inspect_list(
         &mut self,
         depth: usize,
         delimiter: &str,
-        list: LazyList<'x, AnyEncoding>,
+        list: LazyList<'_, AnyEncoding>,
     ) -> Result<()> {
         use ExpandedListSource::*;
         let raw_list = match list.expanded().source() {
@@ -1005,7 +1005,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         self.write_with_style(header_style(), "       Binary Ion        ")?;
         write!(self.output, "{VERTICAL_LINE}")?;
         self.write_with_style(header_style(), "       Text Ion       ")?;
-        write!(self.output, "{VERTICAL_LINE}\n")?;
+        writeln!(self.output, "{VERTICAL_LINE}")?;
         self.output.write_all(END_OF_HEADER.as_bytes())?;
         Ok(())
     }
@@ -1272,7 +1272,7 @@ impl<'a> BytesFormatter<'a> {
             return Ok(0);
         };
 
-        if slice.bytes.len() == 0 {
+        if slice.bytes.is_empty() {
             self.slices_written += 1;
             return Ok(0);
         }
