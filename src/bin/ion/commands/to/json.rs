@@ -21,6 +21,10 @@ impl IonCliCommand for ToJsonCommand {
         "Converts Ion data to JSON."
     }
 
+    fn is_stable(&self) -> bool {
+        false
+    }
+
     fn configure_args(&self, command: Command) -> Command {
         // NOTE: it may be necessary to add format-specific options. For example, a "pretty" option
         // would make sense for JSON, but not binary formats like CBOR.
@@ -65,7 +69,7 @@ fn to_json_value(value: LazyValue<AnyEncoding>) -> Result<JsonValue> {
         Float(_f) => JsonValue::Null,
         Decimal(d) => {
             let mut text = d.to_string().replace('d', "e");
-            if text.ends_with(".") {
+            if text.ends_with('.') {
                 // If there's a trailing "." with no digits of precision, discard it. JSON's `Number`
                 // type does not do anything with this information.
                 let _ = text.pop();

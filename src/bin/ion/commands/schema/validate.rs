@@ -24,6 +24,10 @@ impl IonCliCommand for ValidateCommand {
         "Validates an Ion value based on a given Ion Schema type."
     }
 
+    fn is_stable(&self) -> bool {
+        false
+    }
+
     fn configure_args(&self, command: Command) -> Command {
         command
             .arg(

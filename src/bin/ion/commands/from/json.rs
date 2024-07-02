@@ -15,6 +15,10 @@ impl IonCliCommand for FromJsonCommand {
         "Converts data from JSON to Ion."
     }
 
+    fn is_stable(&self) -> bool {
+        false
+    }
+
     fn configure_args(&self, command: Command) -> Command {
         command.with_input().with_output().with_format()
     }

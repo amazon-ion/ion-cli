@@ -13,7 +13,7 @@ keywords = ["format", "parse", "encode"]
 
 [dependencies]
 anyhow = "1.0"
-clap = { version = "4.0.17", features = ["cargo"] }
+clap = { version = "4.5.8", features = ["cargo", "env"] }
 colored = "2.0.0"
 flate2 = "1.0"
 infer = "0.15.0"

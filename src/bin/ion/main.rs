@@ -5,16 +5,22 @@ mod input;
 mod output;
 mod transcribe;
 
-use crate::commands::beta::BetaNamespace;
-use crate::commands::cat::CatCommand;
 use anyhow::Result;
 use commands::IonCliCommand;
 use ion_rs::IonError;
 use std::io::ErrorKind;
 
-use crate::commands::dump::DumpCommand;
+use crate::commands::cat::CatCommand;
+use crate::commands::count::CountCommand;
+use crate::commands::from::FromNamespace;
+#[cfg(feature = "experimental-code-gen")]
+use crate::commands::generate::GenerateCommand;
 use crate::commands::head::HeadCommand;
 use crate::commands::inspect::InspectCommand;
+use crate::commands::primitive::PrimitiveCommand;
+use crate::commands::schema::SchemaNamespace;
+use crate::commands::symtab::SymtabNamespace;
+use crate::commands::to::ToNamespace;
 
 fn main() -> Result<()> {
     let root_command = RootCommand;
@@ -48,11 +54,17 @@ impl IonCliCommand for RootCommand {
 
     fn subcommands(&self) -> Vec<Box<dyn IonCliCommand>> {
         vec![
-            Box::new(BetaNamespace),
             Box::new(CatCommand),
-            Box::new(DumpCommand),
+            Box::new(CountCommand),
+            Box::new(FromNamespace),
+            #[cfg(feature = "experimental-code-gen")]
+            Box::new(GenerateCommand),
             Box::new(HeadCommand),
             Box::new(InspectCommand),
+            Box::new(PrimitiveCommand),
+            Box::new(SchemaNamespace),
+            Box::new(SymtabNamespace),
+            Box::new(ToNamespace),
         ]
     }
 }

@@ -1,9 +1,8 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::{value_parser, Arg, ArgMatches, Command};
-use ion_rs::{AnyEncoding, Reader};
+use ion_rs::{AnyEncoding, Format, IonEncoding, Reader, TextFormat};
 
-use crate::commands::cat::CatCommand;
-use crate::commands::{CommandIo, IonCliCommand};
+use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument, ION_VERSION_ARG_ID};
 use crate::transcribe::write_n_as;
 
 pub struct HeadCommand;
@@ -20,15 +19,20 @@ impl IonCliCommand for HeadCommand {
     fn configure_args(&self, command: Command) -> Command {
         // Same flags as `cat`, but with an added `--values` flag to specify the number of values to
         // write.
-        CatCommand.configure_args(command).arg(
-            Arg::new("values")
-                .long("values")
-                .short('n')
-                .value_parser(value_parser!(usize))
-                .allow_negative_numbers(false)
-                .default_value("10")
-                .help("Specifies the number of output top-level values."),
-        )
+        command
+            .with_input()
+            .with_output()
+            .with_format()
+            .with_ion_version()
+            .arg(
+                Arg::new("values")
+                    .long("values")
+                    .short('n')
+                    .value_parser(value_parser!(usize))
+                    .allow_negative_numbers(false)
+                    .default_value("10")
+                    .help("Specifies the number of output top-level values."),
+            )
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
@@ -37,12 +41,29 @@ impl IonCliCommand for HeadCommand {
 
         // --format pretty|text|lines|binary
         // `clap` validates the specified format and provides a default otherwise.
-        let format = args.get_one::<String>("format").unwrap();
+        let format: Format = match args.get_one::<String>("format").unwrap().as_str() {
+            "text" => Format::Text(TextFormat::Compact),
+            "lines" => Format::Text(TextFormat::Lines),
+            "pretty" => Format::Text(TextFormat::Pretty),
+            "binary" => Format::Binary,
+            unrecognized => bail!("unsupported format '{unrecognized}'"),
+        };
+        let encoding = match (
+            args.get_one::<String>(ION_VERSION_ARG_ID).unwrap().as_str(),
+            format,
+        ) {
+            ("1.0", Format::Text(_)) => IonEncoding::Text_1_0,
+            ("1.0", Format::Binary) => IonEncoding::Binary_1_0,
+            ("1.1", Format::Text(_)) => IonEncoding::Text_1_1,
+            ("1.1", Format::Binary) => IonEncoding::Binary_1_1,
+            (unrecognized, _) => bail!("unrecognized Ion version '{unrecognized}'"),
+        };
+
         let num_values = *args.get_one::<usize>("values").unwrap();
 
         CommandIo::new(args).for_each_input(|output, input| {
             let mut reader = Reader::new(AnyEncoding, input.into_source())?;
-            write_n_as(&mut reader, output, format, num_values)?;
+            write_n_as(&mut reader, output, encoding, format, num_values)?;
             Ok(())
         })
     }

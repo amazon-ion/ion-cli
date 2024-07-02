@@ -6,8 +6,8 @@ mod utils;
 
 mod model;
 
-use crate::commands::beta::generate::generator::CodeGenerator;
-use crate::commands::beta::generate::utils::{JavaLanguage, RustLanguage};
+use crate::commands::generate::generator::CodeGenerator;
+use crate::commands::generate::utils::{JavaLanguage, RustLanguage};
 use crate::commands::IonCliCommand;
 use anyhow::{bail, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
@@ -24,6 +24,10 @@ impl IonCliCommand for GenerateCommand {
 
     fn about(&self) -> &'static str {
         "Generates code using given schema file."
+    }
+
+    fn is_stable(&self) -> bool {
+        false
     }
 
     fn configure_args(&self, command: Command) -> Command {

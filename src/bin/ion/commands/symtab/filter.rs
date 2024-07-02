@@ -18,6 +18,10 @@ impl IonCliCommand for SymtabFilterCommand {
         "Filters user data out of an Ion stream, leaving only the symbol table(s) behind."
     }
 
+    fn is_stable(&self) -> bool {
+        false
+    }
+
     fn configure_args(&self, command: Command) -> Command {
         command.with_input()
             .with_output()

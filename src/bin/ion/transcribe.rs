@@ -7,9 +7,10 @@ use std::io::Write;
 pub(crate) fn write_all_as<I: IonInput>(
     reader: &mut Reader<AnyEncoding, I>,
     output: &mut impl Write,
-    format: &str,
+    encoding: IonEncoding,
+    format: Format,
 ) -> Result<usize> {
-    write_n_as(reader, output, format, usize::MAX)
+    write_n_as(reader, output, encoding, format, usize::MAX)
 }
 
 /// Constructs the appropriate writer for the given format, then writes up to `count` values from the
@@ -17,27 +18,28 @@ pub(crate) fn write_all_as<I: IonInput>(
 pub(crate) fn write_n_as<I: IonInput>(
     reader: &mut Reader<AnyEncoding, I>,
     output: &mut impl Write,
-    format: &str,
+    encoding: IonEncoding,
+    format: Format,
     count: usize,
 ) -> Result<usize> {
-    let written = match format {
-        "pretty" => {
-            let mut writer = Writer::new(v1_0::Text.with_format(TextFormat::Pretty), output)?;
+    let written = match (encoding, format) {
+        (IonEncoding::Text_1_0, Format::Text(text_format)) => {
+            let mut writer = Writer::new(v1_0::Text.with_format(text_format), output)?;
             transcribe_n(reader, &mut writer, count)
         }
-        "text" => {
-            let mut writer = Writer::new(v1_0::Text.with_format(TextFormat::Compact), output)?;
+        (IonEncoding::Text_1_1, Format::Text(text_format)) => {
+            let mut writer = Writer::new(v1_1::Text.with_format(text_format), output)?;
             transcribe_n(reader, &mut writer, count)
         }
-        "lines" => {
-            let mut writer = Writer::new(v1_0::Text.with_format(TextFormat::Lines), output)?;
-            transcribe_n(reader, &mut writer, count)
-        }
-        "binary" => {
+        (IonEncoding::Binary_1_0, Format::Binary) => {
             let mut writer = Writer::new(v1_0::Binary, output)?;
             transcribe_n(reader, &mut writer, count)
         }
-        unrecognized => bail!("unsupported format '{unrecognized}'"),
+        (IonEncoding::Binary_1_1, Format::Binary) => {
+            let mut writer = Writer::new(v1_1::Binary, output)?;
+            transcribe_n(reader, &mut writer, count)
+        }
+        unrecognized => bail!("unsupported format '{:?}'", unrecognized),
     }?;
     Ok(written)
 }
