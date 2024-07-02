@@ -127,7 +127,7 @@ ion inspect --skip-bytes 30 --limit-bytes 2 my_file.10n
 
 ### Schema subcommands
 
-All the subcommand to load or validate schema are under the `beta schema` subcommand.
+All the subcommand to load or validate schema are under the `schema` subcommand.
 
 To load a schema:
 
