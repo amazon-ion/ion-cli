@@ -16,11 +16,20 @@ impl IonCliCommand for FromJsonCommand {
     }
 
     fn is_stable(&self) -> bool {
+        false // TODO: Should this be true?
+    }
+
+    fn is_porcelain(&self) -> bool {
         false
     }
 
     fn configure_args(&self, command: Command) -> Command {
-        command.with_input().with_output().with_format()
+        // Args must be identical to CatCommand so that we can safely delegate
+        command
+            .with_input()
+            .with_output()
+            .with_format()
+            .with_ion_version()
     }
 
     fn run(&self, command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {

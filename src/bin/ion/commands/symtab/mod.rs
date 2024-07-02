@@ -1,3 +1,4 @@
+use crate::commands::command_namespace::IonCliNamespace;
 use crate::commands::symtab::filter::SymtabFilterCommand;
 use crate::commands::IonCliCommand;
 
@@ -5,7 +6,7 @@ pub mod filter;
 
 pub struct SymtabNamespace;
 
-impl IonCliCommand for SymtabNamespace {
+impl IonCliNamespace for SymtabNamespace {
     fn name(&self) -> &'static str {
         "symtab"
     }

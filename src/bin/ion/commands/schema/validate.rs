@@ -28,6 +28,10 @@ impl IonCliCommand for ValidateCommand {
         false
     }
 
+    fn is_porcelain(&self) -> bool {
+        true // TODO: Should this command be made into plumbing?
+    }
+
     fn configure_args(&self, command: Command) -> Command {
         command
             .arg(

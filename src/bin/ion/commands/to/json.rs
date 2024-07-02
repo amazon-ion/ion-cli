@@ -25,6 +25,10 @@ impl IonCliCommand for ToJsonCommand {
         false
     }
 
+    fn is_porcelain(&self) -> bool {
+        false
+    }
+
     fn configure_args(&self, command: Command) -> Command {
         // NOTE: it may be necessary to add format-specific options. For example, a "pretty" option
         // would make sense for JSON, but not binary formats like CBOR.

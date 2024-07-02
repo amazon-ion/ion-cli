@@ -16,6 +16,14 @@ impl IonCliCommand for CatCommand {
         "Prints all Ion input files to the specified output in the requested format."
     }
 
+    fn is_stable(&self) -> bool {
+        true
+    }
+
+    fn is_porcelain(&self) -> bool {
+        false
+    }
+
     fn configure_args(&self, command: Command) -> Command {
         command
             .alias("dump")

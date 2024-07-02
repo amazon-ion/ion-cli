@@ -1,3 +1,4 @@
+use crate::commands::command_namespace::IonCliNamespace;
 use crate::commands::IonCliCommand;
 
 use crate::commands::to::json::ToJsonCommand;
@@ -6,7 +7,7 @@ pub mod json;
 
 pub struct ToNamespace;
 
-impl IonCliCommand for ToNamespace {
+impl IonCliNamespace for ToNamespace {
     fn name(&self) -> &'static str {
         "to"
     }
