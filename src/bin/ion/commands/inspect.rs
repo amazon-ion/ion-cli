@@ -29,6 +29,10 @@ between versions. Stable output for programmatic use cases is a
 non-goal."
     }
 
+    fn is_stable(&self) -> bool {
+        true
+    }
+
     fn is_porcelain(&self) -> bool {
         true
     }

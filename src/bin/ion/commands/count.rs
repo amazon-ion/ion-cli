@@ -19,6 +19,10 @@ impl IonCliCommand for CountCommand {
         false
     }
 
+    fn is_porcelain(&self) -> bool {
+        false
+    }
+
     fn configure_args(&self, command: Command) -> Command {
         command.with_input()
     }

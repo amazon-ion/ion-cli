@@ -16,6 +16,14 @@ impl IonCliCommand for HeadCommand {
         "Prints the specified number of top-level values in the input stream."
     }
 
+    fn is_stable(&self) -> bool {
+        true
+    }
+
+    fn is_porcelain(&self) -> bool {
+        false
+    }
+
     fn configure_args(&self, command: Command) -> Command {
         // Same flags as `cat`, but with an added `--values` flag to specify the number of values to
         // write.

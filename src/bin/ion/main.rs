@@ -6,7 +6,7 @@ mod output;
 mod transcribe;
 
 use anyhow::Result;
-use commands::IonCliCommand;
+use commands::{IonCliCommand, IonCliNamespace};
 use ion_rs::IonError;
 use std::io::ErrorKind;
 
@@ -25,7 +25,7 @@ use crate::commands::to::ToNamespace;
 fn main() -> Result<()> {
     let root_command = RootCommand;
     let args = root_command.clap_command().get_matches();
-    let mut command_path: Vec<String> = vec![root_command.name().to_owned()];
+    let mut command_path: Vec<String> = vec![IonCliNamespace::name(&root_command).to_owned()];
 
     if let Err(e) = root_command.run(&mut command_path, &args) {
         match e.downcast_ref::<IonError>() {
@@ -43,7 +43,7 @@ fn main() -> Result<()> {
 
 pub struct RootCommand;
 
-impl IonCliCommand for RootCommand {
+impl IonCliNamespace for RootCommand {
     fn name(&self) -> &'static str {
         "ion"
     }

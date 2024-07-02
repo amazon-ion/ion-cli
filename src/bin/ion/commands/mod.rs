@@ -7,10 +7,10 @@ use clap::builder::ValueParser;
 use clap::{crate_authors, crate_version, Arg, ArgAction, ArgMatches, Command as ClapCommand};
 use std::fs::File;
 use std::io::Write;
-use std::process;
 use termcolor::{ColorChoice, StandardStream, StandardStreamLock};
 
 pub mod cat;
+mod command_namespace;
 pub mod count;
 pub mod from;
 #[cfg(feature = "experimental-code-gen")]
@@ -22,13 +22,15 @@ pub mod schema;
 pub mod symtab;
 pub mod to;
 
+pub(crate) use command_namespace::IonCliNamespace;
+
 /// Behaviors common to all Ion CLI commands, including both namespaces (groups of commands)
 /// and the commands themselves.
 pub trait IonCliCommand {
     /// Indicates whether this command is stable (as opposed to unstable or experimental).
     /// Namespaces should almost always be stable.
     fn is_stable(&self) -> bool {
-        true
+        false
     }
 
     /// Whether the output format is machine-readable.
@@ -39,7 +41,7 @@ pub trait IonCliCommand {
     ///
     /// See https://git-scm.com/book/en/v2/Git-Internals-Plumbing-and-Porcelain#_plumbing_porcelain
     fn is_porcelain(&self) -> bool {
-        false
+        true
     }
 
     /// Returns the name of this command.
@@ -56,13 +58,6 @@ pub trait IonCliCommand {
     /// Commands wishing to customize their `ClapCommand`'s arguments should override
     /// [`Self::configure_args`].
     fn clap_command(&self) -> ClapCommand {
-        // Create a `ClapCommand` representing each of this command's subcommands.
-        let clap_subcommands: Vec<_> = self
-            .subcommands()
-            .iter()
-            .map(|s| s.clap_command())
-            .collect();
-
         // Configure a 'base' clap configuration that has the command's name, about message,
         // version, and author.
 
@@ -97,19 +92,6 @@ pub trait IonCliCommand {
             );
         }
 
-        // If there are subcommands, add them to the configuration and set 'subcommand_required'.
-        if !clap_subcommands.is_empty() {
-            let has_unstable_subcommand = self.subcommands().iter().any(|sc| !sc.is_stable());
-
-            if has_unstable_subcommand {
-                base_command = base_command.show_unstable_flag()
-            }
-
-            base_command = base_command
-                .subcommand_required(true)
-                .subcommands(clap_subcommands)
-        }
-
         self.configure_args(base_command)
     }
 
@@ -120,57 +102,13 @@ pub trait IonCliCommand {
         command
     }
 
-    /// Returns a `Vec` containing all of this command's subcommands.
-    ///
-    /// Namespaces should override the default implementation to specify their subcommands.
-    /// Commands should use the default implementation.
-    fn subcommands(&self) -> Vec<Box<dyn IonCliCommand>> {
-        Vec::new()
-    }
-
-    /// Returns the subcommand that corresponds to the specified name. If no matching subcommand
-    /// is found, returns `None`.
-    fn get_subcommand(&self, subcommand_name: &str) -> Option<Box<dyn IonCliCommand>> {
-        let mut subcommands = self.subcommands();
-        if let Some(index) = subcommands.iter().position(|s| s.name() == subcommand_name) {
-            Some(subcommands.swap_remove(index))
-        } else {
-            None
-        }
-    }
-
     /// The core logic of the command.
     ///
     /// The default implementation assumes this command is a namespace (i.e. a group of subcommands).
     /// It looks for a subcommand in the arguments, then looks up and runs that subcommand.
     ///
     /// Commands should override this implementation.
-    fn run(&self, command_path: &mut Vec<String>, args: &ArgMatches) -> anyhow::Result<()> {
-        // Safe to unwrap because if this is a namespace are subcommands, then clap has already
-        // ensured that a known subcommand is present in args.
-        let (subcommand_name, subcommand_args) = args.subcommand().unwrap();
-        let subcommand = self.get_subcommand(subcommand_name).unwrap();
-
-        match (subcommand.is_stable(), args.get_flag(UNSTABLE_FLAG)) {
-            // Warn if using an unnecessary `-X`
-            (true, true) => eprintln!(
-                "'{}' is stable and does not require opt-in",
-                subcommand_name
-            ),
-            // Error if missing a required `-X`
-            (false, false) => {
-                eprintln!(
-                    "'{}' is unstable and requires explicit opt-in",
-                    subcommand_name
-                );
-                process::exit(1)
-            }
-            _ => {}
-        }
-
-        command_path.push(subcommand_name.to_owned());
-        subcommand.run(command_path, subcommand_args)
-    }
+    fn run(&self, command_path: &mut Vec<String>, args: &ArgMatches) -> anyhow::Result<()>;
 }
 
 /// Argument ID for the '--unstable' / '-X' flag
