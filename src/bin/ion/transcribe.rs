@@ -23,12 +23,12 @@ pub(crate) fn write_n_as<I: IonInput>(
     count: usize,
 ) -> Result<usize> {
     let written = match (encoding, format) {
-        (IonEncoding::Text_1_0, Format::Text(textFormat)) => {
-            let mut writer = Writer::new(v1_0::Text.with_format(textFormat), output)?;
+        (IonEncoding::Text_1_0, Format::Text(text_format)) => {
+            let mut writer = Writer::new(v1_0::Text.with_format(text_format), output)?;
             transcribe_n(reader, &mut writer, count)
         }
-        (IonEncoding::Text_1_1, Format::Text(textFormat)) => {
-            let mut writer = Writer::new(v1_1::Text.with_format(textFormat), output)?;
+        (IonEncoding::Text_1_1, Format::Text(text_format)) => {
+            let mut writer = Writer::new(v1_1::Text.with_format(text_format), output)?;
             transcribe_n(reader, &mut writer, count)
         }
         (IonEncoding::Binary_1_0, Format::Binary) => {
