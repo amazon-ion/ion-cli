@@ -17,6 +17,10 @@ impl IonCliCommand for LoadCommand {
         Shows an error message if any invalid schema syntax was found during the load process."
     }
 
+    fn is_stable(&self) -> bool {
+        false
+    }
+
     fn configure_args(&self, command: Command) -> Command {
         command
             .arg(

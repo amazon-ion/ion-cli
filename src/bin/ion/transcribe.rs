@@ -8,8 +8,9 @@ pub(crate) fn write_all_as<I: IonInput>(
     reader: &mut Reader<AnyEncoding, I>,
     output: &mut impl Write,
     format: &str,
+    use_ion_1_1: bool,
 ) -> Result<usize> {
-    write_n_as(reader, output, format, usize::MAX)
+    write_n_as(reader, output, format, use_ion_1_1, usize::MAX)
 }
 
 /// Constructs the appropriate writer for the given format, then writes up to `count` values from the
@@ -18,24 +19,45 @@ pub(crate) fn write_n_as<I: IonInput>(
     reader: &mut Reader<AnyEncoding, I>,
     output: &mut impl Write,
     format: &str,
+    use_ion_1_1: bool,
     count: usize,
 ) -> Result<usize> {
     let written = match format {
         "pretty" => {
-            let mut writer = Writer::new(v1_0::Text.with_format(TextFormat::Pretty), output)?;
-            transcribe_n(reader, &mut writer, count)
+            if use_ion_1_1 {
+                let mut writer = Writer::new(v1_1::Text.with_format(TextFormat::Pretty), output)?;
+                transcribe_n(reader, &mut writer, count)
+            } else {
+                let mut writer = Writer::new(v1_0::Text.with_format(TextFormat::Pretty), output)?;
+                transcribe_n(reader, &mut writer, count)
+            }
         }
         "text" => {
-            let mut writer = Writer::new(v1_0::Text.with_format(TextFormat::Compact), output)?;
-            transcribe_n(reader, &mut writer, count)
+            if use_ion_1_1 {
+                let mut writer = Writer::new(v1_1::Text.with_format(TextFormat::Compact), output)?;
+                transcribe_n(reader, &mut writer, count)
+            } else {
+                let mut writer = Writer::new(v1_0::Text.with_format(TextFormat::Compact), output)?;
+                transcribe_n(reader, &mut writer, count)
+            }
         }
         "lines" => {
-            let mut writer = Writer::new(v1_0::Text.with_format(TextFormat::Lines), output)?;
-            transcribe_n(reader, &mut writer, count)
+            if use_ion_1_1 {
+                let mut writer = Writer::new(v1_1::Text.with_format(TextFormat::Lines), output)?;
+                transcribe_n(reader, &mut writer, count)
+            } else {
+                let mut writer = Writer::new(v1_0::Text.with_format(TextFormat::Lines), output)?;
+                transcribe_n(reader, &mut writer, count)
+            }
         }
         "binary" => {
-            let mut writer = Writer::new(v1_0::Binary, output)?;
-            transcribe_n(reader, &mut writer, count)
+            if use_ion_1_1 {
+                let mut writer = Writer::new(v1_1::Binary, output)?;
+                transcribe_n(reader, &mut writer, count)
+            } else {
+                let mut writer = Writer::new(v1_0::Binary, output)?;
+                transcribe_n(reader, &mut writer, count)
+            }
         }
         unrecognized => bail!("unsupported format '{unrecognized}'"),
     }?;

@@ -174,7 +174,7 @@ fn run_it<S: AsRef<str>>(
 #[rstest]
 #[case(0, "")]
 #[case(2, "{foo: bar, abc: [123, 456]}\n{foo: baz, abc: [42.0, 4.3e1]}")]
-///Calls ion-cli beta head with different requested number. Pass the test if the return value equals to the expected value.
+///Calls ion-cli head with different requested number. Pass the test if the return value equals to the expected value.
 fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> Result<()> {
     let mut cmd = Command::cargo_bin("ion")?;
     let test_data = r#"
@@ -287,7 +287,7 @@ mod code_gen_tests {
     & ["nested_type: i64"],
     & ["pub fn nested_type(&self) -> &i64 {"]
     )]
-    /// Calls ion-cli beta generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
+    /// Calls ion-cli generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
     fn test_code_generation_in_rust(
         #[case] test_schema: &str,
         #[case] expected_properties: &[&str],
@@ -296,11 +296,11 @@ mod code_gen_tests {
         let mut cmd = Command::cargo_bin("ion")?;
         let temp_dir = TempDir::new()?;
         let input_schema_path = temp_dir.path().join("test_schema.isl");
-        let mut input_schema_file = File::create(&input_schema_path)?;
+        let mut input_schema_file = File::create(input_schema_path)?;
         input_schema_file.write(test_schema.as_bytes())?;
         input_schema_file.flush()?;
         cmd.args([
-            "beta",
+            "-X",
             "generate",
             "--schema",
             "test_schema.isl",
@@ -398,7 +398,7 @@ mod code_gen_tests {
     & ["private int nestedType;"],
     & ["public int getNestedType() {"]
     )]
-    /// Calls ion-cli beta generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
+    /// Calls ion-cli generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
     fn test_code_generation_in_java(
         #[case] test_name: &str,
         #[case] test_schema: &str,
@@ -408,11 +408,11 @@ mod code_gen_tests {
         let mut cmd = Command::cargo_bin("ion")?;
         let temp_dir = TempDir::new()?;
         let input_schema_path = temp_dir.path().join("test_schema.isl");
-        let mut input_schema_file = File::create(&input_schema_path)?;
+        let mut input_schema_file = File::create(input_schema_path)?;
         input_schema_file.write(test_schema.as_bytes())?;
         input_schema_file.flush()?;
         cmd.args([
-            "beta",
+            "-X",
             "generate",
             "--schema",
             "test_schema.isl",

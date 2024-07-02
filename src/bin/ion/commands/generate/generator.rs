@@ -1,10 +1,8 @@
-use crate::commands::beta::generate::context::{AbstractDataType, CodeGenContext, SequenceType};
-use crate::commands::beta::generate::result::{invalid_abstract_data_type_error, CodeGenResult};
-use crate::commands::beta::generate::templates;
-use crate::commands::beta::generate::utils::{
-    Field, JavaLanguage, Language, NestedType, RustLanguage,
-};
-use crate::commands::beta::generate::utils::{IonSchemaType, Template};
+use crate::commands::generate::context::{AbstractDataType, CodeGenContext, SequenceType};
+use crate::commands::generate::result::{invalid_abstract_data_type_error, CodeGenResult};
+use crate::commands::generate::templates;
+use crate::commands::generate::utils::{Field, JavaLanguage, Language, NestedType, RustLanguage};
+use crate::commands::generate::utils::{IonSchemaType, Template};
 use convert_case::{Case, Casing};
 use ion_schema::isl::isl_constraint::{IslConstraint, IslConstraintValue};
 use ion_schema::isl::isl_type::IslType;

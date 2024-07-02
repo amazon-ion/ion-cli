@@ -3,8 +3,8 @@ pub mod validate;
 
 use crate::commands::IonCliCommand;
 
-use crate::commands::beta::schema::load::LoadCommand;
-use crate::commands::beta::schema::validate::ValidateCommand;
+use crate::commands::schema::load::LoadCommand;
+use crate::commands::schema::validate::ValidateCommand;
 
 pub struct SchemaNamespace;
 

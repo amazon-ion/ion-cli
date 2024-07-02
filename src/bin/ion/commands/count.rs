@@ -15,6 +15,10 @@ impl IonCliCommand for CountCommand {
         "Prints the number of top-level values found in the input stream."
     }
 
+    fn is_stable(&self) -> bool {
+        false
+    }
+
     fn configure_args(&self, command: Command) -> Command {
         command.with_input()
     }
