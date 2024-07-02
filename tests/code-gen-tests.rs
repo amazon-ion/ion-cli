@@ -127,6 +127,7 @@ fn test_unsupported_schema_types_failures(#[case] test_schema: &str) -> Result<(
     input_schema_file.write(test_schema.as_bytes())?;
     input_schema_file.flush()?;
     cmd.args([
+        "-X",
         "generate",
         "--schema",
         "test_schema.isl",

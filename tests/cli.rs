@@ -300,6 +300,7 @@ mod code_gen_tests {
         input_schema_file.write(test_schema.as_bytes())?;
         input_schema_file.flush()?;
         cmd.args([
+            "-X",
             "generate",
             "--schema",
             "test_schema.isl",
@@ -411,6 +412,7 @@ mod code_gen_tests {
         input_schema_file.write(test_schema.as_bytes())?;
         input_schema_file.flush()?;
         cmd.args([
+            "-X",
             "generate",
             "--schema",
             "test_schema.isl",
