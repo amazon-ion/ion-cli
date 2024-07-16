@@ -15,6 +15,7 @@ use crate::commands::count::CountCommand;
 use crate::commands::from::FromNamespace;
 #[cfg(feature = "experimental-code-gen")]
 use crate::commands::generate::GenerateCommand;
+use crate::commands::hash::HashCommand;
 use crate::commands::head::HeadCommand;
 use crate::commands::inspect::InspectCommand;
 use crate::commands::primitive::PrimitiveCommand;
@@ -59,6 +60,7 @@ impl IonCliNamespace for RootCommand {
             Box::new(FromNamespace),
             #[cfg(feature = "experimental-code-gen")]
             Box::new(GenerateCommand),
+            Box::new(HashCommand),
             Box::new(HeadCommand),
             Box::new(InspectCommand),
             Box::new(PrimitiveCommand),

@@ -15,9 +15,12 @@ keywords = ["format", "parse", "encode"]
 anyhow = "1.0"
 clap = { version = "4.5.8", features = ["cargo", "env"] }
 colored = "2.0.0"
+digest = "0.9"
+sha2 = "0.9"
+sha3 = "0.9"
 flate2 = "1.0"
 infer = "0.15.0"
-ion-rs = { version = "1.0.0-rc.6", features = ["experimental"] }
+ion-rs = { version = "1.0.0-rc.6", features = ["experimental", "experimental-ion-hash"] }
 tempfile = "3.2.0"
 ion-schema = "0.10.0"
 serde = { version = "1.0.163", features = ["derive"] }

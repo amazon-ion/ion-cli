@@ -15,6 +15,7 @@ pub mod count;
 pub mod from;
 #[cfg(feature = "experimental-code-gen")]
 pub mod generate;
+pub mod hash;
 pub mod head;
 pub mod inspect;
 pub mod primitive;
@@ -131,7 +132,6 @@ impl WithIonCliArgument for ClapCommand {
     fn with_input(self) -> Self {
         self.arg(
             Arg::new("input")
-                .index(1)
                 .trailing_var_arg(true)
                 .action(ArgAction::Append)
                 .help("Input file"),
