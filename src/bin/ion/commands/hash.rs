@@ -80,9 +80,9 @@ impl IonCliCommand for HashCommand {
             //       and an ArgGroup to ensure only one is selected.
             //       Default right now is to emit base16 strings of the digest.
             .arg(
-                Arg::new("raw")
-                    .long("raw")
-                    .help("Emit the digest(s) as raw bytes.")
+                Arg::new("blob")
+                    .long("blob")
+                    .help("Emit the digest(s) as Ion blob values.")
                     .action(ArgAction::SetTrue),
             )
     }
@@ -91,20 +91,28 @@ impl IonCliCommand for HashCommand {
         CommandIo::new(args).for_each_input(|output, input| {
             let mut reader = Reader::new(AnyEncoding, input.into_source())?;
 
-            for elem in reader.elements() {
-                let elem = elem?;
-                if let Some(hash) = args.get_one::<DigestType>("hash") {
-                    let digest = hash.hash_it(&elem)?;
-                    if args.get_flag("raw") {
-                        output.write_all(&digest)?;
-                    } else {
-                        let digest_string: String =
-                            digest.iter().map(|b| format!("{:02x?}", b)).collect();
-                        output.write_all(digest_string.as_bytes())?;
-                    };
+            let hasher = if let Some(hasher) = args.get_one::<DigestType>("hash") {
+                hasher
+            } else {
+                unreachable!("clap ensures that there is a valid argument")
+            };
+
+            if args.get_flag("blob") {
+                let mut writer = Writer::new(v1_0::Text.with_format(TextFormat::Lines), output)?;
+                for elem in reader.elements() {
+                    let elem = elem?;
+                    let digest = hasher.hash_it(&elem)?;
+                    writer.write_blob(&digest)?;
+                }
+                writer.close()?;
+            } else {
+                for elem in reader.elements() {
+                    let elem = elem?;
+                    let digest = hasher.hash_it(&elem)?;
+                    let digest_string: String =
+                        digest.iter().map(|b| format!("{:02x?}", b)).collect();
+                    output.write_all(digest_string.as_bytes())?;
                     output.write_all("\n".as_bytes())?;
-                } else {
-                    unreachable!("clap ensures that there is a valid argument")
                 }
             }
             Ok(())
