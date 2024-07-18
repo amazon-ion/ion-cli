@@ -1,4 +1,7 @@
 # `ion-cli`
+[![Crate](https://img.shields.io/crates/v/ion-cli.svg)](https://crates.io/crates/ion-cli)
+[![License](https://img.shields.io/hexpm/l/plug.svg)](https://github.com/amazon-ion/ion-cli/blob/main/LICENSE)
+[![CI Build](https://github.com/amazon-ion/ion-cli/workflows/CI%20Build/badge.svg)](https://github.com/amazon-ion/ion-cli/actions?query=workflow%3A%22CI+Build%22)
 
 This repository is home to the `ion` command line tool, which provides subcommands
 for working with [the Ion data format](https://amzn.github.io/ion-docs/docs/spec.html).
