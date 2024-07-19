@@ -8,7 +8,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     # We want to run on external PRs, but not on internal ones as push automatically builds
     # H/T: https://github.com/Dart-Code/Dart-Code/commit/612732d5879730608baa9622bf7f5e5b7b51ae65
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != 'amzn/ion-cli'
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != 'amazon-ion/ion-cli'
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-2019]
@@ -34,12 +34,6 @@ jobs:
         with:
           command: test
           args: --verbose --workspace
-      - name: Cargo Test - Code generation tests
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --verbose --workspace --features experimental-code-gen
       - name: Rustfmt Check
         uses: actions-rs/cargo@v1
         with:

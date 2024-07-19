@@ -13,7 +13,6 @@ use std::io::ErrorKind;
 use crate::commands::cat::CatCommand;
 use crate::commands::count::CountCommand;
 use crate::commands::from::FromNamespace;
-#[cfg(feature = "experimental-code-gen")]
 use crate::commands::generate::GenerateCommand;
 use crate::commands::hash::HashCommand;
 use crate::commands::head::HeadCommand;
@@ -58,7 +57,6 @@ impl IonCliNamespace for RootCommand {
             Box::new(CatCommand),
             Box::new(CountCommand),
             Box::new(FromNamespace),
-            #[cfg(feature = "experimental-code-gen")]
             Box::new(GenerateCommand),
             Box::new(HashCommand),
             Box::new(HeadCommand),

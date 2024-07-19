@@ -13,7 +13,6 @@ pub mod cat;
 mod command_namespace;
 pub mod count;
 pub mod from;
-#[cfg(feature = "experimental-code-gen")]
 pub mod generate;
 pub mod hash;
 pub mod head;

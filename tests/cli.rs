@@ -218,7 +218,6 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     Ok(())
 }
 
-#[cfg(feature = "experimental-code-gen")]
 mod code_gen_tests {
     use super::*;
     use std::fs;
