@@ -1,5 +1,3 @@
-#![cfg(feature = "experimental-code-gen")]
-
 use anyhow::Result;
 use assert_cmd::Command;
 use rstest::rstest;
@@ -91,7 +89,6 @@ fn roundtrip_tests_for_generated_code_cargo() -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "experimental-code-gen")]
 #[rstest]
 #[case::any_element_list(
 r#"
