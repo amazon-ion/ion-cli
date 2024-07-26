@@ -11,7 +11,6 @@ use ion_rs::IonError;
 use std::io::ErrorKind;
 
 use crate::commands::cat::CatCommand;
-use crate::commands::count::CountCommand;
 use crate::commands::from::FromNamespace;
 use crate::commands::generate::GenerateCommand;
 use crate::commands::hash::HashCommand;
@@ -19,6 +18,7 @@ use crate::commands::head::HeadCommand;
 use crate::commands::inspect::InspectCommand;
 use crate::commands::primitive::PrimitiveCommand;
 use crate::commands::schema::SchemaNamespace;
+use crate::commands::stats::StatsCommand;
 use crate::commands::symtab::SymtabNamespace;
 use crate::commands::to::ToNamespace;
 
@@ -55,7 +55,6 @@ impl IonCliNamespace for RootCommand {
     fn subcommands(&self) -> Vec<Box<dyn IonCliCommand>> {
         vec![
             Box::new(CatCommand),
-            Box::new(CountCommand),
             Box::new(FromNamespace),
             Box::new(GenerateCommand),
             Box::new(HashCommand),
@@ -65,6 +64,7 @@ impl IonCliNamespace for RootCommand {
             Box::new(SchemaNamespace),
             Box::new(SymtabNamespace),
             Box::new(ToNamespace),
+            Box::new(StatsCommand),
         ]
     }
 }
