@@ -913,8 +913,6 @@ dependencies = [
 [[package]]
 name = "ion-rs"
 version = "1.0.0-rc.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48498fecc335cec03c72629fb886386c52f13f70195990f9f0f373411a5ac3e3"
 dependencies = [
  "arrayvec",
  "base64 0.12.3",
@@ -926,6 +924,7 @@ dependencies = [
  "nom",
  "num-integer",
  "num-traits",
+ "rustc-hash",
  "serde",
  "serde_with",
  "smallvec",
@@ -1409,6 +1408,12 @@ dependencies = [
  "syn 1.0.109",
  "unicode-ident",
 ]
+
+[[package]]
+name = "rustc-hash"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "583034fd73374156e66797ed8e5b0d5690409c9226b22d87cb7f19821c05d152"
 
 [[package]]
 name = "rustc_version"
