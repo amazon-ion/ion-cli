@@ -2,38 +2,35 @@
 {% import "nested_type.templ"  as macros %}
 {% import "util_macros.templ"  as util_macros %}
 
+{% macro class(model, is_nested) %}
 
-package {{ namespace }};
-import java.util.ArrayList;
-import com.amazon.ion.IonReader;
-import com.amazon.ion.IonException;
-import com.amazon.ion.IonWriter;
-import com.amazon.ion.IonType;
-import java.io.IOException;
+{# Verify that the abstract data type is a structure and store information for this structure #}
+{% set struct_info = model.code_gen_type["Structure"] %}
 
-public class {{ target_kind_name }} {
-    {% for field in fields -%}
-           private {{ field.value_type }} {{ field.name | camel }};
+{% if is_nested == true %} static {% endif %} class {{ model.name }} {
+    {% for key, value in struct_info["fields"] -%}
+           private {{ value.0 | to_string }} {{ key | camel }};
     {% endfor %}
 
-    public {{ target_kind_name }}() {}
+    public {{ model.name }}() {}
 
-    {% for field in fields -%}public {{ field.value_type }} get{% filter upper_camel %}{{ field.name }}{% endfilter %}() {
-        return this.{{ field.name | camel }};
+    {% for key, value in struct_info["fields"] -%}public {{ value.0 | to_string }} get{% filter upper_camel %}{{ key }}{% endfilter %}() {
+        return this.{{ key | camel }};
     }
     {% endfor %}
 
-    {% for field in fields %}
-        {% if field.value_type is containing("NestedType") %}
-          public void set{% filter upper_camel %}{{ field.name }}{% endfilter %}(
-          {{ macros::define_params_for_anonymous_type(nested_types=nested_types, field=field, abstract_data_type=abstract_data_type, initial_field_name=field.name) }}
+    {% for key, value in struct_info["fields"] %}
+        {% set val = value.0 | to_string %}
+        {% if val is containing("NestedType") %}
+          public void set{% filter upper_camel %}{{ key }}{% endfilter %}(
+          {{ macros::define_params_for_anonymous_type(nested_type=value.0, type_store=type_store, field_name=key, initial_field_name=key) }}
           ) {
-          {{ macros::initialize_anonymous_type(nested_types=nested_types, field=field, abstract_data_type=abstract_data_type) }}
-          this.{{ field.name | camel }} = {{ field.name | camel }};
+          {{ macros::initialize_anonymous_type(nested_type=value.0, type_store=type_store, field_name=key) }}
+          this.{{ key | camel }} = {{ key | camel }};
           return;
         {% else %}
-        public void set{% filter upper_camel %}{{ field.name }}{% endfilter %}({{ field.value_type }} {{ field.name | camel }}) {
-            this.{{ field.name | camel }} = {{ field.name | camel }};
+        public void set{% filter upper_camel %}{{ key }}{% endfilter %}({{ val }} {{ key | camel }}) {
+            this.{{ key | camel }} = {{ key | camel }};
             return;
         {% endif %}
     }
@@ -41,18 +38,19 @@ public class {{ target_kind_name }} {
 
 
     /**
-     * Reads a {{ target_kind_name }} from an {@link IonReader}.
+     * Reads a {{ model.name }} from an {@link IonReader}.
      *
      * This method does not advance the reader at the current level.
      * The caller is responsible for positioning the reader on the value to read.
      */
-    public static {{ target_kind_name }} readFrom(IonReader reader) {
+    public static {{ model.name }} readFrom(IonReader reader) {
         {# Initializes all the fields of this class #}
-        {% for field in fields -%}
-            {{ field.value_type }} {{ field.name | camel }} =
-            {% if field.value_type == "boolean" %}
+        {% for field_name, field_val in struct_info["fields"] -%}
+            {% set field_value = field_val.0 | to_string %}
+            {{ field_value }} {{ field_name | camel }} =
+            {% if field_value == "boolean" %}
                 false
-            {% elif field.value_type == "int" or field.value_type == "double" %}
+            {% elif field_value == "int" or field_value == "double" %}
                 0
             {% else %}
                 null
@@ -65,37 +63,41 @@ public class {{ target_kind_name }} {
             reader.next();
             String fieldName = reader.getFieldName();
             switch(fieldName) {
-                {% for field in fields %}
-                case "{{ field.name }}":
-                    {{ field.name | camel }} = {% if field.value_type | is_built_in_type %}
-                                                   {% if field.value_type == "bytes[]" %}
+                {% for field_name, field_val in struct_info["fields"] %}
+                {% set field_value = field_val.0 | to_string %}
+
+                case "{{ field_name }}":
+                    {{ field_name | camel }} = {% if field_value | is_built_in_type %}
+                                                   {% if field_value == "bytes[]" %}
                                                         reader.newBytes();
+                                                   {% elif field_value is containing("ArrayList") %}
+                                                        {{ util_macros::read_as_sequence(field_value=field_value,field_name=field_name,type_store=type_store) }}
                                                    {% else %}
-                                                        reader.{{ field.value_type | camel }}Value();
+                                                        reader.{{ field_value | camel }}Value();
                                                    {% endif %}
-                                                {% elif field.value_type is containing("ArrayList") %}
-                                                    {{ util_macros::read_as_sequence(field=field) }}
+                                                {% elif field_value is containing("ArrayList") %}
+                                                    {{ util_macros::read_as_sequence(field_value=field_value,field_name=field_name,type_store=type_store) }}
                                                 {% else %}
-                                                    {{ field.value_type }}.readFrom(reader);
+                                                    {{ field_value }}.readFrom(reader);
                                                 {% endif %}
                     break;
                 {% endfor %}
                 default:
-                    throw new IonException("Can not read field name:" + fieldName + " for {{ target_kind_name }} as it doesn't exist in the given schema type definition.");
+                    throw new IonException("Can not read field name:" + fieldName + " for {{ model.name }} as it doesn't exist in the given schema type definition.");
             }
         }
         reader.stepOut();
 
-        {{ target_kind_name }} {{ target_kind_name | camel }} = new {{ target_kind_name }}();
-        {% for field in fields -%}
-            {{ target_kind_name | camel }}.{{ field.name | camel }} = {{ field.name | camel }};
+        {{ model.name }} {{ model.name | camel }} = new {{ model.name }}();
+        {% for field_name, field_value in struct_info["fields"] -%}
+            {{ model.name | camel }}.{{ field_name | camel }} = {{ field_name | camel }};
         {% endfor %}
 
-        return  {{ target_kind_name | camel }};
+        return  {{ model.name | camel }};
     }
 
     /**
-     * Writes a {{ target_kind_name }} as Ion from an {@link IonWriter}.
+     * Writes a {{ model.name }} as Ion from an {@link IonWriter}.
      *
      * This method does not close the writer after writing is complete.
      * The caller is responsible for closing the stream associated with the writer.
@@ -103,22 +105,30 @@ public class {{ target_kind_name }} {
     public void writeTo(IonWriter writer) throws IOException {
          {# Writes `Structure` class with multiple fields based on `field.name` as an Ion struct #}
          writer.stepIn(IonType.STRUCT);
-         {% for field in fields %}
-             writer.setFieldName("{{ field.name }}");
-             {% if field.value_type | is_built_in_type == false %}
-                 {% if field.value_type is containing("ArrayList") %}
-                    {{ util_macros::write_as_sequence(field=field) }}
+         {% for field_name, field_val in struct_info["fields"] %}
+             {% set field_value = field_val.0 | to_string %}
+             writer.setFieldName("{{ field_name }}");
+             {% if field_value | is_built_in_type == false %}
+                 {% if field_value is containing("ArrayList") %}
+                    {{ util_macros::write_as_sequence(field_value=field_value,field_name=field_name,type_store=type_store) }}
                  {% else %}
-                    this.{{ field.name | camel }}.writeTo(writer);
+                    this.{{ field_name | camel }}.writeTo(writer);
                  {% endif %}
              {% else %}
-                    writer.write{{ field.isl_type_name | upper_camel }}(this.{{ field.name | camel }});
+                 {% if field_value is containing("ArrayList") %}
+                    {{ util_macros::write_as_sequence(field_value=field_value,field_name=field_name,type_store=type_store) }}
+                 {% else %}
+                    writer.write{{ field_value | replace(from="double", to="float") | replace(from="boolean", to="bool") | upper_camel }}(this.{{ field_name | camel }});
+                 {% endif %}
              {% endif %}
          {% endfor %}
          writer.stepOut();
     }
 
-    {% for inline_type in nested_types -%}
-        {{ macros::nested_type(target_kind_name=inline_type.target_kind_name, fields=inline_type.fields, abstract_data_type=inline_type.abstract_data_type, nested_anonymous_types=inline_type.nested_types) }}
+    {% for inline_type in model.nested_types -%}
+        {% set is_nested = true %}
+        {{ macros::nested_type(model=inline_type, is_nested=is_nested) }}
     {% endfor -%}
 }
+{% endmacro model %}
+{{ self::class(model=model, is_nested=is_nested) }}

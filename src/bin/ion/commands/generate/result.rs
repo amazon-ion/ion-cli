@@ -33,3 +33,11 @@ pub fn invalid_abstract_data_type_error<T, S: AsRef<str>>(description: S) -> Cod
         description: description.as_ref().to_string(),
     })
 }
+
+/// A convenience method for creating an CodeGenError::InvalidDataModel
+/// with the provided description text.
+pub fn invalid_abstract_data_type_raw_error<S: AsRef<str>>(description: S) -> CodeGenError {
+    CodeGenError::InvalidDataModel {
+        description: description.as_ref().to_string(),
+    }
+}

@@ -1,69 +1,69 @@
-package {{ namespace }};
-import java.util.ArrayList;
-import com.amazon.ion.IonReader;
-import com.amazon.ion.IonException;
-import com.amazon.ion.IonWriter;
-import com.amazon.ion.IonType;
-import java.io.IOException;
+{% macro scalar(model) %}
 
-public class {{ target_kind_name }} {
-    private {{ fields[0].value_type }} value;
+{# Verify that the abstract data type is a scalar type and store information for this scalar value #}
+{% set scalar_info = model.code_gen_type["WrappedScalar"] %}
+{% set base_type = scalar_info["name"]["parameters"][0] | to_string %}
 
-    public {{ target_kind_name }}() {}
+class {{ model.name }} {
+    private {{ base_type }} value;
 
-    public {{ fields[0].value_type }} getValue() {
+    public {{ model.name }}() {}
+
+    public {{ base_type }} getValue() {
         return this.value;
     }
 
-    public void setValue({{ fields[0].value_type }} value) {
+    public void setValue({{ base_type }} value) {
         this.value = value;
         return;
     }
 
     /**
-     * Reads a {{ target_kind_name }} from an {@link IonReader}.
+     * Reads a {{ model.name }} from an {@link IonReader}.
      *
      * This method does not advance the reader at the current level.
      * The caller is responsible for positioning the reader on the value to read.
      */
-    public static {{ target_kind_name }} readFrom(IonReader reader) {
+    public static {{ model.name }} readFrom(IonReader reader) {
         {# Initializes all the fields of this class #}
-        {{ fields[0].value_type }} value =
-        {% if fields[0].value_type == "boolean" %}
+        {{ base_type }} value =
+        {% if base_type == "boolean" %}
             false
-        {% elif fields[0].value_type == "int" or fields[0].value_type == "double" %}
+        {% elif base_type == "int" or base_type == "double" %}
             0
         {% else %}
             null
         {% endif %};
         {# Reads `Value` class with a single field `value` #}
-        value = {% if fields[0].value_type | is_built_in_type %}
-                    {% if fields[0].value_type == "bytes[]" %}
+        value = {% if base_type | is_built_in_type %}
+                    {% if base_type == "bytes[]" %}
                         reader.newBytes();
                     {% else %}
-                        reader.{{ fields[0].value_type | camel }}Value();
+                        reader.{{ base_type | camel }}Value();
                     {% endif %}
                  {% else %}
-                    {{ fields[0].value_type }}.readFrom(reader);
+                    {{ base_type }}.readFrom(reader);
                  {% endif %}
-        {{ target_kind_name }} {{ target_kind_name | camel }} = new {{ target_kind_name }}();
-        {{ target_kind_name | camel }}.value = value;
+        {{ model.name }} {{ model.name | camel }} = new {{ model.name }}();
+        {{ model.name | camel }}.value = value;
 
-        return  {{ target_kind_name | camel }};
+        return  {{ model.name | camel }};
     }
 
     /**
-     * Writes a {{ target_kind_name }} as Ion from an {@link IonWriter}.
+     * Writes a {{ model.name }} as Ion from an {@link IonWriter}.
      *
      * This method does not close the writer after writing is complete.
      * The caller is responsible for closing the stream associated with the writer.
      */
     public void writeTo(IonWriter writer) throws IOException {
         {# Writes `Value` class with a single field `value` as an Ion value #}
-        {% if fields[0].value_type | is_built_in_type == false  %}
+        {% if base_type | is_built_in_type == false  %}
             this.value.writeTo(writer)?;
         {% else %}
-            writer.write{{ fields[0].isl_type_name | upper_camel }}(this.value);
+            writer.write{{ base_type | replace(from="double", to="float") | replace(from="boolean", to="bool") | upper_camel }}(this.value);
         {% endif %}
     }
 }
+{% endmacro %}
+{{ self::scalar(model=model) }}

@@ -7,7 +7,7 @@ mod utils;
 mod model;
 
 use crate::commands::generate::generator::CodeGenerator;
-use crate::commands::generate::utils::{JavaLanguage, RustLanguage};
+use crate::commands::generate::utils::JavaLanguage;
 use crate::commands::IonCliCommand;
 use anyhow::{bail, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
@@ -121,11 +121,12 @@ impl IonCliCommand for GenerateCommand {
                 // generate code based on schema and programming language
                 match language {
                     "java" =>
-                        CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().as_str())
+                        CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().split('.').map(|s| s.to_string()).collect())
                             .generate_code_for_authorities(&authorities, &mut schema_system)?,
-                    "rust" =>
-                        CodeGenerator::<RustLanguage>::new(output)
-                            .generate_code_for_authorities(&authorities, &mut schema_system)?,
+                    "rust" => {
+                        // TODO: Initialize and run code generator for `rust`, once the rust templates are modified based on new code generation model
+                        todo!()
+                    }
                     _ => bail!(
                         "Programming language '{}' is not yet supported. Currently supported targets: 'java', 'rust'",
                         language
@@ -135,8 +136,11 @@ impl IonCliCommand for GenerateCommand {
             Some(schema_id) => {
                 // generate code based on schema and programming language
                 match language {
-                    "java" => CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().as_str()).generate_code_for_schema(&mut schema_system, schema_id)?,
-                    "rust" => CodeGenerator::<RustLanguage>::new(output).generate_code_for_schema(&mut schema_system, schema_id)?,
+                    "java" => CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().split('.').map(|s| s.to_string()).collect()).generate_code_for_schema(&mut schema_system, schema_id)?,
+                    "rust" => {
+                        // TODO: Initialize and run code generator for `rust`, once the rust templates are modified based on new code generation model
+                        todo!()
+                    }
                     _ => bail!(
                         "Programming language '{}' is not yet supported. Currently supported targets: 'java', 'rust'",
                         language
