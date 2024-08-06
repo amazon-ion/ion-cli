@@ -124,6 +124,11 @@ fn top_level_max_depth(value: LazyValue<AnyEncoding>) -> usize {
             for element in list_value {
                 stack.push((element.unwrap(), depth + 1));
             }
+        } else if current_value.ion_type() == IonType::SExp {
+            let list_value = current_value.read().unwrap().expect_sexp().unwrap();
+            for element in list_value {
+                stack.push((element.unwrap(), depth + 1));
+            }
         }
     }
     max_depth
