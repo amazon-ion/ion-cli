@@ -61,25 +61,17 @@ fn analyze<Input: IonInput>(
     let histogram = plot::Histogram::new(&out.size_vec, options);
     writeln!(
         writer,
-        "The 'samples' field represents the total number of top-level value of input data stream. The unit of min, max ,avg size is bytes.\n\
+        "The 'samples' field represents the total number of top-level value of input data stream. The unit of min, max, avg size is bytes.\n\
         {}",
         histogram
     )
         .expect("There is an error occurred while plotting the size distribution of input data stream.");
-    writeln!(writer, "The number of symbols is {} ", out.symbols_count)
+    writeln!(writer, "Symbols: {} ", out.symbols_count)
         .expect("There is an error occurred while writing the symbols_count.");
-    writeln!(
-        writer,
-        "The number of local symbol tables is {} ",
-        out.symtab_count
-    )
-    .expect("There is an error occurred while writing the symtab_count.");
-    writeln!(
-        writer,
-        "The maximum depth of the input data stream is {}",
-        out.max_depth
-    )
-    .expect("There is an error occurred while writing the max_depth.");
+    writeln!(writer, "Local symbol tables: {} ", out.symtab_count)
+        .expect("There is an error occurred while writing the symtab_count.");
+    writeln!(writer, "Maximum container depth: {}", out.max_depth)
+        .expect("There is an error occurred while writing the max_depth.");
     Ok(())
 }
 
@@ -96,7 +88,7 @@ fn analyze_data_stream<Input: IonInput>(reader: &mut SystemReader<AnyEncoding, I
             SystemStreamItem::Value(value) => {
                 let size = system_value.raw_stream_item().unwrap().span().bytes().len();
                 size_vec.push(size as f64);
-                let current_depth = top_level_max_depth(value, 0);
+                let current_depth = top_level_max_depth(value);
                 max_depth = max(max_depth, current_depth);
             }
             SystemStreamItem::EndOfStream(_) => {
@@ -117,32 +109,24 @@ fn analyze_data_stream<Input: IonInput>(reader: &mut SystemReader<AnyEncoding, I
     return out;
 }
 
-fn top_level_max_depth(value: LazyValue<AnyEncoding>, depth: usize) -> usize {
-    if value.is_container() {
-        if value.ion_type() == IonType::Struct {
-            value
-                .read()
-                .unwrap()
-                .expect_struct()
-                .unwrap()
-                .iter()
-                .map(|v| crate::commands::stats::top_level_max_depth(v.unwrap().value(), depth + 1))
-                .max()
-                .unwrap()
-        } else {
-            value
-                .read()
-                .unwrap()
-                .expect_list()
-                .unwrap()
-                .iter()
-                .map(|v| top_level_max_depth(v.unwrap(), depth + 1))
-                .max()
-                .unwrap()
+fn top_level_max_depth(value: LazyValue<AnyEncoding>) -> usize {
+    let mut max_depth = 0;
+    let mut stack = vec![(value, 0)];
+    while let Some((current_value, depth)) = stack.pop() {
+        max_depth = max(max_depth, depth);
+        if current_value.ion_type() == IonType::Struct {
+            let struct_value = current_value.read().unwrap().expect_struct().unwrap();
+            for field in struct_value {
+                stack.push((field.unwrap().value(), depth + 1));
+            }
+        } else if current_value.ion_type() == IonType::List {
+            let list_value = current_value.read().unwrap().expect_list().unwrap();
+            for element in list_value {
+                stack.push((element.unwrap(), depth + 1));
+            }
         }
-    } else {
-        depth
     }
+    max_depth
 }
 
 #[test]
