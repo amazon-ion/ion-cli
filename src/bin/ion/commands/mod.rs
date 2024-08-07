@@ -11,7 +11,6 @@ use termcolor::{ColorChoice, StandardStream, StandardStreamLock};
 
 pub mod cat;
 mod command_namespace;
-pub mod count;
 pub mod from;
 pub mod generate;
 pub mod hash;
@@ -19,6 +18,7 @@ pub mod head;
 pub mod inspect;
 pub mod primitive;
 pub mod schema;
+pub mod stats;
 pub mod symtab;
 pub mod to;
 
