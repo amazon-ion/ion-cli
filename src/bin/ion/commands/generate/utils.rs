@@ -1,48 +1,9 @@
-use crate::commands::generate::context::AbstractDataType;
+use crate::commands::generate::model::{
+    AbstractDataType, DataModelNode, FullyQualifiedTypeReference,
+};
 use crate::commands::generate::result::{invalid_abstract_data_type_error, CodeGenError};
 use convert_case::{Case, Casing};
-use serde::Serialize;
 use std::fmt::{Display, Formatter};
-
-/// Represents a field that will be added to generated data model.
-/// This will be used by the template engine to fill properties of a struct/class.
-#[derive(Serialize)]
-pub struct Field {
-    pub(crate) name: String,
-    // The value_type represents the AbstractDatType for given field. When given ISL has constraints, that lead to open ended types,
-    // this will be ste to None, Otherwise set to Some(ABSTRACT_DATA_TYPE_NAME).
-    // e.g For below ISL type:
-    // ```
-    // type::{
-    //   name: list_type,
-    //   type: list // since this doesn't have `element` constraint defined it will be set `value_type` to None
-    // }
-    // ```
-    // Following will be the `Field` value for this ISL type:
-    // Field {
-    //     name: value,
-    //     value_type: None,
-    //     isl_type_name: "list"
-    //     abstract_data_type: None
-    // }
-    // Code generation process results into an Error when `value_type` is set to `None`
-    pub(crate) value_type: Option<String>,
-    pub(crate) isl_type_name: String,
-    // `abstract_data_type` is only used for sequence type fields. This value provides `element_type`
-    // and `sequence_type` information for this sequence type field.
-    pub(crate) abstract_data_type: Option<AbstractDataType>,
-}
-
-/// Represents an nested type that can be a part of another type definition.
-/// This will be used by the template engine to add these intermediate data models for nested types
-/// in to the parent type definition's module/namespace.
-#[derive(Serialize)]
-pub struct NestedType {
-    pub(crate) target_kind_name: String,
-    pub(crate) fields: Vec<Field>,
-    pub(crate) abstract_data_type: AbstractDataType,
-    pub(crate) nested_types: Vec<NestedType>,
-}
 
 pub trait Language {
     /// Provides a file extension based on programming language
@@ -62,12 +23,24 @@ pub trait Language {
 
     /// Provides given target type as sequence
     /// e.g.
-    ///     target_type = "Foo" returns "ArrayList<Foo>"
+    ///     target_type = "Foo" returns "java.util.ArrayList<Foo>"
     ///     target_type = "Foo" returns "Vec<Foo>"
-    fn target_type_as_sequence(target_type: &Option<String>) -> Option<String>;
+    fn target_type_as_sequence(
+        target_type: FullyQualifiedTypeReference,
+    ) -> FullyQualifiedTypeReference;
 
-    /// Returns true if the type name specified is provided by the target language implementation
-    fn is_built_in_type(name: &str) -> bool;
+    /// Returns true if the type `String` specified is provided by the target language implementation
+    fn is_built_in_type(name: String) -> bool;
+
+    /// Returns a fully qualified type reference name as per the programming language
+    /// e.g. For a fully qualified type reference as below:
+    ///   FullyQualifiedTypeReference {
+    ///     type_name: vec!["org", "example", "Foo"],
+    ///     parameters: vec![] // type ref with no parameters
+    ///   }
+    ///   In Java, `org.example.Foo`
+    ///   In Rust, `org::example::Foo`
+    fn fully_qualified_type_ref(name: &FullyQualifiedTypeReference) -> String;
 
     /// Returns the template as string based on programming language
     /// e.g.
@@ -107,17 +80,49 @@ impl Language for JavaLanguage {
         )
     }
 
-    fn target_type_as_sequence(target_type: &Option<String>) -> Option<String> {
-        target_type.as_ref().map(|target_type_name| {
-            match JavaLanguage::wrapper_class(target_type_name) {
-                Some(wrapper_name) => format!("ArrayList<{}>", wrapper_name),
-                None => format!("ArrayList<{}>", target_type_name),
-            }
-        })
+    fn target_type_as_sequence(
+        target_type: FullyQualifiedTypeReference,
+    ) -> FullyQualifiedTypeReference {
+        match JavaLanguage::wrapper_class(&format!("{}", target_type)) {
+            Some(wrapper_name) => FullyQualifiedTypeReference {
+                type_name: vec![
+                    "java".to_string(),
+                    "util".to_string(),
+                    "ArrayList".to_string(),
+                ],
+                parameters: vec![FullyQualifiedTypeReference {
+                    type_name: vec![wrapper_name],
+                    parameters: vec![],
+                }],
+            },
+            None => FullyQualifiedTypeReference {
+                type_name: vec![
+                    "java".to_string(),
+                    "util".to_string(),
+                    "ArrayList".to_string(),
+                ],
+                parameters: vec![target_type],
+            },
+        }
     }
 
-    fn is_built_in_type(name: &str) -> bool {
-        matches!(name, "int" | "String" | "boolean" | "byte[]" | "double")
+    fn is_built_in_type(name: String) -> bool {
+        matches!(
+            name.as_str(),
+            "int"
+                | "String"
+                | "boolean"
+                | "byte[]"
+                | "double"
+                | "java.util.ArrayList<String>"
+                | "java.util.ArrayList<Integer>"
+                | "java.util.ArrayList<Boolean>"
+                | "java.util.ArrayList<Double>"
+        )
+    }
+
+    fn fully_qualified_type_ref(name: &FullyQualifiedTypeReference) -> String {
+        name.type_name.join(".")
     }
 
     fn template_name(template: &Template) -> String {
@@ -181,14 +186,32 @@ impl Language for RustLanguage {
         )
     }
 
-    fn target_type_as_sequence(target_type: &Option<String>) -> Option<String> {
-        target_type
-            .as_ref()
-            .map(|target_type_name| format!("Vec<{}>", target_type_name))
+    fn target_type_as_sequence(
+        target_type: FullyQualifiedTypeReference,
+    ) -> FullyQualifiedTypeReference {
+        FullyQualifiedTypeReference {
+            type_name: vec!["Vec".to_string()],
+            parameters: vec![target_type],
+        }
     }
 
-    fn is_built_in_type(name: &str) -> bool {
-        matches!(name, "i64" | "String" | "bool" | "Vec<u8>" | "f64")
+    fn is_built_in_type(name: String) -> bool {
+        matches!(
+            name.as_str(),
+            "i64"
+                | "String"
+                | "bool"
+                | "Vec<u8>"
+                | "f64"
+                | "Vec<String>"
+                | "Vec<i64>"
+                | "Vec<bool>"
+                | "Vec<f64>"
+        )
+    }
+
+    fn fully_qualified_type_ref(name: &FullyQualifiedTypeReference) -> String {
+        name.type_name.join("::")
     }
 
     fn template_name(template: &Template) -> String {
@@ -218,16 +241,28 @@ pub enum Template {
     Scalar,   // Represents a template for a Rust struct or Java class with Ion scalar value
 }
 
-impl TryFrom<Option<&AbstractDataType>> for Template {
+impl TryFrom<Option<&DataModelNode>> for Template {
     type Error = CodeGenError;
 
-    fn try_from(value: Option<&AbstractDataType>) -> Result<Self, Self::Error> {
+    fn try_from(value: Option<&DataModelNode>) -> Result<Self, Self::Error> {
         match value {
-            Some(abstract_data_type) => match abstract_data_type {
-                AbstractDataType::Value => Ok(Template::Scalar),
-                AbstractDataType::Sequence { .. } => Ok(Template::Sequence),
-                AbstractDataType::Structure(_) => Ok(Template::Struct),
-            },
+            Some(data_model_node) => {
+                if let Some(abstract_data_type) = &data_model_node.code_gen_type {
+                    match abstract_data_type {
+                        AbstractDataType::Scalar(_) | AbstractDataType::WrappedScalar(_) => {
+                            Ok(Template::Scalar)
+                        }
+                        AbstractDataType::Sequence(_) | AbstractDataType::WrappedSequence(_) => {
+                            Ok(Template::Sequence)
+                        }
+                        AbstractDataType::Structure(_) => Ok(Template::Struct),
+                    }
+                } else {
+                    invalid_abstract_data_type_error(
+                        "Can not get a template without determining data model first.",
+                    )
+                }
+            }
             None => invalid_abstract_data_type_error(
                 "Can not get a template without determining data model first.",
             ),

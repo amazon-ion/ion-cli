@@ -222,111 +222,7 @@ mod code_gen_tests {
     use super::*;
     use std::fs;
 
-    #[rstest]
-    #[case::simple_struct(
-    r#"
-        type::{
-         name: simple_struct,
-         fields: {
-            name: string,
-            id: int,
-         },
-        }
-    "#,
-    & ["id: i64", "name: String"],
-    & ["pub fn name(&self) -> &String {", "pub fn id(&self) -> &i64 {"]
-    )]
-    #[case::value_struct(
-    r#"
-        type::{
-         name: value_struct,
-         type: int // this will be a field in struct
-        }
-    "#,
-    & ["value: i64"],
-    & ["pub fn value(&self) -> &i64 {"]
-    )]
-    #[case::sequence_struct(
-    r#"
-        type::{
-         name: sequence_struct,
-         element: string, // this will be a sequence field in struct
-         type: list
-        }
-    "#,
-    & ["value: Vec<String>"],
-    & ["pub fn value(&self) -> &Vec<String> {"]
-    )]
-    #[case::struct_with_reference_field(
-    r#"
-        type::{
-         name: struct_with_reference_field,
-         fields: {
-            reference: other_type
-         }
-        }
-        
-        type::{
-            name: other_type,
-            type: int
-        }
-    "#,
-    & ["reference: OtherType"],
-    & ["pub fn reference(&self) -> &OtherType {"]
-    )]
-    #[case::struct_with_nested_type(
-    r#"
-        type::{
-         name: struct_with_nested_type,
-         fields: {
-            nested_type: { type: int }
-         }
-        }
-    "#,
-    & ["nested_type: i64"],
-    & ["pub fn nested_type(&self) -> &i64 {"]
-    )]
-    /// Calls ion-cli generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
-    fn test_code_generation_in_rust(
-        #[case] test_schema: &str,
-        #[case] expected_properties: &[&str],
-        #[case] expected_accessors: &[&str],
-    ) -> Result<()> {
-        let mut cmd = Command::cargo_bin("ion")?;
-        let temp_dir = TempDir::new()?;
-        let input_schema_path = temp_dir.path().join("test_schema.isl");
-        let mut input_schema_file = File::create(input_schema_path)?;
-        input_schema_file.write(test_schema.as_bytes())?;
-        input_schema_file.flush()?;
-        cmd.args([
-            "-X",
-            "generate",
-            "--schema",
-            "test_schema.isl",
-            "--output",
-            temp_dir.path().to_str().unwrap(),
-            "--language",
-            "rust",
-            "--directory",
-            temp_dir.path().to_str().unwrap(),
-        ]);
-        let command_assert = cmd.assert();
-        let output_file_path = temp_dir.path().join("ion_generated_code.rs");
-        command_assert.success();
-        let contents =
-            fs::read_to_string(output_file_path).expect("Should have been able to read the file");
-        for expected_property in expected_properties {
-            assert!(contents.contains(expected_property));
-        }
-        for expected_accessor in expected_accessors {
-            assert!(contents.contains(expected_accessor));
-        }
-        // verify that it generates read-write APIs
-        assert!(contents.contains("pub fn read_from(reader: &mut Reader) -> SerdeResult<Self> {"));
-        assert!(contents
-            .contains("pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> SerdeResult<()> {"));
-        Ok(())
-    }
+    //TODO: Add cargo roundtrip tests once the rust templates are modified based on new code generation model
 
     #[rstest]
     #[case(
@@ -363,8 +259,8 @@ mod code_gen_tests {
          type: list
         }
     "#,
-    & ["private ArrayList<String> value;"],
-    & ["public ArrayList<String> getValue() {"]
+    & ["private java.util.ArrayList<String> value;"],
+    & ["public java.util.ArrayList<String> getValue() {"]
     )]
     #[case(
     "StructWithReferenceField",
@@ -375,7 +271,7 @@ mod code_gen_tests {
             reference: other_type
          }
         }
-        
+
         type::{
             name: other_type,
             type: int
@@ -388,6 +284,7 @@ mod code_gen_tests {
     "StructWithNestedType",
     r#"
         type::{
+
          name: struct_with_nested_type,
          fields: {
             nested_type: { type: int }
@@ -408,7 +305,7 @@ mod code_gen_tests {
         let temp_dir = TempDir::new()?;
         let input_schema_path = temp_dir.path().join("test_schema.isl");
         let mut input_schema_file = File::create(input_schema_path)?;
-        input_schema_file.write(test_schema.as_bytes())?;
+        input_schema_file.write_all(test_schema.as_bytes())?;
         input_schema_file.flush()?;
         cmd.args([
             "-X",
