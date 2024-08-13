@@ -4,6 +4,18 @@
 
 {% macro class(model, is_nested) %}
 
+{% if is_nested == false %}
+{% set full_namespace = namespace | join(sep=".") %}
+
+package {{ full_namespace }};
+import com.amazon.ion.IonReader;
+import com.amazon.ion.IonException;
+import com.amazon.ion.IonWriter;
+import com.amazon.ion.IonType;
+import java.io.IOException;
+{% endif %}
+
+
 {# Verify that the abstract data type is a structure and store information for this structure #}
 {% set struct_info = model.code_gen_type["Structure"] %}
 

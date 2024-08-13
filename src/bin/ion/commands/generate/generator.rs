@@ -87,7 +87,6 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
         // This allows packaging binary without the need of template resources.
         tera.add_raw_templates(vec![
             ("class.templ", templates::java::CLASS),
-            ("import.templ", templates::java::IMPORT),
             ("scalar.templ", templates::java::SCALAR),
             ("sequence.templ", templates::java::SEQUENCE),
             ("util_macros.templ", templates::java::UTIL_MACROS),
@@ -211,7 +210,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         _map: &HashMap<String, tera::Value>,
     ) -> Result<tera::Value, tera::Error> {
         let fully_qualified_type_ref: &FullyQualifiedTypeReference = &value.try_into()?;
-        Ok(tera::Value::String(format!("{}", fully_qualified_type_ref)))
+        Ok(tera::Value::String(fully_qualified_type_ref.to_string()))
     }
 
     /// Generates code for all the schemas in given authorities
@@ -284,76 +283,15 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         // Add an object called `nested_types` in tera context
         // This will have a list of `nested_type` where each will include fields, a target_kind_name and abstract_data_type
         let mut code_gen_context = CodeGenContext::new();
-        code_gen_context.with_data_model_node(DataModelNode {
-            name: type_name.to_case(Case::UpperCamel),
-            code_gen_type: None,
-            nested_types: vec![],
-        });
-        // add the current type name into fully qualified type name path
-        if let Some(ref mut fully_qualified_type_name) = self.current_type_fully_qualified_name {
-            fully_qualified_type_name.push(type_name.to_case(Case::UpperCamel));
-        }
-        let constraints = isl_type.constraints();
-        for constraint in constraints {
-            self.map_constraint_to_abstract_data_type(constraint, &mut code_gen_context, isl_type)?;
-        }
+        self.traverse_isl_type_definition(type_name, isl_type, &mut code_gen_context)?;
 
         // TODO: verify the `occurs` value within a field, by default the fields are optional.
-        // TODO: Check if abstract data type is sequence and return a fully qualified name for it accordingly.
         if let Some(data_model_node) = &code_gen_context.data_model_node {
-            // TODO: Add the nested type into parent type's tera context
-            // TODO: Add this `data_model_node` to the data model store on the current code generation context
             if let Some(abstract_data_type) = &data_model_node.code_gen_type {
-                let fully_qualified_type_ref = match abstract_data_type {
-                    AbstractDataType::WrappedSequence(seq) => {
-                        if seq.sequence_type.is_none() || seq.element_type.is_none() {
-                            return invalid_abstract_data_type_error(
-                                "Currently code generation does not support open ended types. \
-            Error can be due to a missing `type` or `element` constraint in the type definition.",
-                            );
-                        }
-                        L::target_type_as_sequence(
-                            abstract_data_type.fully_qualified_type_ref().ok_or(
-                                invalid_abstract_data_type_raw_error(
-                                    "Can not determine fully qualified name for the data model",
-                                ),
-                            )?,
-                        )
-                    }
-                    AbstractDataType::Sequence(seq) => {
-                        if seq.sequence_type.is_none() || seq.element_type.is_none() {
-                            return invalid_abstract_data_type_error(
-                                "Currently code generation does not support open ended types. \
-            Error can be due to a missing `type` or `element` constraint in the type definition.",
-                            );
-                        }
-                        L::target_type_as_sequence(
-                            abstract_data_type.fully_qualified_type_ref().ok_or(
-                                invalid_abstract_data_type_raw_error(
-                                    "Can not determine fully qualified name for the data model",
-                                ),
-                            )?,
-                        )
-                    }
-                    AbstractDataType::Structure(structure) => {
-                        if structure.fields.is_none() {
-                            return invalid_abstract_data_type_error(
-                                "Currently code generation does not support open ended types. \
-            Error can be due to a missing `fields` constraint in the type definition.",
-                            );
-                        }
-                        abstract_data_type.fully_qualified_type_ref().ok_or(
-                            invalid_abstract_data_type_raw_error(
-                                "Can not determine fully qualified name for the data model",
-                            ),
-                        )?
-                    }
-                    _ => abstract_data_type.fully_qualified_type_ref().ok_or(
-                        invalid_abstract_data_type_raw_error(
-                            "Can not determine fully qualified name for the data model",
-                        ),
-                    )?,
-                };
+                let fully_qualified_type_ref =
+                    Self::verify_abstract_data_type_and_get_fully_qualified_type_ref(
+                        abstract_data_type,
+                    )?;
                 self.data_model_store.insert(
                     fully_qualified_type_ref.to_owned(),
                     data_model_node.to_owned(),
@@ -376,6 +314,57 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         }
     }
 
+    fn verify_abstract_data_type_and_get_fully_qualified_type_ref(
+        abstract_data_type: &AbstractDataType,
+    ) -> CodeGenResult<FullyQualifiedTypeReference> {
+        Ok(match abstract_data_type {
+            AbstractDataType::WrappedSequence(seq) => {
+                if seq.sequence_type.is_none() || seq.element_type.is_none() {
+                    return invalid_abstract_data_type_error(
+                        "Currently code generation does not support open ended types. \
+            Error can be due to a missing `type` or `element` constraint in the type definition.",
+                    );
+                }
+                L::target_type_as_sequence(abstract_data_type.fully_qualified_type_ref().ok_or(
+                    invalid_abstract_data_type_raw_error(
+                        "Can not determine fully qualified name for the data model",
+                    ),
+                )?)
+            }
+            AbstractDataType::Sequence(seq) => {
+                if seq.sequence_type.is_none() || seq.element_type.is_none() {
+                    return invalid_abstract_data_type_error(
+                        "Currently code generation does not support open ended types. \
+            Error can be due to a missing `type` or `element` constraint in the type definition.",
+                    );
+                }
+                L::target_type_as_sequence(abstract_data_type.fully_qualified_type_ref().ok_or(
+                    invalid_abstract_data_type_raw_error(
+                        "Can not determine fully qualified name for the data model",
+                    ),
+                )?)
+            }
+            AbstractDataType::Structure(structure) => {
+                if structure.fields.is_none() {
+                    return invalid_abstract_data_type_error(
+                        "Currently code generation does not support open ended types. \
+            Error can be due to a missing `fields` constraint in the type definition.",
+                    );
+                }
+                abstract_data_type.fully_qualified_type_ref().ok_or(
+                    invalid_abstract_data_type_raw_error(
+                        "Can not determine fully qualified name for the data model",
+                    ),
+                )?
+            }
+            _ => abstract_data_type.fully_qualified_type_ref().ok_or(
+                invalid_abstract_data_type_raw_error(
+                    "Can not determine fully qualified name for the data model",
+                ),
+            )?,
+        })
+    }
+
     fn generate_abstract_data_type(
         &mut self,
         isl_type_name: &String,
@@ -384,80 +373,18 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         let mut context = Context::new();
         let mut code_gen_context = CodeGenContext::new();
 
-        code_gen_context.with_data_model_node(DataModelNode {
-            name: isl_type_name.to_case(Case::UpperCamel),
-            code_gen_type: None,
-            nested_types: vec![],
-        });
-
-        if let Some(ref mut fully_qualified_type_name) = self.current_type_fully_qualified_name {
-            fully_qualified_type_name.push(isl_type_name.to_case(Case::UpperCamel));
-        }
-
-        let constraints = isl_type.constraints();
-        for constraint in constraints {
-            self.map_constraint_to_abstract_data_type(constraint, &mut code_gen_context, isl_type)?;
-        }
-
-        // TODO: if any field in `tera_fields` contains a `None` `value_type` then it means there is a constraint that leads to open ended types.
-        //  Return error in such case.
+        self.traverse_isl_type_definition(isl_type_name, isl_type, &mut code_gen_context)?;
 
         // add data model for template
         // TODO: verify the `occurs` value within a field, by default the fields are optional.
         if let Some(data_model_node) = &code_gen_context.data_model_node {
             if let Some(abstract_data_type) = &data_model_node.code_gen_type {
-                let fully_qualified_type_ref = match abstract_data_type {
-                    AbstractDataType::WrappedSequence(seq) => {
-                        if seq.sequence_type.is_none() || seq.element_type.is_none() {
-                            return invalid_abstract_data_type_error(
-                                "Currently code generation does not support open ended types. \
-            Error can be due to a missing `type` or `element` constraint in the type definition.",
-                            );
-                        }
-                        L::target_type_as_sequence(
-                            abstract_data_type.fully_qualified_type_ref().ok_or(
-                                invalid_abstract_data_type_raw_error(
-                                    "Can not determine fully qualified name for the data model",
-                                ),
-                            )?,
-                        )
-                    }
-                    AbstractDataType::Sequence(seq) => {
-                        if seq.sequence_type.is_none() || seq.element_type.is_none() {
-                            return invalid_abstract_data_type_error(
-                                "Currently code generation does not support open ended types. \
-            Error can be due to a missing `type` or `element` constraint in the type definition.",
-                            );
-                        }
-                        L::target_type_as_sequence(
-                            abstract_data_type.fully_qualified_type_ref().ok_or(
-                                invalid_abstract_data_type_raw_error(
-                                    "Can not determine fully qualified name for the data model",
-                                ),
-                            )?,
-                        )
-                    }
-                    AbstractDataType::Structure(structure) => {
-                        if structure.fields.is_none() {
-                            return invalid_abstract_data_type_error(
-                                "Currently code generation does not support open ended types. \
-            Error can be due to a missing `fields` constraint in the type definition.",
-                            );
-                        }
-                        abstract_data_type.fully_qualified_type_ref().ok_or(
-                            invalid_abstract_data_type_raw_error(
-                                "Can not determine fully qualified name for the data model",
-                            ),
-                        )?
-                    }
-                    _ => abstract_data_type.fully_qualified_type_ref().ok_or(
-                        invalid_abstract_data_type_raw_error(
-                            "Can not determine fully qualified name for the data model",
-                        ),
-                    )?,
-                };
+                let fully_qualified_type_ref =
+                    Self::verify_abstract_data_type_and_get_fully_qualified_type_ref(
+                        abstract_data_type,
+                    )?;
 
-                // add current data modle node into the data model store
+                // add current data model node into the data model store
                 self.data_model_store.insert(
                     fully_qualified_type_ref.to_owned(),
                     data_model_node.to_owned(),
@@ -482,6 +409,29 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         self.render_generated_code(isl_type_name, &mut context, &mut code_gen_context)
     }
 
+    fn traverse_isl_type_definition(
+        &mut self,
+        isl_type_name: &String,
+        isl_type: &IslType,
+        mut code_gen_context: &mut CodeGenContext,
+    ) -> CodeGenResult<()> {
+        code_gen_context.with_data_model_node(DataModelNode {
+            name: isl_type_name.to_case(Case::UpperCamel),
+            code_gen_type: None,
+            nested_types: vec![],
+        });
+
+        if let Some(ref mut fully_qualified_type_name) = self.current_type_fully_qualified_name {
+            fully_qualified_type_name.push(isl_type_name.to_case(Case::UpperCamel));
+        }
+
+        let constraints = isl_type.constraints();
+        for constraint in constraints {
+            self.map_constraint_to_abstract_data_type(constraint, &mut code_gen_context, isl_type)?;
+        }
+        Ok(())
+    }
+
     fn render_generated_code(
         &mut self,
         type_name: &str,
@@ -498,11 +448,10 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         // Render or generate file for the template with the given context
         let template: &Template = &code_gen_context.data_model_node.as_ref().try_into()?;
 
-        // Since `java` templates use recursion(i.e. use the same template for nested types) when rendering nested types,
+        // This will be used by Java templates. Since `java` templates use recursion(i.e. use the same template for nested types) when rendering nested types,
         // We need to tune the `is_nested` flag to allow static classes being added inside a parent class
-        if L::name() == "java" {
-            context.insert("is_nested", &false);
-        }
+        context.insert("is_nested", &false);
+
         let rendered = self
             .tera
             .render(&format!("{}.templ", L::template_name(template)), context)
@@ -522,11 +471,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 L::file_name_for_type(type_name),
                 L::file_extension()
             )))?;
-        if L::name() == "java" {
-            // Java templates has a separate import template which will be used for all generated class files
-            let rendered_import = self.tera.render("import.templ", &import_context).unwrap();
-            file.write_all(rendered_import.as_bytes())?;
-        }
         file.write_all(rendered.as_bytes())?;
         Ok(())
     }
@@ -667,7 +611,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     }
                 } else {
                     unreachable!(
-                        "The data model node will always be initialized with atleast a name"
+                        "The data model node will always be initialized with at least a name"
                     )
                 }
             }
@@ -798,7 +742,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     }
                 } else {
                     unreachable!(
-                        "The data model node will always be initialized with atleast a name"
+                        "The data model node will always be initialized with at least a name"
                     )
                 }
             }

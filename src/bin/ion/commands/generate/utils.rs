@@ -30,7 +30,7 @@ pub trait Language {
     ) -> FullyQualifiedTypeReference;
 
     /// Returns true if the type `String` specified is provided by the target language implementation
-    fn is_built_in_type(name: String) -> bool;
+    fn is_built_in_type(type_name: String) -> bool;
 
     /// Returns a fully qualified type reference name as per the programming language
     /// e.g. For a fully qualified type reference as below:
@@ -106,9 +106,9 @@ impl Language for JavaLanguage {
         }
     }
 
-    fn is_built_in_type(name: String) -> bool {
+    fn is_built_in_type(type_name: String) -> bool {
         matches!(
-            name.as_str(),
+            type_name.as_str(),
             "int"
                 | "String"
                 | "boolean"
@@ -195,9 +195,9 @@ impl Language for RustLanguage {
         }
     }
 
-    fn is_built_in_type(name: String) -> bool {
+    fn is_built_in_type(type_name: String) -> bool {
         matches!(
-            name.as_str(),
+            type_name.as_str(),
             "i64"
                 | "String"
                 | "bool"

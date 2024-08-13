@@ -125,7 +125,7 @@ impl IonCliCommand for GenerateCommand {
                             .generate_code_for_authorities(&authorities, &mut schema_system)?,
                     "rust" => {
                         // TODO: Initialize and run code generator for `rust`, once the rust templates are modified based on new code generation model
-                        todo!()
+                        todo!("Rust support is disabled until this is resolved: https://github.com/amazon-ion/ion-cli/issues/136")
                     }
                     _ => bail!(
                         "Programming language '{}' is not yet supported. Currently supported targets: 'java', 'rust'",
