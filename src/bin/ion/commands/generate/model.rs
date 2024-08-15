@@ -1,3 +1,4 @@
+use derive_builder::Builder;
 use ion_schema::isl::isl_type::IslType;
 use std::collections::HashMap;
 // This module contains a data model that the code generator can use to render a template based on the type of the model.
@@ -111,7 +112,8 @@ impl AbstractDataType {
 
 /// Represents a scalar type (e.g. a string or integer or user defined type)
 #[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, Builder, PartialEq, Serialize)]
+#[builder(setter(into))]
 pub struct Scalar {
     // Represents the fully qualified name for this data model
     // For any nested/inline scalar type this would be the name of that type.
@@ -151,7 +153,8 @@ pub struct Scalar {
 /// }
 /// ```
 #[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, Builder, PartialEq, Serialize)]
+#[builder(setter(into))]
 pub struct WrappedScalar {
     // Represents the fully qualified name of this wrapped scalar type
     // e.g. Given below ISL,
@@ -204,7 +207,8 @@ impl WrappedScalar {
 /// }
 /// ```
 #[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, Builder, PartialEq, Serialize)]
+#[builder(setter(into))]
 pub struct Sequence {
     // Represents the fully qualified name for this data model
     name: FullyQualifiedTypeName,
@@ -242,7 +246,8 @@ pub struct Sequence {
 /// }
 /// ```
 #[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, Builder, PartialEq, Serialize)]
+#[builder(setter(into))]
 pub struct Structure {
     // Represents the fully qualified name for this data model
     name: FullyQualifiedTypeName,
@@ -274,3 +279,227 @@ enum FieldPresence {
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Serialize)]
 struct FieldReference(FullyQualifiedTypeReference, FieldPresence);
+
+#[cfg(test)]
+mod model_tests {
+    use super::*;
+    use ion_schema::isl::isl_constraint::v_2_0::*;
+    use ion_schema::isl::isl_type::v_2_0::anonymous_type;
+    use ion_schema::isl::isl_type_reference::v_2_0::*;
+    use ion_schema::isl::ranges::UsizeRange;
+
+    #[test]
+    fn scalar_builder_test() {
+        let expected_scalar = Scalar {
+            name: vec![],
+            doc_comment: Some("This is scalar type".to_string()),
+            source: anonymous_type(vec![type_constraint(named_type_ref("string"))]),
+        };
+
+        let mut scalar_builder = ScalarBuilder::default();
+
+        // sets all the information about the scalar type
+        scalar_builder
+            .name(vec![])
+            .doc_comment(Some("This is scalar type".to_string()))
+            .source(anonymous_type(vec![type_constraint(named_type_ref(
+                "string",
+            ))]));
+
+        // Verify the excepted_scalar is same as the one built by scalar_builder
+        assert_eq!(expected_scalar, scalar_builder.build().unwrap());
+    }
+
+    #[test]
+    fn wrapped_scalar_builder_test() {
+        let expected_scalar = WrappedScalar {
+            name: FullyQualifiedTypeReference {
+                type_name: vec!["Foo".to_string()],
+                parameters: vec![FullyQualifiedTypeReference {
+                    type_name: vec!["String".to_string()],
+                    parameters: vec![],
+                }],
+            },
+            doc_comment: Some("This is scalar type".to_string()),
+            source: anonymous_type(vec![type_constraint(named_type_ref("string"))]),
+        };
+
+        let mut scalar_builder = WrappedScalarBuilder::default();
+
+        // sets all the information about the scalar type
+        scalar_builder
+            .name(FullyQualifiedTypeReference {
+                type_name: vec!["Foo".to_string()],
+                parameters: vec![FullyQualifiedTypeReference {
+                    type_name: vec!["String".to_string()],
+                    parameters: vec![],
+                }],
+            })
+            .doc_comment(Some("This is scalar type".to_string()))
+            .source(anonymous_type(vec![type_constraint(named_type_ref(
+                "string",
+            ))]));
+
+        // Verify the excepted_scalar is same as the one built by scalar_builder
+        assert_eq!(expected_scalar, scalar_builder.build().unwrap());
+    }
+
+    #[test]
+    fn sequence_builder_test() {
+        let expected_seq = Sequence {
+            name: vec![],
+            doc_comment: "This is sequence type of strings".to_string(),
+            element_type: FullyQualifiedTypeReference {
+                type_name: vec!["String".to_string()],
+                parameters: vec![],
+            },
+            sequence_type: SequenceType::List,
+            source: anonymous_type(vec![
+                type_constraint(named_type_ref("list")),
+                element(named_type_ref("string"), false),
+            ]),
+        };
+
+        let mut seq_builder = SequenceBuilder::default();
+
+        // sets all the information about the sequence except the `element_type`
+        seq_builder
+            .name(vec![])
+            .doc_comment("This is sequence type of strings")
+            .sequence_type(SequenceType::List)
+            .source(anonymous_type(vec![
+                type_constraint(named_type_ref("list")),
+                element(named_type_ref("string"), false),
+            ]));
+
+        // Verify that not setting `element_type` returns an error while building the sequence
+        assert!(seq_builder.build().is_err());
+
+        // sets the `element_type` for the sequence
+        seq_builder.element_type(FullyQualifiedTypeReference {
+            type_name: vec!["String".to_string()],
+            parameters: vec![],
+        });
+
+        // Verify the excepted_seq is same as the one built by seq_builder
+        assert_eq!(expected_seq, seq_builder.build().unwrap());
+    }
+
+    #[test]
+    fn struct_builder_test() {
+        let expected_struct = Structure {
+            name: vec!["org".to_string(), "example".to_string(), "Foo".to_string()],
+            doc_comment: "This is a structure".to_string(),
+            is_closed: false,
+            fields: HashMap::from_iter(
+                vec![
+                    (
+                        "foo".to_string(),
+                        FieldReference(
+                            FullyQualifiedTypeReference {
+                                type_name: vec!["String".to_string()],
+                                parameters: vec![],
+                            },
+                            FieldPresence::Required,
+                        ),
+                    ),
+                    (
+                        "bar".to_string(),
+                        FieldReference(
+                            FullyQualifiedTypeReference {
+                                type_name: vec!["int".to_string()],
+                                parameters: vec![],
+                            },
+                            FieldPresence::Required,
+                        ),
+                    ),
+                ]
+                .into_iter(),
+            ),
+            source: anonymous_type(vec![
+                type_constraint(named_type_ref("struct")),
+                fields(
+                    vec![
+                        (
+                            "foo".to_string(),
+                            variably_occurring_type_ref(
+                                named_type_ref("string"),
+                                UsizeRange::zero_or_one(),
+                            ),
+                        ),
+                        (
+                            "bar".to_string(),
+                            variably_occurring_type_ref(
+                                named_type_ref("int"),
+                                UsizeRange::zero_or_one(),
+                            ),
+                        ),
+                    ]
+                    .into_iter(),
+                ),
+            ]),
+        };
+
+        let mut struct_builder = StructureBuilder::default();
+
+        // sets all the information about the structure
+        struct_builder
+            .name(vec![
+                "org".to_string(),
+                "example".to_string(),
+                "Foo".to_string(),
+            ])
+            .doc_comment("This is a structure")
+            .is_closed(false)
+            .fields(HashMap::from_iter(
+                vec![
+                    (
+                        "foo".to_string(),
+                        FieldReference(
+                            FullyQualifiedTypeReference {
+                                type_name: vec!["String".to_string()],
+                                parameters: vec![],
+                            },
+                            FieldPresence::Required,
+                        ),
+                    ),
+                    (
+                        "bar".to_string(),
+                        FieldReference(
+                            FullyQualifiedTypeReference {
+                                type_name: vec!["int".to_string()],
+                                parameters: vec![],
+                            },
+                            FieldPresence::Required,
+                        ),
+                    ),
+                ]
+                .into_iter(),
+            ))
+            .source(anonymous_type(vec![
+                type_constraint(named_type_ref("struct")),
+                fields(
+                    vec![
+                        (
+                            "foo".to_string(),
+                            variably_occurring_type_ref(
+                                named_type_ref("string"),
+                                UsizeRange::zero_or_one(),
+                            ),
+                        ),
+                        (
+                            "bar".to_string(),
+                            variably_occurring_type_ref(
+                                named_type_ref("int"),
+                                UsizeRange::zero_or_one(),
+                            ),
+                        ),
+                    ]
+                    .into_iter(),
+                ),
+            ]));
+
+        // Verify the expected_struct is same as the one built by struct_builder
+        assert_eq!(expected_struct, struct_builder.build().unwrap());
+    }
+}
