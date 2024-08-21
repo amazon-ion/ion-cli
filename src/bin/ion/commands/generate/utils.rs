@@ -25,6 +25,7 @@ pub trait Language {
     /// e.g.
     ///     target_type = "Foo" returns "java.util.ArrayList<Foo>"
     ///     target_type = "Foo" returns "Vec<Foo>"
+    #[allow(dead_code)]
     fn target_type_as_sequence(
         target_type: FullyQualifiedTypeReference,
     ) -> FullyQualifiedTypeReference;
@@ -40,6 +41,7 @@ pub trait Language {
     ///   }
     ///   In Java, `org.example.Foo`
     ///   In Rust, `org::example::Foo`
+    #[allow(dead_code)]
     fn fully_qualified_type_ref(name: &FullyQualifiedTypeReference) -> String;
 
     /// Returns the template as string based on programming language

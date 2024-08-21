@@ -26,6 +26,7 @@ impl CodeGenContext {
 /// Represents a sequenced type which could either be a list or s-expression.
 /// This is used by `AbstractDataType` to represent sequence type for `Sequence` variant.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[allow(dead_code)]
 pub enum SequenceType {
     List,
     SExp,

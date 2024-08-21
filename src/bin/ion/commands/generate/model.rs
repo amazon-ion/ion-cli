@@ -147,6 +147,7 @@ impl TryFrom<&Value> for FullyQualifiedTypeReference {
 }
 
 impl FullyQualifiedTypeReference {
+    #[allow(dead_code)]
     pub fn with_parameters(&mut self, parameters: Vec<FullyQualifiedTypeReference>) {
         self.parameters = parameters;
     }
@@ -154,8 +155,11 @@ impl FullyQualifiedTypeReference {
 
 /// Builder for abstract data types
 pub enum AbstractDataTypeBuilder {
+    #[allow(dead_code)]
     WrappedScalar(WrappedScalarBuilder),
+    #[allow(dead_code)]
     Scalar(ScalarBuilder),
+    #[allow(dead_code)]
     Sequence(SequenceBuilder),
     Structure(StructureBuilder),
 }
@@ -515,31 +519,28 @@ mod model_tests {
             name: vec!["org".to_string(), "example".to_string(), "Foo".to_string()],
             doc_comment: Some("This is a structure".to_string()),
             is_closed: false,
-            fields: HashMap::from_iter(
-                vec![
-                    (
-                        "foo".to_string(),
-                        FieldReference(
-                            FullyQualifiedTypeReference {
-                                type_name: vec!["String".to_string()],
-                                parameters: vec![],
-                            },
-                            FieldPresence::Required,
-                        ),
+            fields: HashMap::from_iter(vec![
+                (
+                    "foo".to_string(),
+                    FieldReference(
+                        FullyQualifiedTypeReference {
+                            type_name: vec!["String".to_string()],
+                            parameters: vec![],
+                        },
+                        FieldPresence::Required,
                     ),
-                    (
-                        "bar".to_string(),
-                        FieldReference(
-                            FullyQualifiedTypeReference {
-                                type_name: vec!["int".to_string()],
-                                parameters: vec![],
-                            },
-                            FieldPresence::Required,
-                        ),
+                ),
+                (
+                    "bar".to_string(),
+                    FieldReference(
+                        FullyQualifiedTypeReference {
+                            type_name: vec!["int".to_string()],
+                            parameters: vec![],
+                        },
+                        FieldPresence::Required,
                     ),
-                ]
-                .into_iter(),
-            ),
+                ),
+            ]),
             source: anonymous_type(vec![
                 type_constraint(named_type_ref("struct")),
                 fields(
@@ -575,31 +576,28 @@ mod model_tests {
             ])
             .doc_comment(Some("This is a structure".to_string()))
             .is_closed(false)
-            .fields(HashMap::from_iter(
-                vec![
-                    (
-                        "foo".to_string(),
-                        FieldReference(
-                            FullyQualifiedTypeReference {
-                                type_name: vec!["String".to_string()],
-                                parameters: vec![],
-                            },
-                            FieldPresence::Required,
-                        ),
+            .fields(HashMap::from_iter(vec![
+                (
+                    "foo".to_string(),
+                    FieldReference(
+                        FullyQualifiedTypeReference {
+                            type_name: vec!["String".to_string()],
+                            parameters: vec![],
+                        },
+                        FieldPresence::Required,
                     ),
-                    (
-                        "bar".to_string(),
-                        FieldReference(
-                            FullyQualifiedTypeReference {
-                                type_name: vec!["int".to_string()],
-                                parameters: vec![],
-                            },
-                            FieldPresence::Required,
-                        ),
+                ),
+                (
+                    "bar".to_string(),
+                    FieldReference(
+                        FullyQualifiedTypeReference {
+                            type_name: vec!["int".to_string()],
+                            parameters: vec![],
+                        },
+                        FieldPresence::Required,
                     ),
-                ]
-                .into_iter(),
-            ))
+                ),
+            ]))
             .source(anonymous_type(vec![
                 type_constraint(named_type_ref("struct")),
                 fields(

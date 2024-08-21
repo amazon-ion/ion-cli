@@ -2,7 +2,6 @@ use crate::commands::generate::model::{
     ScalarBuilderError, SequenceBuilderError, StructureBuilderError, WrappedScalarBuilderError,
 };
 use ion_schema::result::IonSchemaError;
-use std::error::Error;
 use thiserror::Error;
 
 /// Represents code generation result

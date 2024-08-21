@@ -1,6 +1,6 @@
 use crate::commands::generate::context::CodeGenContext;
 use crate::commands::generate::model::{
-    AbstractDataType, AbstractDataTypeBuilder, DataModelNode, FieldPresence, FieldReference,
+    AbstractDataTypeBuilder, DataModelNode, FieldPresence, FieldReference,
     FullyQualifiedTypeReference, StructureBuilder,
 };
 use crate::commands::generate::result::{
@@ -332,14 +332,14 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         &mut self,
         isl_type_name: &String,
         isl_type: &IslType,
-        mut code_gen_context: &mut CodeGenContext,
+        code_gen_context: &mut CodeGenContext,
     ) -> CodeGenResult<DataModelNode> {
         self.current_type_fully_qualified_name
             .push(isl_type_name.to_case(Case::UpperCamel));
 
         let constraints = isl_type.constraints();
         for constraint in constraints {
-            self.map_constraint_to_abstract_data_type(constraint, &mut code_gen_context, isl_type)?;
+            self.map_constraint_to_abstract_data_type(constraint, code_gen_context, isl_type)?;
         }
 
         // Build the abstract data type based on the current builder of the code generator
@@ -547,6 +547,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
 #[cfg(test)]
 mod isl_to_model_tests {
     use super::*;
+    use crate::commands::generate::model::AbstractDataType;
     use ion_schema::isl;
 
     #[test]
@@ -598,7 +599,7 @@ mod isl_to_model_tests {
                     "MyStruct".to_string()
                 ]
             );
-            assert_eq!(structure.is_closed, false);
+            assert!(!structure.is_closed);
             assert_eq!(structure.source, isl_type);
             assert_eq!(
                 structure.fields,
@@ -682,7 +683,7 @@ mod isl_to_model_tests {
                     "MyNestedStruct".to_string()
                 ]
             );
-            assert_eq!(structure.is_closed, false);
+            assert!(!structure.is_closed);
             assert_eq!(structure.source, isl_type);
             assert_eq!(
                 structure.fields,
