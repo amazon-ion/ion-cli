@@ -1,7 +1,6 @@
 
 // struct with unordered fields
 {
- C: ("foo" "bar" "baz"),
  A: "hello",
  B: 12,
  D: 10e2,

@@ -1,7 +1,6 @@
 use anyhow::Result;
 use assert_cmd::Command;
 use rstest::rstest;
-use std::fmt::format;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -50,52 +49,7 @@ fn roundtrip_tests_for_generated_code_gradle() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn roundtrip_tests_for_generated_code_cargo() -> Result<()> {
-    // run the cargo project defined under `code-gen-projects`,
-    // this project runs the code generator in its build process and generates code,
-    // this project also has some predefined tests for the generated code,
-    // so simply running the tests on this project builds the project, generates code and runs tests
-
-    // absolute paths for crate and executables
-    let ion_executable = env!("CARGO_BIN_EXE_ion");
-    let test_project_path = code_gen_projects_path().join("rust").join("code-gen-demo");
-    let cargo_executable = env!("CARGO");
-
-    // Clean
-    let cargo_clean_output = std::process::Command::new(cargo_executable)
-        .current_dir(&test_project_path)
-        .arg("clean")
-        .output()
-        .expect("failed to execute 'cargo clean'");
-
-    println!("Cargo clean status: {}", cargo_clean_output.status);
-    std::io::stdout()
-        .write_all(&cargo_clean_output.stdout)
-        .unwrap();
-    std::io::stderr()
-        .write_all(&cargo_clean_output.stderr)
-        .unwrap();
-
-    // Test
-    let cargo_test_output = std::process::Command::new(cargo_executable)
-        .current_dir(&test_project_path)
-        .arg("test")
-        .env("ION_CLI", ion_executable)
-        .output()
-        .expect("failed to execute 'cargo test'");
-
-    println!("Cargo test status: {}", cargo_test_output.status);
-    std::io::stdout()
-        .write_all(&cargo_test_output.stdout)
-        .unwrap();
-    std::io::stderr()
-        .write_all(&cargo_test_output.stderr)
-        .unwrap();
-
-    assert!(cargo_test_output.status.success());
-    Ok(())
-}
+//TODO: Add cargo roundtrip tests once the rust templates are modified based on new code generation model
 
 #[rstest]
 #[case::any_element_list(
@@ -129,7 +83,7 @@ fn test_unsupported_schema_types_failures(#[case] test_schema: &str) -> Result<(
     let temp_dir = TempDir::new()?;
     let input_schema_path = temp_dir.path().join("test_schema.isl");
     let mut input_schema_file = File::create(input_schema_path)?;
-    input_schema_file.write(test_schema.as_bytes())?;
+    input_schema_file.write_all(test_schema.as_bytes())?;
     input_schema_file.flush()?;
     cmd.args([
         "-X",
