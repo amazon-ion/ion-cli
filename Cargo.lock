@@ -1018,9 +1018,9 @@ dependencies = [
 
 [[package]]
 name = "ion-schema"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c270634d42a3369c81e1f04087a62809407db9722667a484786b3844365204f"
+checksum = "44fcb7c635f76edbef5ddd529e4277712f0a2c7bc0c915dba8c91fa704701c88"
 dependencies = [
  "half",
  "ion-rs 0.18.1",
