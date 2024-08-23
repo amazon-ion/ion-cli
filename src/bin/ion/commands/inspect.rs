@@ -193,10 +193,10 @@ const BYTES_PER_ROW: usize = 8;
 /// otherwise.
 trait CommentFn<'x>: FnMut(&mut CommandOutput, LazyValue<'x, AnyEncoding>) -> Result<bool> {}
 
-impl<'x, F> CommentFn<'x> for F where
-    F: FnMut(&mut CommandOutput, LazyValue<'x, AnyEncoding>) -> Result<bool>
-{
-}
+impl<'x, F> CommentFn<'x> for F
+where
+    F: FnMut(&mut CommandOutput, LazyValue<'x, AnyEncoding>) -> Result<bool>,
+{}
 
 /// Returns a `CommentFn` implementation that does nothing.
 fn no_comment<'x>() -> impl CommentFn<'x> {
@@ -620,25 +620,6 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             }
         }
     }
-    // fn inspect_struct(
-    //     &mut self,
-    //     depth: usize,
-    //     delimiter: &str,
-    //     struct_: LazyStruct<'_, AnyEncoding>,
-    // ) -> Result<()> {
-    //     match struct_.expanded().source() {
-    //         ExpandedStructSource::ValueLiteral(raw_struct) => {
-    //             use LazyRawValueKind::*;
-    //             match raw_struct.as_value().kind() {
-    //                 Binary_1_0(v) =>
-    //                     self.inspect_literal_struct(depth, delimiter, struct_, v),
-    //                 Binary_1_1(v) => self.inspect_literal_struct(depth, delimiter, struct_, v),
-    //                 Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
-    //             }
-    //         }
-    //         ExpandedStructSource::Template(_, _, _) => self.inspect_ephemeral_struct(depth, delimiter, struct_)
-    //     }
-    // }
 
     fn inspect_symbol_table(&mut self, struct_: LazyStruct<'_, AnyEncoding>) -> Result<()> {
         let value = struct_.as_value();
@@ -727,7 +708,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     fn inspect_ephemeral_annotations<'x>(
         &mut self,
         depth: usize,
-        annotations: impl Iterator<Item = IonResult<SymbolRef<'x>>>,
+        annotations: impl Iterator<Item=IonResult<SymbolRef<'x>>>,
     ) -> Result<()> {
         self.write_blank_offset_length_and_bytes(depth)?;
         self.with_style(ephemeral_annotations_style(), |out| {
@@ -746,8 +727,8 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     /// how each annotation was encoded: as a SID (`$10`) or as inline UTF-8 bytes (`foo`).
     fn display_annotations_with_raw_encoding_comment<'x>(
         &mut self,
-        annotations: impl Iterator<Item = IonResult<SymbolRef<'x>>>,
-        raw_annotations: impl Iterator<Item = IonResult<RawSymbolRef<'x>>>,
+        annotations: impl Iterator<Item=IonResult<SymbolRef<'x>>>,
+        raw_annotations: impl Iterator<Item=IonResult<RawSymbolRef<'x>>>,
     ) -> Result<()> {
         let formatted_annotations = self.format_annotations(annotations)?;
         self.write_with_style(annotations_style(), formatted_annotations.as_str())?;
@@ -820,7 +801,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         value_delimiter: &str,
         closing_delimiter: &str,
         trailing_delimiter: &str,
-        nested_values: impl IntoIterator<Item = IonResult<LazyValue<'x, AnyEncoding>>>,
+        nested_values: impl IntoIterator<Item=IonResult<LazyValue<'x, AnyEncoding>>>,
         encoded_value: impl EncodedBinaryValue<'x, D>,
         value_comment_fn: impl CommentFn<'x>,
     ) -> Result<()> {
@@ -847,7 +828,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         value_delimiter: &str,
         closing_delimiter: &str,
         trailing_delimiter: &str,
-        nested_values: impl IntoIterator<Item = IonResult<LazyValue<'x, AnyEncoding>>>,
+        nested_values: impl IntoIterator<Item=IonResult<LazyValue<'x, AnyEncoding>>>,
         value_comment_fn: impl CommentFn<'x>,
     ) -> Result<()> {
         self.write_blank_offset_length_and_bytes(depth)?;
@@ -870,7 +851,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         &mut self,
         depth: usize,
         value_delimiter: &str,
-        nested_values: impl IntoIterator<Item = IonResult<LazyValue<'x, AnyEncoding>>>,
+        nested_values: impl IntoIterator<Item=IonResult<LazyValue<'x, AnyEncoding>>>,
         mut value_comment_fn: impl CommentFn<'x>,
     ) -> Result<()> {
         let mut has_printed_skip_message = false;
@@ -1246,7 +1227,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
 
     fn format_annotations<'x>(
         &self,
-        annotations: impl Iterator<Item = IonResult<SymbolRef<'x>>>,
+        annotations: impl Iterator<Item=IonResult<SymbolRef<'x>>>,
     ) -> Result<String> {
         use std::fmt::Write;
         let mut formatted_annotations = String::new();
