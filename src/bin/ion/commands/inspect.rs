@@ -2,12 +2,12 @@ use std::fmt::Display;
 use std::io::Write;
 use std::str::FromStr;
 
+use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 use anyhow::{bail, Context, Result};
-use clap::{Arg, ArgAction, ArgMatches, Command};
 use clap::builder::ValueParser;
+use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_rs::v1_0::{EncodedBinaryValue, RawValueRef};
 use ion_rs::*;
-use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 
 // The `inspect` command uses the `termcolor` crate to colorize its text when STDOUT is a TTY.
 use termcolor::{Color, ColorSpec, WriteColor};
@@ -83,11 +83,12 @@ value start after `--skip-bytes`.
                     .action(ArgAction::SetTrue)
                     .value_parser(ValueParser::bool())
                     .help("Do not show values produced by macro evaluation.")
-                    .long_help("When specified, the inspector will display e-expressions
+                    .long_help(
+                        "When specified, the inspector will display e-expressions
 (that is: data stream macro invocations) but will not show values produced
  by evaluating those e-expressions. If an e-expression produces a 'system'
  value that modifies the encoding context (that is: a symbol table or
- encoding directive), that value will still be displayed."
+ encoding directive), that value will still be displayed.",
                     ),
             )
     }
@@ -128,7 +129,14 @@ value start after `--skip-bytes`.
         CommandIo::new(args).for_each_input(|output, input| {
             let input_name = input.name().to_owned();
             let input = input.into_source();
-            inspect_input(&input_name, input, output, bytes_to_skip, limit_bytes, hide_expansion)
+            inspect_input(
+                &input_name,
+                input,
+                output,
+                bytes_to_skip,
+                limit_bytes,
+                hide_expansion,
+            )
         })
     }
 }
@@ -185,10 +193,10 @@ const BYTES_PER_ROW: usize = 8;
 /// otherwise.
 trait CommentFn<'x>: FnMut(&mut CommandOutput, LazyValue<'x, AnyEncoding>) -> Result<bool> {}
 
-impl<'x, F> CommentFn<'x> for F
-where
-    F: FnMut(&mut CommandOutput, LazyValue<'x, AnyEncoding>) -> Result<bool>,
-{}
+impl<'x, F> CommentFn<'x> for F where
+    F: FnMut(&mut CommandOutput, LazyValue<'x, AnyEncoding>) -> Result<bool>
+{
+}
 
 /// Returns a `CommentFn` implementation that does nothing.
 fn no_comment<'x>() -> impl CommentFn<'x> {
@@ -401,11 +409,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         self.write_with_style(comment_style(), "// End of stream")
     }
 
-    fn inspect_eexp(
-        &mut self,
-        depth: usize,
-        eexp: EExpression<AnyEncoding>,
-    ) -> Result<()> {
+    fn inspect_eexp(&mut self, depth: usize, eexp: EExpression<AnyEncoding>) -> Result<()> {
         let mut formatter = BytesFormatter::new(
             BYTES_PER_ROW,
             vec![
@@ -415,12 +419,23 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             ],
         );
         self.newline()?;
-        self.write_offset_length_and_bytes(depth, eexp.range().start, eexp.span().len(), &mut formatter)?;
+        self.write_offset_length_and_bytes(
+            depth,
+            eexp.range().start,
+            eexp.span().len(),
+            &mut formatter,
+        )?;
         self.with_style(eexp_style(), |out| {
             write!(out, "(:{}", eexp.invoked_macro().id_text())?;
             Ok(())
         })?;
-        for (param, arg_result) in eexp.invoked_macro().signature().parameters().iter().zip(eexp.arguments()) {
+        for (param, arg_result) in eexp
+            .invoked_macro()
+            .signature()
+            .parameters()
+            .iter()
+            .zip(eexp.arguments())
+        {
             let arg = arg_result?;
             match arg {
                 ValueExpr::ValueLiteral(value) => {
@@ -434,7 +449,9 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                     match invocation.kind() {
                         EExp(eexp_arg) => self.inspect_eexp(depth + 1, eexp_arg)?,
                         EExpArgGroup(_) => todo!("e-exp arg groups"),
-                        TemplateMacro(_) => unreachable!("e-exp args by definition cannot be template invocations"),
+                        TemplateMacro(_) => {
+                            unreachable!("e-exp args by definition cannot be template invocations")
+                        }
                     }
                 }
             }
@@ -491,14 +508,14 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                     Binary_1_0(bin_val) => {
                         self.inspect_literal_scalar(depth, delimiter, value, bin_val, comment_fn)
                     }
-                    Binary_1_1(bin_val) => self.inspect_literal_scalar(depth, delimiter, value, bin_val, comment_fn),
+                    Binary_1_1(bin_val) => {
+                        self.inspect_literal_scalar(depth, delimiter, value, bin_val, comment_fn)
+                    }
                     Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
                 }
             }
             // Otherwise, display the value without showing its encoding (if any)
-            _ => {
-                self.inspect_ephemeral_scalar(depth, delimiter, value, comment_fn)
-            }
+            _ => self.inspect_ephemeral_scalar(depth, delimiter, value, comment_fn),
         }
     }
 
@@ -517,19 +534,17 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                 use LazyRawSExpKind::*;
                 match raw_sexp.kind() {
                     Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
-                    Binary_1_0(v) => self.inspect_literal_sexp(depth, delimiter, sexp, v.as_value()),
-                    Binary_1_1(v) => self.inspect_literal_sexp(depth, delimiter, sexp, v.as_value()),
+                    Binary_1_0(v) => {
+                        self.inspect_literal_sexp(depth, delimiter, sexp, v.as_value())
+                    }
+                    Binary_1_1(v) => {
+                        self.inspect_literal_sexp(depth, delimiter, sexp, v.as_value())
+                    }
                 }
             }
-            Template(_, _element) => self.inspect_ephemeral_sequence(
-                depth,
-                "(",
-                "",
-                ")",
-                delimiter,
-                sexp,
-                no_comment(),
-            )
+            Template(_, _element) => {
+                self.inspect_ephemeral_sequence(depth, "(", "", ")", delimiter, sexp, no_comment())
+            }
         }
     }
 
@@ -548,30 +563,26 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                 use LazyRawListKind::*;
                 match raw_list.kind() {
                     Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
-                    Binary_1_0(v) => {
-                        self.inspect_literal_sequence(
-                            depth,
-                            "[",
-                            ",",
-                            "]",
-                            delimiter,
-                            list.iter(),
-                            v.as_value(),
-                            no_comment(),
-                        )
-                    }
-                    Binary_1_1(v) => {
-                        self.inspect_literal_sequence(
-                            depth,
-                            "[",
-                            ",",
-                            "]",
-                            delimiter,
-                            list.iter(),
-                            v.as_value(),
-                            no_comment(),
-                        )
-                    }
+                    Binary_1_0(v) => self.inspect_literal_sequence(
+                        depth,
+                        "[",
+                        ",",
+                        "]",
+                        delimiter,
+                        list.iter(),
+                        v.as_value(),
+                        no_comment(),
+                    ),
+                    Binary_1_1(v) => self.inspect_literal_sequence(
+                        depth,
+                        "[",
+                        ",",
+                        "]",
+                        delimiter,
+                        list.iter(),
+                        v.as_value(),
+                        no_comment(),
+                    ),
                 }
             }
             Template(_, _element) => self.inspect_ephemeral_sequence(
@@ -582,7 +593,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                 delimiter,
                 list.iter(),
                 no_comment(),
-            )
+            ),
         }
     }
 
@@ -599,13 +610,14 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             ExpandedStructSource::ValueLiteral(raw_struct) => {
                 use LazyRawValueKind::*;
                 match raw_struct.as_value().kind() {
-                    Binary_1_0(v) =>
-                        self.inspect_literal_struct(depth, delimiter, struct_, v),
+                    Binary_1_0(v) => self.inspect_literal_struct(depth, delimiter, struct_, v),
                     Binary_1_1(v) => self.inspect_literal_struct(depth, delimiter, struct_, v),
                     Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
                 }
             }
-            ExpandedStructSource::Template(_, _, _) => self.inspect_ephemeral_struct(depth, delimiter, struct_)
+            ExpandedStructSource::Template(_, _, _) => {
+                self.inspect_ephemeral_struct(depth, delimiter, struct_)
+            }
         }
     }
     // fn inspect_struct(
@@ -665,15 +677,18 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                     Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
                 }
             }
-            ExpandedValueSource::Template(_env, element) => {
-                self.inspect_ephemeral_annotations(depth, element.annotations().iter().map(|s| Ok(SymbolRef::from(s))))
-            }
-            ExpandedValueSource::Constructed(annotations, _) => {
-                self.inspect_ephemeral_annotations(depth, annotations.iter().copied().map(|s| Ok(s.into())))
-            }
-            ExpandedValueSource::SingletonEExp(eexp) => {
-                self.inspect_ephemeral_annotations(depth, eexp.require_singleton_annotations().map(|s| Ok(s.into())))
-            }
+            ExpandedValueSource::Template(_env, element) => self.inspect_ephemeral_annotations(
+                depth,
+                element.annotations().iter().map(|s| Ok(SymbolRef::from(s))),
+            ),
+            ExpandedValueSource::Constructed(annotations, _) => self.inspect_ephemeral_annotations(
+                depth,
+                annotations.iter().copied().map(|s| Ok(s.into())),
+            ),
+            ExpandedValueSource::SingletonEExp(eexp) => self.inspect_ephemeral_annotations(
+                depth,
+                eexp.require_singleton_annotations().map(|s| Ok(s.into())),
+            ),
         }
     }
 
@@ -690,7 +705,10 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         let mut formatter = BytesFormatter::new(
             BYTES_PER_ROW,
             vec![
-                IonBytes::new(BytesKind::AnnotationsHeader, encoded_value.annotations_header_span().bytes()),
+                IonBytes::new(
+                    BytesKind::AnnotationsHeader,
+                    encoded_value.annotations_header_span().bytes(),
+                ),
                 IonBytes::new(
                     BytesKind::AnnotationsSequence,
                     encoded_value.annotations_sequence_span().bytes(),
@@ -700,12 +718,16 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         let range = encoded_value.annotations_span().range();
         self.write_offset_length_and_bytes(depth, range.start, range.len(), &mut formatter)?;
 
-        self.display_annotations_with_raw_encoding_comment(value.annotations(), encoded_value.annotations())
+        self.display_annotations_with_raw_encoding_comment(
+            value.annotations(),
+            encoded_value.annotations(),
+        )
     }
 
-    fn inspect_ephemeral_annotations<'x>(&mut self,
-                                         depth: usize,
-                                         annotations: impl Iterator<Item=IonResult<SymbolRef<'x>>>,
+    fn inspect_ephemeral_annotations<'x>(
+        &mut self,
+        depth: usize,
+        annotations: impl Iterator<Item = IonResult<SymbolRef<'x>>>,
     ) -> Result<()> {
         self.write_blank_offset_length_and_bytes(depth)?;
         self.with_style(ephemeral_annotations_style(), |out| {
@@ -722,9 +744,10 @@ impl<'a, 'b> IonInspector<'a, 'b> {
 
     /// When the annotations' source is a stream literal, this method adds a text comment indicating
     /// how each annotation was encoded: as a SID (`$10`) or as inline UTF-8 bytes (`foo`).
-    fn display_annotations_with_raw_encoding_comment<'x>(&mut self,
-                                                         annotations: impl Iterator<Item=IonResult<SymbolRef<'x>>>,
-                                                         raw_annotations: impl Iterator<Item=IonResult<RawSymbolRef<'x>>>,
+    fn display_annotations_with_raw_encoding_comment<'x>(
+        &mut self,
+        annotations: impl Iterator<Item = IonResult<SymbolRef<'x>>>,
+        raw_annotations: impl Iterator<Item = IonResult<RawSymbolRef<'x>>>,
     ) -> Result<()> {
         let formatted_annotations = self.format_annotations(annotations)?;
         self.write_with_style(annotations_style(), formatted_annotations.as_str())?;
@@ -797,7 +820,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         value_delimiter: &str,
         closing_delimiter: &str,
         trailing_delimiter: &str,
-        nested_values: impl IntoIterator<Item=IonResult<LazyValue<'x, AnyEncoding>>>,
+        nested_values: impl IntoIterator<Item = IonResult<LazyValue<'x, AnyEncoding>>>,
         encoded_value: impl EncodedBinaryValue<'x, D>,
         value_comment_fn: impl CommentFn<'x>,
     ) -> Result<()> {
@@ -824,7 +847,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         value_delimiter: &str,
         closing_delimiter: &str,
         trailing_delimiter: &str,
-        nested_values: impl IntoIterator<Item=IonResult<LazyValue<'x, AnyEncoding>>>,
+        nested_values: impl IntoIterator<Item = IonResult<LazyValue<'x, AnyEncoding>>>,
         value_comment_fn: impl CommentFn<'x>,
     ) -> Result<()> {
         self.write_blank_offset_length_and_bytes(depth)?;
@@ -847,7 +870,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         &mut self,
         depth: usize,
         value_delimiter: &str,
-        nested_values: impl IntoIterator<Item=IonResult<LazyValue<'x, AnyEncoding>>>,
+        nested_values: impl IntoIterator<Item = IonResult<LazyValue<'x, AnyEncoding>>>,
         mut value_comment_fn: impl CommentFn<'x>,
     ) -> Result<()> {
         let mut has_printed_skip_message = false;
@@ -939,11 +962,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     }
 
     /// Inspects all values (however deeply nested) starting at the current field.
-    fn inspect_field(
-        &mut self,
-        depth: usize,
-        field: LazyField<AnyEncoding>,
-    ) -> Result<()> {
+    fn inspect_field(&mut self, depth: usize, field: LazyField<AnyEncoding>) -> Result<()> {
         let name = field.name()?;
         if let Some(raw_name) = field.raw_name() {
             self.inspect_literal_field_name(depth, raw_name, name)?;
@@ -1016,9 +1035,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                 "stepping out",
             )? {
                 InspectorAction::Skip => continue,
-                InspectorAction::Inspect => {
-                    self.inspect_field(depth + 1, field)?
-                }
+                InspectorAction::Inspect => self.inspect_field(depth + 1, field)?,
                 InspectorAction::LimitReached => break,
             }
         }
@@ -1058,9 +1075,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                     self.inspect_lst_symbols_field(struct_, field, raw_field)?
                 }
                 // TODO: if field.name()? == "imports" => {}
-                InspectorAction::Inspect => {
-                    self.inspect_field(TOP_LEVEL_DEPTH + 1, field)?
-                }
+                InspectorAction::Inspect => self.inspect_field(TOP_LEVEL_DEPTH + 1, field)?,
                 InspectorAction::LimitReached => break,
             }
         }
@@ -1168,10 +1183,8 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         let range = encoded_value.value_span().range();
 
         let opcode_bytes = IonBytes::new(BytesKind::Opcode, encoded_value.value_opcode_span());
-        let length_bytes = IonBytes::new(
-            BytesKind::TrailingLength,
-            encoded_value.value_length_span(),
-        );
+        let length_bytes =
+            IonBytes::new(BytesKind::TrailingLength, encoded_value.value_length_span());
         let body_bytes = IonBytes::new(BytesKind::ValueBody, encoded_value.value_body_span());
 
         let mut formatter =
@@ -1231,19 +1244,23 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         Ok(())
     }
 
-    fn format_annotations<'x>(&self, annotations: impl Iterator<Item=IonResult<SymbolRef<'x>>>) -> Result<String> {
+    fn format_annotations<'x>(
+        &self,
+        annotations: impl Iterator<Item = IonResult<SymbolRef<'x>>>,
+    ) -> Result<String> {
         use std::fmt::Write;
         let mut formatted_annotations = String::new();
         for annotation in annotations {
-            write!(&mut formatted_annotations, "{}::", annotation?.text().unwrap_or("$0"))?;
+            write!(
+                &mut formatted_annotations,
+                "{}::",
+                annotation?.text().unwrap_or("$0")
+            )?;
         }
         Ok(formatted_annotations)
     }
 
-    fn format_scalar_body(
-        &mut self,
-        value: LazyValue<AnyEncoding>,
-    ) -> Result<String> {
+    fn format_scalar_body(&mut self, value: LazyValue<AnyEncoding>) -> Result<String> {
         self.text_writer
             .write(value.read()?)
             .expect("failed to write text value to in-memory buffer")
@@ -1388,7 +1405,10 @@ fn header_style() -> ColorSpec {
 
 fn eexp_style() -> ColorSpec {
     let mut style = ColorSpec::new();
-    style.set_fg(Some(Color::Green)).set_bold(true).set_intense(true);
+    style
+        .set_fg(Some(Color::Green))
+        .set_bold(true)
+        .set_intense(true);
     style
 }
 
