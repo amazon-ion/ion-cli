@@ -157,11 +157,6 @@ impl WithIonCliArgument for ClapCommand {
         )
     }
 
-    /// All commands automatically have the "unstable" opt-in flag. This makes it visible.
-    fn show_unstable_flag(self) -> Self {
-        self.mut_arg(UNSTABLE_FLAG, |arg| arg.hide(false))
-    }
-
     fn with_ion_version(self) -> Self {
         // TODO When this arg/feature becomes stable:
         //    Remove: show_unstable_flag()
@@ -195,6 +190,11 @@ impl WithIonCliArgument for ClapCommand {
                 // Do not show this flag in `help` for commands that don't take an `--input` flag.
                 .hide(!accepts_input),
         )
+    }
+
+    /// All commands automatically have the "unstable" opt-in flag. This makes it visible.
+    fn show_unstable_flag(self) -> Self {
+        self.mut_arg(UNSTABLE_FLAG, |arg| arg.hide(false))
     }
 }
 
