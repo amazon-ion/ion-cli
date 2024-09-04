@@ -1204,7 +1204,6 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         value: LazyValue<'x, AnyEncoding>,
         mut comment_fn: impl CommentFn<'x>,
     ) -> Result<()> {
-        self.write_blank_offset_length_and_bytes(depth)?;
         let formatted_value = self.format_scalar_body(value)?;
         let style = if let Some(variable) = value.expanded().variable() {
             self.write_offset_length_and_bytes_comment(depth, "", "", variable.name())?;
