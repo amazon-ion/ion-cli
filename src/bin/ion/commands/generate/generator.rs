@@ -1,7 +1,7 @@
 use crate::commands::generate::context::CodeGenContext;
 use crate::commands::generate::model::{
-    AbstractDataTypeBuilder, DataModelNode, FieldPresence, FieldReference,
-    FullyQualifiedTypeReference, StructureBuilder,
+    AbstractDataType, DataModelNode, FieldPresence, FieldReference, FullyQualifiedTypeReference,
+    StructureBuilder,
 };
 use crate::commands::generate::result::{
     invalid_abstract_data_type_error, invalid_abstract_data_type_raw_error, CodeGenResult,
@@ -105,7 +105,7 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
 }
 
 impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
-    /// Represents a [tera] filter that converts given tera string value to [upper camel case].
+    /// A [tera] filter that converts given tera string value to [upper camel case].
     /// Returns error if the given value is not a string.
     ///
     /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
@@ -145,7 +145,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         ))
     }
 
-    /// Represents a [tera] filter that converts given tera string value to [snake case].
+    /// A [tera] filter that converts given tera string value to [snake case].
     /// Returns error if the given value is not a string.
     ///
     /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
@@ -164,7 +164,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         ))
     }
 
-    /// Represents a [tera] filter that return true if the value is a built in type, otherwise returns false.
+    /// A [tera] filter that return true if the value is a built in type, otherwise returns false.
     ///
     /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
     ///
@@ -176,12 +176,14 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         Ok(tera::Value::Bool(L::is_built_in_type(
             value
                 .as_str()
-                .ok_or(tera::Error::msg("Required string for this filter"))?
+                .ok_or(tera::Error::msg(
+                    "Required string for the `is_built_in_type` filter",
+                ))?
                 .to_string(),
         )))
     }
 
-    /// Represents a [tera] filter that return keys for the given object.
+    /// A [tera] filter that return keys for the given object.
     ///
     /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
     ///
@@ -193,14 +195,14 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         Ok(tera::Value::Array(
             value
                 .as_object()
-                .ok_or(tera::Error::msg("Required object for this filter"))?
+                .ok_or(tera::Error::msg("Required object for `keys` filter"))?
                 .keys()
                 .map(|k| tera::Value::String(k.to_string()))
                 .collect(),
         ))
     }
 
-    /// Represents a [tera] filter that returns a string representation of a tera object i.e. `FullyQualifiedTypeReference`.
+    /// A [tera] filter that returns a string representation of a tera object i.e. `FullyQualifiedTypeReference`.
     ///
     /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
     ///
@@ -338,34 +340,50 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             .push(isl_type_name.to_case(Case::UpperCamel));
 
         let constraints = isl_type.constraints();
-        for constraint in constraints {
-            self.map_constraint_to_abstract_data_type(constraint, code_gen_context, isl_type)?;
+
+        // Initialize `AbstractDataType` according to the first constraint in the list of constraints
+        if !constraints.is_empty() {
+            let abstract_data_type: AbstractDataType = match constraints[0].constraint() {
+                IslConstraintValue::Type(isl_type_ref) => match isl_type_ref.name().as_str() {
+                    "list" | "sexp" => todo!("Sequence model implementation is pending"),
+                    "struct" => self.build_structure_from_constraints(
+                        constraints,
+                        code_gen_context,
+                        isl_type,
+                    )?,
+                    _ => todo!("Scalar model implementation is pending"),
+                },
+                IslConstraintValue::Fields(_, _) => {
+                    self.build_structure_from_constraints(constraints, code_gen_context, isl_type)?
+                }
+                IslConstraintValue::Element(_, _) => {
+                    todo!("Sequence model implementation is pending")
+                }
+                _ => {
+                    return invalid_abstract_data_type_error(format!("Unsupported constraint: {:?}, Only `fields`, `type` and `element` constraints are supported currently", constraints[0].constraint()));
+                }
+            };
+
+            let data_model_node = DataModelNode {
+                name: isl_type_name.to_case(Case::UpperCamel),
+                code_gen_type: Some(abstract_data_type.to_owned()),
+                nested_types: code_gen_context.nested_types.to_owned(),
+            };
+
+            // TODO: verify the `occurs` value within a field, by default the fields are optional.
+            // add current data model node into the data model store
+            self.data_model_store.insert(
+                abstract_data_type.fully_qualified_type_ref().ok_or(
+                    invalid_abstract_data_type_raw_error(
+                        "Can not determine fully qualified name for the data model",
+                    ),
+                )?,
+                data_model_node.to_owned(),
+            );
+            Ok(data_model_node)
+        } else {
+            invalid_abstract_data_type_error("No constraints were found in the type definition")
         }
-
-        // Build the abstract data type based on the current builder of the code generator
-        let abstract_data_type = code_gen_context
-            .current_abstract_data_type_builder
-            .as_mut()
-            .unwrap()
-            .build()?;
-
-        let data_model_node = DataModelNode {
-            name: isl_type_name.to_case(Case::UpperCamel),
-            code_gen_type: Some(abstract_data_type.to_owned()),
-            nested_types: code_gen_context.nested_types.to_owned(),
-        };
-
-        // TODO: verify the `occurs` value within a field, by default the fields are optional.
-        // add current data model node into the data model store
-        self.data_model_store.insert(
-            abstract_data_type.fully_qualified_type_ref().ok_or(
-                invalid_abstract_data_type_raw_error(
-                    "Can not determine fully qualified name for the data model",
-                ),
-            )?,
-            data_model_node.to_owned(),
-        );
-        Ok(data_model_node)
     }
 
     fn render_generated_code(
@@ -410,8 +428,8 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         Ok(())
     }
 
-    /// Provides name of the type reference that will be used for generated abstract data type.
-    /// Returns the fully qualified type reference of given ISL type. Returns None when the type can not be converted to a fully qualified name.
+    /// Provides the `FullyQualifiedTypeReference` to be used for the `AbstractDataType` in the data model.
+    /// Returns None when the given ISL type is `struct`, `list` or `sexp` as open-ended types are not supported currently.
     fn fully_qualified_type_ref_name(
         &mut self,
         isl_type_ref: &IslTypeRef,
@@ -444,103 +462,59 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         name
     }
 
-    /// Maps the given constraint value to an abstract data type
-    fn map_constraint_to_abstract_data_type(
+    /// Build structure from constraints
+    fn build_structure_from_constraints(
         &mut self,
-        constraint: &IslConstraint,
+        constraints: &[IslConstraint],
         code_gen_context: &mut CodeGenContext,
         parent_isl_type: &IslType,
-    ) -> CodeGenResult<()> {
-        match constraint.constraint() {
-            IslConstraintValue::Element(_isl_type, _) => {
-                todo!("Sequence model implementation is pending")
-            }
-            IslConstraintValue::Fields(struct_fields, is_closed) => {
-                // Initialize the structure builder for this `fields` constraint if it is not already initialized;
-                // Otherwise return error if the current builder is not structure builder.
-                if code_gen_context
-                    .current_abstract_data_type_builder
-                    .is_none()
-                {
-                    code_gen_context.with_abstract_data_type_builder(
-                        AbstractDataTypeBuilder::Structure(StructureBuilder::default()),
-                    );
-                } else if let Some(ref mut current_abstract_data_type_builder) =
-                    code_gen_context.current_abstract_data_type_builder
-                {
-                    if !matches!(
-                        current_abstract_data_type_builder,
-                        AbstractDataTypeBuilder::Structure(_)
-                    ) {
-                        return invalid_abstract_data_type_error("Could not determine the abstract data type due to conflicting constraints");
-                    }
-                }
-                // TODO: Check for `closed` annotation on fields and based on that return error while reading if there are extra fields.
-                let mut fields = HashMap::new();
-                for (name, value) in struct_fields.iter() {
-                    let type_name = self
-                        .fully_qualified_type_ref_name(value.type_reference(), code_gen_context)?
-                        .ok_or(invalid_abstract_data_type_raw_error(
-                            "Given type doesn't have a name",
-                        ))?;
+    ) -> CodeGenResult<AbstractDataType> {
+        let mut structure_builder = StructureBuilder::default();
+        for constraint in constraints {
+            match constraint.constraint() {
+                IslConstraintValue::Fields(struct_fields, is_closed) => {
+                    // TODO: Check for `closed` annotation on fields and based on that return error while reading if there are extra fields.
+                    let mut fields = HashMap::new();
+                    for (name, value) in struct_fields.iter() {
+                        let type_name = self
+                            .fully_qualified_type_ref_name(
+                                value.type_reference(),
+                                code_gen_context,
+                            )?
+                            .ok_or(invalid_abstract_data_type_raw_error(
+                                "Given type doesn't have a name",
+                            ))?;
 
-                    // TODO: change the field presence field based on occurs constraint
-                    // by default the field presence is optional
-                    fields.insert(
-                        name.to_string(),
-                        FieldReference(type_name.to_owned(), FieldPresence::Optional),
-                    );
-                }
-                // unwrap here is safe as the `current_abstract_data_type_builder` will either be initialized with default implementation
-                // or already initialized with a previous structure related constraint at this point.
-                code_gen_context
-                    .current_abstract_data_type_builder
-                    .as_mut()
-                    .unwrap()
-                    .structure_builder()
-                    .unwrap()
-                    .fields(fields)
-                    .source(parent_isl_type.to_owned())
-                    .is_closed(*is_closed)
-                    .name(self.current_type_fully_qualified_name.to_owned());
-            }
-            IslConstraintValue::Type(isl_type) => {
-                // Initialize the abstract data type builder for this `type` constraint if it is not already initialized.
-                if code_gen_context
-                    .current_abstract_data_type_builder
-                    .is_none()
-                {
-                    match isl_type.name().as_str() {
-                        "list" | "sexp" => todo!("Sequence model implementation is pending"),
-                        "struct" => code_gen_context.with_abstract_data_type_builder(
-                            AbstractDataTypeBuilder::Structure(StructureBuilder::default()),
-                        ),
-                        _ => todo!("Scalar model implementation is pending"),
-                    };
-                } else if let Some(ref mut current_abstract_data_type_builder) =
-                    code_gen_context.current_abstract_data_type_builder
-                {
-                    match current_abstract_data_type_builder {
-                        AbstractDataTypeBuilder::WrappedScalar(_)
-                        | AbstractDataTypeBuilder::Scalar(_) => {
-                            todo!("Scalar model implementation is pending")
-                        }
-                        AbstractDataTypeBuilder::Sequence(_) => {
-                            todo!("Sequence model implementation is pending")
-                        }
-                        AbstractDataTypeBuilder::Structure(ref mut structure_builder) => {
-                            if isl_type.name().as_str() != "struct" {
-                                return invalid_abstract_data_type_error("Could not determine the abstract data type due to conflicting constraints");
-                            }
-                            // by default fields aren't closed
-                            structure_builder.is_closed(false);
-                        }
+                        // TODO: change the field presence based on occurs constraint
+                        // by default the field presence is optional
+                        fields.insert(
+                            name.to_string(),
+                            FieldReference(type_name.to_owned(), FieldPresence::Optional),
+                        );
                     }
+                    // unwrap here is safe as the `current_abstract_data_type_builder` will either be initialized with default implementation
+                    // or already initialized with a previous structure related constraint at this point.
+                    structure_builder
+                        .fields(fields)
+                        .source(parent_isl_type.to_owned())
+                        .is_closed(*is_closed)
+                        .name(self.current_type_fully_qualified_name.to_owned());
+                }
+                IslConstraintValue::Type(_) => {
+                    // by default fields aren't closed
+                    structure_builder
+                        .is_closed(false)
+                        .source(parent_isl_type.to_owned());
+                }
+                _ => {
+                    return invalid_abstract_data_type_error(
+                        "Could not determine the abstract data type due to conflicting constraints",
+                    )
                 }
             }
-            _ => {}
         }
-        Ok(())
+
+        Ok(AbstractDataType::Structure(structure_builder.build()?))
     }
 }
 
@@ -642,7 +616,8 @@ mod isl_to_model_tests {
                         foo: {
                             fields: {
                                 baz: bool
-                            }
+                            },
+                            type: struct
                         },
                         bar: int
                     },

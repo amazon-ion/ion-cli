@@ -19,6 +19,7 @@ pub trait Language {
     fn file_name_for_type(name: &str) -> String;
 
     /// Maps the given ISL type to a target type name
+    /// Returns None when the given ISL type is `struct`, `list` or `sexp` as open-ended types are not supported currently.
     fn target_type(ion_schema_type: &IonSchemaType) -> Option<String>;
 
     /// Provides given target type as sequence
@@ -111,15 +112,7 @@ impl Language for JavaLanguage {
     fn is_built_in_type(type_name: String) -> bool {
         matches!(
             type_name.as_str(),
-            "int"
-                | "String"
-                | "boolean"
-                | "byte[]"
-                | "double"
-                | "java.util.ArrayList<String>"
-                | "java.util.ArrayList<Integer>"
-                | "java.util.ArrayList<Boolean>"
-                | "java.util.ArrayList<Double>"
+            "int" | "String" | "boolean" | "byte[]" | "double"
         )
     }
 

@@ -82,8 +82,6 @@ import java.io.IOException;
                     {{ field_name | camel }} = {% if field_value | is_built_in_type %}
                                                    {% if field_value == "bytes[]" %}
                                                         reader.newBytes();
-                                                   {% elif field_value is containing("ArrayList") %}
-                                                        {{ util_macros::read_as_sequence(field_value=field_value,field_name=field_name,type_store=type_store) }}
                                                    {% else %}
                                                         reader.{{ field_value | camel }}Value();
                                                    {% endif %}
@@ -121,11 +119,7 @@ import java.io.IOException;
              {% set field_value = field_val.0 | to_string %}
              writer.setFieldName("{{ field_name }}");
              {% if field_value | is_built_in_type == false %}
-                 {% if field_value is containing("ArrayList") %}
-                    {{ util_macros::write_as_sequence(field_value=field_value,field_name=field_name,type_store=type_store) }}
-                 {% else %}
-                    this.{{ field_name | camel }}.writeTo(writer);
-                 {% endif %}
+                this.{{ field_name | camel }}.writeTo(writer);
              {% else %}
                  {% if field_value is containing("ArrayList") %}
                     {{ util_macros::write_as_sequence(field_value=field_value,field_name=field_name,type_store=type_store) }}

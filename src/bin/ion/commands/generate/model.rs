@@ -10,7 +10,6 @@ use std::fmt::{Display, Formatter};
 // _Note: This model will eventually use a map (FullQualifiedTypeReference, DataModel) to resolve some the references in container types(sequence or structure)._
 // TODO: This is not yet used in the implementation, modify current implementation to use this data model.
 use crate::commands::generate::context::SequenceType;
-use crate::commands::generate::result::CodeGenResult;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -21,6 +20,18 @@ use serde_json::Value;
 pub struct DataModelNode {
     // Represents the name of this data model
     // Note: It doesn't point to the fully qualified name. To get fully qualified name use `fully_qualified_name()` from `AbstractDataType`.
+    // e.g. For a given schema as below:
+    // ```
+    //  type::{
+    //    name: foo,
+    //    type: struct,
+    //    fields: {
+    //      a: int,
+    //      b: string
+    //    }
+    //  }
+    // ```
+    // The name of the data model would be `Foo` where MyType will represent a Java class or Rust struct.
     pub(crate) name: String,
     // Represents the type of the data model
     // It can be `None` for modules or packages.
@@ -153,53 +164,19 @@ impl FullyQualifiedTypeReference {
     }
 }
 
-/// Builder for abstract data types
-pub enum AbstractDataTypeBuilder {
-    #[allow(dead_code)]
-    WrappedScalar(WrappedScalarBuilder),
-    #[allow(dead_code)]
-    Scalar(ScalarBuilder),
-    #[allow(dead_code)]
-    Sequence(SequenceBuilder),
-    Structure(StructureBuilder),
-}
-
-impl AbstractDataTypeBuilder {
-    pub fn structure_builder(&mut self) -> Option<&mut StructureBuilder> {
-        match self {
-            AbstractDataTypeBuilder::Structure(struct_builder) => Some(struct_builder),
-            _ => None,
-        }
-    }
-
-    pub fn build(&mut self) -> CodeGenResult<AbstractDataType> {
-        Ok(match self {
-            AbstractDataTypeBuilder::WrappedScalar(wrapped_scalar_builder) => {
-                AbstractDataType::WrappedScalar(wrapped_scalar_builder.build()?)
-            }
-            AbstractDataTypeBuilder::Scalar(scalar_builder) => {
-                AbstractDataType::Scalar(scalar_builder.build()?)
-            }
-            AbstractDataTypeBuilder::Sequence(seq_builder) => {
-                AbstractDataType::Sequence(seq_builder.build()?)
-            }
-            AbstractDataTypeBuilder::Structure(struct_builder) => {
-                AbstractDataType::Structure(struct_builder.build()?)
-            }
-        })
-    }
-}
-
 /// A target-language-agnostic data type that determines which template(s) to use for code generation.
 // TODO: Add more code gen types like sum/discriminated union, enum and map.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum AbstractDataType {
     // Represents a scalar type which also has a name attached to it and is nominally distinct from its base type.
+    #[allow(dead_code)]
     WrappedScalar(WrappedScalar),
     // Represents a scalar value (e.g. a string or integer or user defined type)
+    #[allow(dead_code)]
     Scalar(Scalar),
     // A series of zero or more values whose type is described by the nested `element_type`
+    #[allow(dead_code)]
     Sequence(Sequence),
     // A collection of field name/value pairs (e.g. a map)
     Structure(Structure),
