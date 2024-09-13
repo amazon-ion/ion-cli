@@ -20,29 +20,29 @@ import java.io.IOException;
 {% set struct_info = model.code_gen_type["Structure"] %}
 
 {% if is_nested == true %} static {% endif %} class {{ model.name }} {
-    {% for key, value in struct_info["fields"] -%}
-           private {{ value.0 | to_string }} {{ key | camel }};
+    {% for field_name, field_value in struct_info["fields"] -%}
+           private {{ field_value.0 | fully_qualified_type_name }} {{ field_name | camel }};
     {% endfor %}
 
     public {{ model.name }}() {}
 
-    {% for key, value in struct_info["fields"] -%}public {{ value.0 | to_string }} get{% filter upper_camel %}{{ key }}{% endfilter %}() {
-        return this.{{ key | camel }};
+    {% for field_name, field_value in struct_info["fields"] -%}public {{ field_value.0 | fully_qualified_type_name }} get{% filter upper_camel %}{{ field_name }}{% endfilter %}() {
+        return this.{{ field_name | camel }};
     }
     {% endfor %}
 
-    {% for key, value in struct_info["fields"] %}
-        {% set val = value.0 | to_string %}
+    {% for field_name, field_value in struct_info["fields"] %}
+        {% set val = field_value.0 | fully_qualified_type_name %}
         {% if val is containing("NestedType") %}
-          public void set{% filter upper_camel %}{{ key }}{% endfilter %}(
-          {{ macros::define_params_for_anonymous_type(nested_type=value.0, type_store=type_store, field_name=key, initial_field_name=key) }}
+          public void set{% filter upper_camel %}{{ field_name }}{% endfilter %}(
+          {{ macros::define_params_for_anonymous_type(nested_type=field_value.0, type_store=type_store, field_name=field_name, initial_field_name=field_name) }}
           ) {
-          {{ macros::initialize_anonymous_type(nested_type=value.0, type_store=type_store, field_name=key) }}
-          this.{{ key | camel }} = {{ key | camel }};
+          {{ macros::initialize_anonymous_type(nested_type=field_value.0, type_store=type_store, field_name=field_name) }}
+          this.{{ field_name | camel }} = {{ field_name | camel }};
           return;
         {% else %}
-        public void set{% filter upper_camel %}{{ key }}{% endfilter %}({{ val }} {{ key | camel }}) {
-            this.{{ key | camel }} = {{ key | camel }};
+        public void set{% filter upper_camel %}{{ field_name }}{% endfilter %}({{ val }} {{ field_name | camel }}) {
+            this.{{ field_name | camel }} = {{ field_name | camel }};
             return;
         {% endif %}
     }
@@ -58,7 +58,7 @@ import java.io.IOException;
     public static {{ model.name }} readFrom(IonReader reader) {
         {# Initializes all the fields of this class #}
         {% for field_name, field_val in struct_info["fields"] -%}
-            {% set field_value = field_val.0 | to_string %}
+            {% set field_value = field_val.0 | fully_qualified_type_name %}
             {{ field_value }} {{ field_name | camel }} =
             {% if field_value == "boolean" %}
                 false
@@ -76,7 +76,7 @@ import java.io.IOException;
             String fieldName = reader.getFieldName();
             switch(fieldName) {
                 {% for field_name, field_val in struct_info["fields"] %}
-                {% set field_value = field_val.0 | to_string %}
+                {% set field_value = field_val.0 | fully_qualified_type_name %}
 
                 case "{{ field_name }}":
                     {{ field_name | camel }} = {% if field_value | is_built_in_type %}
@@ -116,7 +116,7 @@ import java.io.IOException;
          {# Writes `Structure` class with multiple fields based on `field.name` as an Ion struct #}
          writer.stepIn(IonType.STRUCT);
          {% for field_name, field_val in struct_info["fields"] %}
-             {% set field_value = field_val.0 | to_string %}
+             {% set field_value = field_val.0 | fully_qualified_type_name %}
              writer.setFieldName("{{ field_name }}");
              {% if field_value | is_built_in_type == false %}
                 this.{{ field_name | camel }}.writeTo(writer);

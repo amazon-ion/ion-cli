@@ -9,7 +9,7 @@
 
 {# following macro defines statements to initialize anonymous types for setter methods #}
 {% macro initialize_anonymous_type(nested_type, type_store, field_name) %}
-        {% set key = nested_type | to_string %}
+        {% set key = nested_type | fully_qualified_type_name %}
         {% set inline_type = type_store[key] %}
         {{ key }} {{ field_name | camel }} = new {{ key }}();
         {% if inline_type.code_gen_type is containing("Sequence") %}
@@ -25,14 +25,14 @@
 
 {# following macro defines arguments to setter methods for anonymous types #}
 {% macro define_params_for_anonymous_type(nested_type, field_name, initial_field_name) %}
-    {% set key = nested_type | to_string %}
-    {% set inline_type = type_store[key] %}
+    {% set field_name = nested_type | fully_qualified_type_name %}
+    {% set inline_type = type_store[field_name] %}
     {% if inline_type.code_gen_type is containing("Structure") %}
         {% set inline_struct_type_info = inline_type.code_gen_type["Structure"] %}
-        {% set keys = inline_struct_type_info["fields"] | keys %}
-        {% for inline_type_field_name in keys | sort %}
+        {% set field_names = inline_struct_type_info["fields"] | field_names %}
+        {% for inline_type_field_name in field_names | sort %}
             {% set inline_type_field_value = inline_struct_type_info["fields"][inline_type_field_name] %}
-            {% set value_type = inline_type_field_value.0 | to_string %}
+            {% set value_type = inline_type_field_value.0 | fully_qualified_type_name %}
             {% if value_type is containing("NestedType") %}
                {{ self::define_params_for_anonymous_type(nested_type=inline_type_field_value.0, field_name=inline_type_field_name, initial_field_name=initial_field_name) }}
             {% else %}
@@ -46,10 +46,10 @@
         {% endfor %}
     {% elif inline_type.code_gen_type is containing("Sequence") %}
         {% set sequence_info = model.code_gen_type["WrappedSequence"] %}
-        {{ sequence_info["element_type"] | to_string }} value
+        {{ sequence_info["element_type"] | fully_qualified_type_name }} value
     {% elif inline_type.code_gen_type is containing("Scalar") %}
         {% set scalar_info = model.code_gen_type["WrappedScalar"] %}
-        {% set base_type = scalar_info["name"]["parameters"][0] | to_string %}
+        {% set base_type = scalar_info["name"]["parameters"][0] | fully_qualified_type_name %}
         {{ base_type }} value
     {% endif %}
 {% endmacro %}

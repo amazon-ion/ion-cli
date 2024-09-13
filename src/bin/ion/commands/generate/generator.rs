@@ -183,12 +183,12 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         )))
     }
 
-    /// A [tera] filter that return keys for the given object.
+    /// A [tera] filter that return field names for the given object.
     ///
     /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
     ///
     /// [tera]: <https://docs.rs/tera/latest/tera/>
-    pub fn keys(
+    pub fn field_names(
         value: &tera::Value,
         _map: &HashMap<String, tera::Value>,
     ) -> Result<tera::Value, tera::Error> {
@@ -207,7 +207,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
     ///
     /// [tera]: <https://docs.rs/tera/latest/tera/>
-    pub fn to_string(
+    pub fn fully_qualified_type_name(
         value: &tera::Value,
         _map: &HashMap<String, tera::Value>,
     ) -> Result<tera::Value, tera::Error> {
@@ -257,8 +257,9 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         // Register a tera filter that can be used to see if a type is built in data type or not
         self.tera
             .register_filter("is_built_in_type", Self::is_built_in_type);
-        self.tera.register_filter("keys", Self::keys);
-        self.tera.register_filter("to_string", Self::to_string);
+        self.tera.register_filter("field_names", Self::field_names);
+        self.tera
+            .register_filter("fully_qualified_type_name", Self::fully_qualified_type_name);
 
         // Iterate through the ISL types, generate an abstract data type for each
         for isl_type in schema.types() {
@@ -342,48 +343,32 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         let constraints = isl_type.constraints();
 
         // Initialize `AbstractDataType` according to the first constraint in the list of constraints
-        if !constraints.is_empty() {
-            let abstract_data_type: AbstractDataType = match constraints[0].constraint() {
-                IslConstraintValue::Type(isl_type_ref) => match isl_type_ref.name().as_str() {
-                    "list" | "sexp" => todo!("Sequence model implementation is pending"),
-                    "struct" => self.build_structure_from_constraints(
-                        constraints,
-                        code_gen_context,
-                        isl_type,
-                    )?,
-                    _ => todo!("Scalar model implementation is pending"),
-                },
-                IslConstraintValue::Fields(_, _) => {
-                    self.build_structure_from_constraints(constraints, code_gen_context, isl_type)?
-                }
-                IslConstraintValue::Element(_, _) => {
-                    todo!("Sequence model implementation is pending")
-                }
-                _ => {
-                    return invalid_abstract_data_type_error(format!("Unsupported constraint: {:?}, Only `fields`, `type` and `element` constraints are supported currently", constraints[0].constraint()));
-                }
-            };
-
-            let data_model_node = DataModelNode {
-                name: isl_type_name.to_case(Case::UpperCamel),
-                code_gen_type: Some(abstract_data_type.to_owned()),
-                nested_types: code_gen_context.nested_types.to_owned(),
-            };
-
-            // TODO: verify the `occurs` value within a field, by default the fields are optional.
-            // add current data model node into the data model store
-            self.data_model_store.insert(
-                abstract_data_type.fully_qualified_type_ref().ok_or(
-                    invalid_abstract_data_type_raw_error(
-                        "Can not determine fully qualified name for the data model",
-                    ),
-                )?,
-                data_model_node.to_owned(),
-            );
-            Ok(data_model_node)
+        let abstract_data_type = if constraints
+            .iter()
+            .any(|it| matches!(it.constraint(), IslConstraintValue::Fields(_, _)))
+        {
+            self.build_structure_from_constraints(constraints, code_gen_context, isl_type)?
         } else {
-            invalid_abstract_data_type_error("No constraints were found in the type definition")
-        }
+            todo!("Support for sequences, maps, scalars, and tuples not implemented yet.")
+        };
+
+        let data_model_node = DataModelNode {
+            name: isl_type_name.to_case(Case::UpperCamel),
+            code_gen_type: Some(abstract_data_type.to_owned()),
+            nested_types: code_gen_context.nested_types.to_owned(),
+        };
+
+        // TODO: verify the `occurs` value within a field, by default the fields are optional.
+        // add current data model node into the data model store
+        self.data_model_store.insert(
+            abstract_data_type.fully_qualified_type_ref().ok_or(
+                invalid_abstract_data_type_raw_error(
+                    "Can not determine fully qualified name for the data model",
+                ),
+            )?,
+            data_model_node.to_owned(),
+        );
+        Ok(data_model_node)
     }
 
     fn render_generated_code(
