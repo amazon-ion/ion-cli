@@ -351,9 +351,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             .any(|it| matches!(it.constraint(), IslConstraintValue::Fields(_, _)))
         {
             self.build_structure_from_constraints(constraints, code_gen_context, isl_type)?
-        } else if constraints.iter().any(|it| matches!(it.constraint(), IslConstraintValue::Type(isl_type_ref) if isl_type_ref.name().as_str() != "list"
-                     && isl_type_ref.name().as_str() != "sexp"
-                     && isl_type_ref.name().as_str() != "struct")) {
+        } else if Self::contains_scalar_constraints(constraints) {
             if is_nested_type {
                 self.build_scalar_from_constraints(constraints, code_gen_context, isl_type)?
             } else {
@@ -380,6 +378,13 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             data_model_node.to_owned(),
         );
         Ok(data_model_node)
+    }
+
+    /// Verifies if the given constraints contain a `type` constraint without any container type references. (e.g. `sexp`, `list`, `struct`)
+    fn contains_scalar_constraints(constraints: &[IslConstraint]) -> bool {
+        constraints.iter().any(|it| matches!(it.constraint(), IslConstraintValue::Type(isl_type_ref) if isl_type_ref.name().as_str() != "list"
+                     && isl_type_ref.name().as_str() != "sexp"
+                     && isl_type_ref.name().as_str() != "struct"))
     }
 
     fn render_generated_code(
@@ -458,7 +463,33 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         name
     }
 
-    /// Build structure from constraints
+    /// Builds `AbstractDataType::Structure` from the given constraints.
+    /// e.g. for a given type definition as below:
+    /// ```
+    /// type::{
+    ///   name: Foo,
+    ///   type: struct,
+    ///   fields: {
+    ///      a: string,
+    ///      b: int,
+    ///   }
+    /// }
+    /// ```
+    /// This method builds `AbstractDataTYpe`as following:
+    /// ```
+    /// AbstractDataType::Structure(
+    ///  Structure {
+    ///     name: vec!["org", "example", "Foo"], // assuming the namespace is `org.example`
+    ///     fields: {
+    ///         a: FieldReference { FullyQualifiedTypeReference { type_name: vec!["String"], parameters: vec![] }, FieldPresence::Optional },
+    ///         b: FieldReference { FullyQualifiedTypeReference { type_name: vec!["int"], parameters: vec![] }, FieldPresence::Optional },
+    ///     }, // HashMap with fields defined through `fields` constraint above
+    ///     doc_comment: None // There is no doc comment defined in above ISL type def
+    ///     source: IslType {name: "foo", .. } // Represents the `IslType` that is getting converted to `AbstractDataType`
+    ///     is_closed: false, // If the fields constraint was annotated with `closed` then this would be true.
+    ///  }
+    /// )
+    /// ```
     fn build_structure_from_constraints(
         &mut self,
         constraints: &[IslConstraint],
@@ -510,7 +541,24 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         Ok(AbstractDataType::Structure(structure_builder.build()?))
     }
 
-    /// Build wrapped scalar data type from constraints
+    /// Builds `AbstractDataType::WrappedScalar` from the given constraints.
+    /// ```
+    /// type::{
+    ///   name: Foo,
+    ///   type: string,
+    /// }
+    /// ```
+    /// This method builds `AbstractDataTYpe`as following:
+    /// ```
+    /// AbstractDataType::WrappedScalar(
+    ///  WrappedScalar {
+    ///     name: vec!["org", "example", "Foo"], // assuming the namespace is `org.example`
+    ///     base_type: FullyQualifiedTypeReference { type_name: vec!["String"], parameters: vec![] }
+    ///     doc_comment: None // There is no doc comment defined in above ISL type def
+    ///     source: IslType {name: "foo", .. } // Represents the `IslType` that is getting converted to `AbstractDataType`
+    ///  }
+    /// )
+    /// ```
     fn build_wrapped_scalar_from_constraints(
         &mut self,
         constraints: &[IslConstraint],
@@ -547,7 +595,20 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         ))
     }
 
-    /// Build scalar data type from constraints
+    /// Builds `AbstractDataType::Scalar` from the given constraints.
+    /// ```
+    /// { type: string }
+    /// ```
+    /// This method builds `AbstractDataTYpe`as following:
+    /// ```
+    /// AbstractDataType::Scalar(
+    ///  Scalar {
+    ///     base_type: FullyQualifiedTypeReference { type_name: vec!["String"], parameters: vec![] }
+    ///     doc_comment: None // There is no doc comment defined in above ISL type def
+    ///     source: IslType { .. } // Represents the `IslType` that is getting converted to `AbstractDataType`
+    ///  }
+    /// )
+    /// ```
     fn build_scalar_from_constraints(
         &mut self,
         constraints: &[IslConstraint],
@@ -561,10 +622,9 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 IslConstraintValue::Type(isl_type) => {
                     let type_name = self
                         .fully_qualified_type_ref_name(isl_type, code_gen_context)?
-                        .ok_or(invalid_abstract_data_type_raw_error(format!(
-                            "Could not determine `FullQualifiedTypeReference` for type {:?}",
-                            isl_type
-                        )))?;
+                        .ok_or(invalid_abstract_data_type_raw_error(
+                            "Could not determine `FullQualifiedTypeReference` for `struct`, `list` or `sexp` as open ended container types aren't supported."
+                        ))?;
 
                     // by default fields aren't closed
                     scalar_builder.base_type(type_name);
