@@ -1,7 +1,7 @@
 use crate::commands::generate::context::CodeGenContext;
 use crate::commands::generate::model::{
     AbstractDataType, DataModelNode, FieldPresence, FieldReference, FullyQualifiedTypeReference,
-    StructureBuilder,
+    ScalarBuilder, StructureBuilder, WrappedScalarBuilder,
 };
 use crate::commands::generate::result::{
     invalid_abstract_data_type_error, invalid_abstract_data_type_raw_error, CodeGenResult,
@@ -287,6 +287,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             type_name,
             isl_type,
             &mut code_gen_context,
+            true,
         )?;
 
         // add this nested type to parent code gene context's current list of nested types
@@ -315,6 +316,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             isl_type_name,
             isl_type,
             &mut code_gen_context,
+            false,
         )?;
 
         // add the entire type store and the data model node into tera's context to be used to render template
@@ -336,6 +338,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         isl_type_name: &String,
         isl_type: &IslType,
         code_gen_context: &mut CodeGenContext,
+        is_nested_type: bool,
     ) -> CodeGenResult<DataModelNode> {
         self.current_type_fully_qualified_name
             .push(isl_type_name.to_case(Case::UpperCamel));
@@ -348,6 +351,14 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             .any(|it| matches!(it.constraint(), IslConstraintValue::Fields(_, _)))
         {
             self.build_structure_from_constraints(constraints, code_gen_context, isl_type)?
+        } else if constraints.iter().any(|it| matches!(it.constraint(), IslConstraintValue::Type(isl_type_ref) if isl_type_ref.name().as_str() != "list"
+                     && isl_type_ref.name().as_str() != "sexp"
+                     && isl_type_ref.name().as_str() != "struct")) {
+            if is_nested_type {
+                self.build_scalar_from_constraints(constraints, code_gen_context, isl_type)?
+            } else {
+                self.build_wrapped_scalar_from_constraints(constraints, code_gen_context, isl_type)?
+            }
         } else {
             todo!("Support for sequences, maps, scalars, and tuples not implemented yet.")
         };
@@ -455,6 +466,9 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         parent_isl_type: &IslType,
     ) -> CodeGenResult<AbstractDataType> {
         let mut structure_builder = StructureBuilder::default();
+        structure_builder
+            .name(self.current_type_fully_qualified_name.to_owned())
+            .source(parent_isl_type.to_owned());
         for constraint in constraints {
             match constraint.constraint() {
                 IslConstraintValue::Fields(struct_fields, is_closed) => {
@@ -479,17 +493,11 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     }
                     // unwrap here is safe as the `current_abstract_data_type_builder` will either be initialized with default implementation
                     // or already initialized with a previous structure related constraint at this point.
-                    structure_builder
-                        .fields(fields)
-                        .source(parent_isl_type.to_owned())
-                        .is_closed(*is_closed)
-                        .name(self.current_type_fully_qualified_name.to_owned());
+                    structure_builder.fields(fields).is_closed(*is_closed);
                 }
                 IslConstraintValue::Type(_) => {
                     // by default fields aren't closed
-                    structure_builder
-                        .is_closed(false)
-                        .source(parent_isl_type.to_owned());
+                    structure_builder.is_closed(false);
                 }
                 _ => {
                     return invalid_abstract_data_type_error(
@@ -500,6 +508,76 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         }
 
         Ok(AbstractDataType::Structure(structure_builder.build()?))
+    }
+
+    /// Build wrapped scalar data type from constraints
+    fn build_wrapped_scalar_from_constraints(
+        &mut self,
+        constraints: &[IslConstraint],
+        code_gen_context: &mut CodeGenContext,
+        parent_isl_type: &IslType,
+    ) -> CodeGenResult<AbstractDataType> {
+        let mut wrapped_scalar_builder = WrappedScalarBuilder::default();
+        wrapped_scalar_builder
+            .name(self.current_type_fully_qualified_name.to_owned())
+            .source(parent_isl_type.to_owned());
+        for constraint in constraints {
+            match constraint.constraint() {
+                IslConstraintValue::Type(isl_type) => {
+                    let type_name = self
+                        .fully_qualified_type_ref_name(isl_type, code_gen_context)?
+                        .ok_or(invalid_abstract_data_type_raw_error(format!(
+                            "Could not determine `FullQualifiedTypeReference` for type {:?}",
+                            isl_type
+                        )))?;
+
+                    // by default fields aren't closed
+                    wrapped_scalar_builder.base_type(type_name);
+                }
+                _ => {
+                    return invalid_abstract_data_type_error(
+                        "Could not determine the abstract data type due to conflicting constraints",
+                    );
+                }
+            }
+        }
+
+        Ok(AbstractDataType::WrappedScalar(
+            wrapped_scalar_builder.build()?,
+        ))
+    }
+
+    /// Build scalar data type from constraints
+    fn build_scalar_from_constraints(
+        &mut self,
+        constraints: &[IslConstraint],
+        code_gen_context: &mut CodeGenContext,
+        parent_isl_type: &IslType,
+    ) -> CodeGenResult<AbstractDataType> {
+        let mut scalar_builder = ScalarBuilder::default();
+        scalar_builder.source(parent_isl_type.to_owned());
+        for constraint in constraints {
+            match constraint.constraint() {
+                IslConstraintValue::Type(isl_type) => {
+                    let type_name = self
+                        .fully_qualified_type_ref_name(isl_type, code_gen_context)?
+                        .ok_or(invalid_abstract_data_type_raw_error(format!(
+                            "Could not determine `FullQualifiedTypeReference` for type {:?}",
+                            isl_type
+                        )))?;
+
+                    // by default fields aren't closed
+                    scalar_builder.base_type(type_name);
+                }
+                _ => {
+                    return invalid_abstract_data_type_error(
+                        "Could not determine the abstract data type due to conflicting constraints",
+                    );
+                }
+            }
+        }
+
+        Ok(AbstractDataType::Scalar(scalar_builder.build()?))
     }
 }
 
@@ -535,6 +613,7 @@ mod isl_to_model_tests {
             &"my_struct".to_string(),
             &isl_type,
             &mut CodeGenContext::new(),
+            false,
         )?;
         let abstract_data_type = data_model_node.code_gen_type.unwrap();
         assert_eq!(
@@ -620,6 +699,7 @@ mod isl_to_model_tests {
             &"my_nested_struct".to_string(),
             &isl_type,
             &mut CodeGenContext::new(),
+            false,
         )?;
         let abstract_data_type = data_model_node.code_gen_type.unwrap();
         assert_eq!(
