@@ -31,7 +31,7 @@ pub struct DataModelNode {
     //    }
     //  }
     // ```
-    // The name of the data model would be `Foo` where MyType will represent a Java class or Rust struct.
+    // The name of the abstract data type would be `Foo` where `Foo` will represent a Java class or Rust struct.
     pub(crate) name: String,
     // Represents the type of the data model
     // It can be `None` for modules or packages.
