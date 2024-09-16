@@ -8,7 +8,6 @@ type::{
         type: struct,
         fields: {
             D: bool,
-            E: { type: list, element: int }
         }
     }
  }
