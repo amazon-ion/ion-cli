@@ -475,7 +475,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     ///   }
     /// }
     /// ```
-    /// This method builds `AbstractDataTYpe`as following:
+    /// This method builds `AbstractDataType`as following:
     /// ```
     /// AbstractDataType::Structure(
     ///  Structure {
@@ -548,7 +548,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     ///   type: string,
     /// }
     /// ```
-    /// This method builds `AbstractDataTYpe`as following:
+    /// This method builds `AbstractDataType`as following:
     /// ```
     /// AbstractDataType::WrappedScalar(
     ///  WrappedScalar {
@@ -559,6 +559,9 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     ///  }
     /// )
     /// ```
+    ///
+    /// _Note: Currently code generator would return an error when there are multiple `type` constraints in the type definition.
+    /// This avoids providing conflicting type constraints in the type definition._
     fn build_wrapped_scalar_from_constraints(
         &mut self,
         constraints: &[IslConstraint],
@@ -569,9 +572,14 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         wrapped_scalar_builder
             .name(self.current_type_fully_qualified_name.to_owned())
             .source(parent_isl_type.to_owned());
+
+        let mut found_base_type = false;
         for constraint in constraints {
             match constraint.constraint() {
                 IslConstraintValue::Type(isl_type) => {
+                    if found_base_type {
+                        return invalid_abstract_data_type_error("Multiple `type` constraints in the type definitions are not supported in code generation as it can lead to conflicting types.");
+                    }
                     let type_name = self
                         .fully_qualified_type_ref_name(isl_type, code_gen_context)?
                         .ok_or(invalid_abstract_data_type_raw_error(format!(
@@ -581,6 +589,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
 
                     // by default fields aren't closed
                     wrapped_scalar_builder.base_type(type_name);
+                    found_base_type = true;
                 }
                 _ => {
                     return invalid_abstract_data_type_error(
@@ -599,7 +608,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     /// ```
     /// { type: string }
     /// ```
-    /// This method builds `AbstractDataTYpe`as following:
+    /// This method builds `AbstractDataType`as following:
     /// ```
     /// AbstractDataType::Scalar(
     ///  Scalar {
@@ -609,6 +618,9 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     ///  }
     /// )
     /// ```
+    ///
+    /// _Note: Currently code generator would return an error when there are multiple `type` constraints in the type definition.
+    /// This avoids providing conflicting type constraints in the type definition._
     fn build_scalar_from_constraints(
         &mut self,
         constraints: &[IslConstraint],
@@ -617,17 +629,22 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     ) -> CodeGenResult<AbstractDataType> {
         let mut scalar_builder = ScalarBuilder::default();
         scalar_builder.source(parent_isl_type.to_owned());
+
+        let mut found_base_type = false;
         for constraint in constraints {
             match constraint.constraint() {
                 IslConstraintValue::Type(isl_type) => {
+                    if found_base_type {
+                        return invalid_abstract_data_type_error("Multiple `type` constraints in the type definitions are not supported in code generation as it can lead to conflicting types.");
+                    }
                     let type_name = self
                         .fully_qualified_type_ref_name(isl_type, code_gen_context)?
                         .ok_or(invalid_abstract_data_type_raw_error(
                             "Could not determine `FullQualifiedTypeReference` for `struct`, `list` or `sexp` as open ended container types aren't supported."
                         ))?;
 
-                    // by default fields aren't closed
                     scalar_builder.base_type(type_name);
+                    found_base_type = true;
                 }
                 _ => {
                     return invalid_abstract_data_type_error(
