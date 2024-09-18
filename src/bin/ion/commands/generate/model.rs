@@ -170,14 +170,13 @@ impl FullyQualifiedTypeReference {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum AbstractDataType {
     // Represents a scalar type which also has a name attached to it and is nominally distinct from its base type.
-    #[allow(dead_code)]
     WrappedScalar(WrappedScalar),
     // Represents a scalar value (e.g. a string or integer or user defined type)
-    #[allow(dead_code)]
     Scalar(Scalar),
     // A series of zero or more values whose type is described by the nested `element_type`
-    #[allow(dead_code)]
     Sequence(Sequence),
+    // Represents a sequence type which also has anme attached to it and is nominally distinct from its element type.
+    WrappedSequence(WrappedSequence),
     // A collection of field name/value pairs (e.g. a map)
     Structure(Structure),
 }
@@ -192,7 +191,12 @@ impl AbstractDataType {
             AbstractDataType::Scalar(Scalar { doc_comment, .. }) => {
                 doc_comment.as_ref().map(|s| s.as_str())
             }
-            AbstractDataType::Sequence(Sequence { doc_comment, .. }) => Some(doc_comment.as_str()),
+            AbstractDataType::Sequence(Sequence { doc_comment, .. }) => {
+                doc_comment.as_ref().map(|s| s.as_str())
+            }
+            AbstractDataType::WrappedSequence(WrappedSequence { doc_comment, .. }) => {
+                doc_comment.as_ref().map(|s| s.as_str())
+            }
             AbstractDataType::Structure(Structure { doc_comment, .. }) => {
                 doc_comment.as_ref().map(|s| s.as_str())
             }
@@ -206,6 +210,7 @@ impl AbstractDataType {
             }
             AbstractDataType::Scalar(s) => Some(s.base_type.to_owned()),
             AbstractDataType::Sequence(seq) => Some(seq.element_type.to_owned()),
+            AbstractDataType::WrappedSequence(seq) => Some(seq.element_type.to_owned()),
             AbstractDataType::Structure(structure) => Some(structure.name.to_owned().into()),
         }
     }
@@ -289,8 +294,6 @@ impl WrappedScalar {
 
 /// Represents series of zero or more values whose type is described by the nested `element_type`
 /// and sequence type is described by nested `sequence_type` (e.g. List or SExp).
-/// If there is no `element` constraint present in schema type then `element_type` will be None.
-/// If there is no `type` constraint present in schema type then `sequence_type` will be None.
 /// e.g. Given below ISL,
 /// ```
 /// type::{
@@ -308,11 +311,12 @@ impl WrappedScalar {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Builder, PartialEq, Serialize)]
 #[builder(setter(into))]
-pub struct Sequence {
+pub struct WrappedSequence {
     // Represents the fully qualified name for this data model
     name: FullyQualifiedTypeName,
     // Represents doc comment for the generated code
-    doc_comment: String,
+    #[builder(default)]
+    doc_comment: Option<String>,
     // Represents the fully qualified name with namespace where each element of vector stores a module name or class/struct name.
     // _Note: that a hashmap with (FullQualifiedTypeReference, DataModel) pairs will be stored in code generator to get information on the element_type name used here._
     element_type: FullyQualifiedTypeReference,
@@ -324,6 +328,41 @@ pub struct Sequence {
     // TODO: `IslType` does not implement `Serialize`, define a custom implementation or define methods on this field that returns values which could be serialized.
     #[serde(skip_serializing)]
     source: IslType,
+}
+
+/// Represents series of zero or more values whose type is described by the nested `element_type`
+/// and sequence type is described by nested `sequence_type` (e.g. List or SExp).
+/// e.g. Given below ISL,
+/// ```
+/// type::{
+///   name: sequence_type,
+///   element: int,
+///   type: list
+/// }
+/// ```
+/// Corresponding generated code in Rust would look like following:
+/// ```
+/// struct SequenceType {
+///    value: Vec<i64>
+/// }
+/// ```
+#[derive(Debug, Clone, Builder, PartialEq, Serialize)]
+#[builder(setter(into))]
+pub struct Sequence {
+    // Represents doc comment for the generated code
+    #[builder(default)]
+    pub(crate) doc_comment: Option<String>,
+    // Represents the fully qualified name with namespace where each element of vector stores a module name or class/struct name.
+    // _Note: that a hashmap with (FullQualifiedTypeReference, DataModel) pairs will be stored in code generator to get information on the element_type name used here._
+    pub(crate) element_type: FullyQualifiedTypeReference,
+    // Represents the type of the sequence which is either `sexp` or `list`.
+    pub(crate) sequence_type: SequenceType,
+    // Represents the source ISL type which can be used to get other constraints useful for this type.
+    // For example, getting the length of this sequence from `container_length` constraint or getting a `regex` value for string type.
+    // This will also be useful for `text` type to verify if this is a `string` or `symbol`.
+    // TODO: `IslType` does not implement `Serialize`, define a custom implementation or define methods on this field that returns values which could be serialized.
+    #[serde(skip_serializing)]
+    pub(crate) source: IslType,
 }
 
 /// Represents a collection of field name/value pairs (e.g. a map)
@@ -448,8 +487,7 @@ mod model_tests {
     #[test]
     fn sequence_builder_test() {
         let expected_seq = Sequence {
-            name: vec![],
-            doc_comment: "This is sequence type of strings".to_string(),
+            doc_comment: Some("This is sequence type of strings".to_string()),
             element_type: FullyQualifiedTypeReference {
                 type_name: vec!["String".to_string()],
                 parameters: vec![],
@@ -465,8 +503,7 @@ mod model_tests {
 
         // sets all the information about the sequence except the `element_type`
         seq_builder
-            .name(vec![])
-            .doc_comment("This is sequence type of strings")
+            .doc_comment(Some("This is sequence type of strings".to_string()))
             .sequence_type(SequenceType::List)
             .source(anonymous_type(vec![
                 type_constraint(named_type_ref("list")),

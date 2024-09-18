@@ -1,7 +1,7 @@
-use crate::commands::generate::context::CodeGenContext;
+use crate::commands::generate::context::{CodeGenContext, SequenceType};
 use crate::commands::generate::model::{
     AbstractDataType, DataModelNode, FieldPresence, FieldReference, FullyQualifiedTypeReference,
-    ScalarBuilder, StructureBuilder, WrappedScalarBuilder,
+    ScalarBuilder, SequenceBuilder, StructureBuilder, WrappedScalarBuilder, WrappedSequenceBuilder,
 };
 use crate::commands::generate::result::{
     invalid_abstract_data_type_error, invalid_abstract_data_type_raw_error, CodeGenResult,
@@ -351,6 +351,19 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             .any(|it| matches!(it.constraint(), IslConstraintValue::Fields(_, _)))
         {
             self.build_structure_from_constraints(constraints, code_gen_context, isl_type)?
+        } else if constraints
+            .iter()
+            .any(|it| matches!(it.constraint(), IslConstraintValue::Element(_, _)))
+        {
+            if is_nested_type {
+                self.build_sequence_from_constraints(constraints, code_gen_context, isl_type)?
+            } else {
+                self.build_wrapped_sequence_from_constraints(
+                    constraints,
+                    code_gen_context,
+                    isl_type,
+                )?
+            }
         } else if Self::contains_scalar_constraints(constraints) {
             if is_nested_type {
                 self.build_scalar_from_constraints(constraints, code_gen_context, isl_type)?
@@ -358,7 +371,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 self.build_wrapped_scalar_from_constraints(constraints, code_gen_context, isl_type)?
             }
         } else {
-            todo!("Support for sequences, maps, scalars, and tuples not implemented yet.")
+            todo!("Support for maps and tuples not implemented yet.")
         };
 
         let data_model_node = DataModelNode {
@@ -587,7 +600,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                             isl_type
                         )))?;
 
-                    // by default fields aren't closed
                     wrapped_scalar_builder.base_type(type_name);
                     found_base_type = true;
                 }
@@ -655,6 +667,122 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         }
 
         Ok(AbstractDataType::Scalar(scalar_builder.build()?))
+    }
+
+    /// Builds `AbstractDataType::WrappedSequence` from the given constraints.
+    /// ```
+    /// type::{
+    ///   name: foo,
+    ///   type: list,
+    ///   element: string,
+    /// }
+    /// ```
+    /// This method builds `AbstractDataType`as following:
+    /// ```
+    /// AbstractDataType::WrappedSequence(
+    ///  WrappedSequence {
+    ///     name: vec!["org", "example", "Foo"] // assuming the namespace here is `org.example`
+    ///     element_type: FullyQualifiedTypeReference { type_name: vec!["String"], parameters: vec![] } // Represents the element type for the list
+    ///     sequence_type: SequenceType::List, // Represents list type for the given sequence
+    ///     doc_comment: None // There is no doc comment defined in above ISL type def
+    ///     source: IslType { .. } // Represents the `IslType` that is getting converted to `AbstractDataType`
+    ///  }
+    /// )
+    /// ```
+    fn build_wrapped_sequence_from_constraints(
+        &mut self,
+        constraints: &[IslConstraint],
+        code_gen_context: &mut CodeGenContext,
+        parent_isl_type: &IslType,
+    ) -> CodeGenResult<AbstractDataType> {
+        let mut wrapped_sequence_builder = WrappedSequenceBuilder::default();
+        wrapped_sequence_builder
+            .name(self.current_type_fully_qualified_name.to_owned())
+            .source(parent_isl_type.to_owned());
+        for constraint in constraints {
+            match constraint.constraint() {
+                IslConstraintValue::Element(isl_type_ref, _) => {
+                    let type_name = self
+                        .fully_qualified_type_ref_name(isl_type_ref, code_gen_context)?
+                        .ok_or(invalid_abstract_data_type_raw_error(format!(
+                            "Could not determine `FullQualifiedTypeReference` for type {:?}",
+                            isl_type_ref
+                        )))?;
+
+                    wrapped_sequence_builder.element_type(type_name);
+                }
+                IslConstraintValue::Type(isl_type_ref) => {
+                    if isl_type_ref.name() == "sexp" {
+                        wrapped_sequence_builder.sequence_type(SequenceType::SExp);
+                    } else if isl_type_ref.name() == "list" {
+                        wrapped_sequence_builder.sequence_type(SequenceType::List);
+                    }
+                }
+                _ => {
+                    return invalid_abstract_data_type_error(
+                        "Could not determine the abstract data type due to conflicting constraints",
+                    );
+                }
+            }
+        }
+        Ok(AbstractDataType::WrappedSequence(
+            wrapped_sequence_builder.build()?,
+        ))
+    }
+
+    /// Builds `AbstractDataType::Sequence` from the given constraints.
+    /// ```
+    /// {
+    ///   type: list,
+    ///   element: string,
+    /// }
+    /// ```
+    /// This method builds `AbstractDataType`as following:
+    /// ```
+    /// AbstractDataType::Sequence(
+    ///  Sequence {
+    ///     element_type: FullyQualifiedTypeReference { type_name: vec!["String"], parameters: vec![] } // Represents the element type for the list
+    ///     sequence_type: SequenceType::List, // Represents list type for the given sequence
+    ///     doc_comment: None // There is no doc comment defined in above ISL type def
+    ///     source: IslType { .. } // Represents the `IslType` that is getting converted to `AbstractDataType`
+    ///  }
+    /// )
+    /// ```
+    fn build_sequence_from_constraints(
+        &mut self,
+        constraints: &[IslConstraint],
+        code_gen_context: &mut CodeGenContext,
+        parent_isl_type: &IslType,
+    ) -> CodeGenResult<AbstractDataType> {
+        let mut sequence_builder = SequenceBuilder::default();
+        sequence_builder.source(parent_isl_type.to_owned());
+        for constraint in constraints {
+            match constraint.constraint() {
+                IslConstraintValue::Element(isl_type_ref, _) => {
+                    let type_name = self
+                        .fully_qualified_type_ref_name(isl_type_ref, code_gen_context)?
+                        .ok_or(invalid_abstract_data_type_raw_error(format!(
+                            "Could not determine `FullQualifiedTypeReference` for type {:?}",
+                            isl_type_ref
+                        )))?;
+
+                    sequence_builder.element_type(type_name);
+                }
+                IslConstraintValue::Type(isl_type_ref) => {
+                    if isl_type_ref.name() == "sexp" {
+                        sequence_builder.sequence_type(SequenceType::SExp);
+                    } else if isl_type_ref.name() == "list" {
+                        sequence_builder.sequence_type(SequenceType::List);
+                    }
+                }
+                _ => {
+                    return invalid_abstract_data_type_error(
+                        "Could not determine the abstract data type due to conflicting constraints",
+                    );
+                }
+            }
+        }
+        Ok(AbstractDataType::Sequence(sequence_builder.build()?))
     }
 }
 
