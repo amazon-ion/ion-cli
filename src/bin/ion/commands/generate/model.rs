@@ -204,7 +204,7 @@ impl AbstractDataType {
             AbstractDataType::WrappedScalar(w) => {
                 Some(w.fully_qualified_type_name().to_owned().into())
             }
-            AbstractDataType::Scalar(s) => Some(s.name.to_owned().into()),
+            AbstractDataType::Scalar(s) => Some(s.base_type.to_owned()),
             AbstractDataType::Sequence(seq) => Some(seq.element_type.to_owned()),
             AbstractDataType::Structure(structure) => Some(structure.name.to_owned().into()),
         }
@@ -226,10 +226,11 @@ pub struct Scalar {
     //    element: string // this is a nested scalar type
     // }
     // ```
-    // Corresponding `FullyQualifiedName` would be `vec!["String"]`.
-    name: FullyQualifiedTypeName,
+    // Corresponding `FullyQualifiedReference` would be `FullyQualifiedTypeReference { type_name: vec!["String"], parameters: vec![] }`.
+    base_type: FullyQualifiedTypeReference,
     // Represents doc comment for the generated code
     // If the doc comment is provided for this scalar type then this is `Some(doc_comment)`, other it is None.
+    #[builder(default)]
     doc_comment: Option<String>,
     // Represents the source ISL type which can be used to get other constraints useful for this type.
     // For example, getting the length of this sequence from `container_length` constraint or getting a `regex` value for string type.
@@ -265,16 +266,12 @@ pub struct WrappedScalar {
     //   type: string
     // }
     // ```
-    // Corresponding `FullyQualifiedTypeReference` would be as following:
-    // ```
-    // FullyQualifiedTypeReference {
-    //    type_name: vec!["Foo"], // name of the wrapped scalar type
-    //    parameters: vec![FullyQualifiedTypeReference {type_name: vec!["String"] }] // base type name for the scalar value
-    // }
-    // ```
-    name: FullyQualifiedTypeReference,
+    // Corresponding `name` would be `vec!["Foo"]` and `base_type` would be `FullyQualifiedTypeReference { type_name: vec!["String"], parameters: vec![] }`.
+    name: FullyQualifiedTypeName,
+    base_type: FullyQualifiedTypeReference,
     // Represents doc comment for the generated code
     // If the doc comment is provided for this scalar type then this is `Some(doc_comment)`, other it is None.
+    #[builder(default)]
     doc_comment: Option<String>,
     // Represents the source ISL type which can be used to get other constraints useful for this type.
     // For example, getting the length of this sequence from `container_length` constraint or getting a `regex` value for string type.
@@ -286,7 +283,7 @@ pub struct WrappedScalar {
 
 impl WrappedScalar {
     pub fn fully_qualified_type_name(&self) -> &FullyQualifiedTypeName {
-        &self.name.type_name
+        &self.name
     }
 }
 
@@ -396,7 +393,10 @@ mod model_tests {
     #[test]
     fn scalar_builder_test() {
         let expected_scalar = Scalar {
-            name: vec![],
+            base_type: FullyQualifiedTypeReference {
+                type_name: vec!["String".to_string()],
+                parameters: vec![],
+            },
             doc_comment: Some("This is scalar type".to_string()),
             source: anonymous_type(vec![type_constraint(named_type_ref("string"))]),
         };
@@ -405,7 +405,7 @@ mod model_tests {
 
         // sets all the information about the scalar type
         scalar_builder
-            .name(vec![])
+            .base_type(vec!["String".to_string()])
             .doc_comment(Some("This is scalar type".to_string()))
             .source(anonymous_type(vec![type_constraint(named_type_ref(
                 "string",
@@ -418,12 +418,10 @@ mod model_tests {
     #[test]
     fn wrapped_scalar_builder_test() {
         let expected_scalar = WrappedScalar {
-            name: FullyQualifiedTypeReference {
-                type_name: vec!["Foo".to_string()],
-                parameters: vec![FullyQualifiedTypeReference {
-                    type_name: vec!["String".to_string()],
-                    parameters: vec![],
-                }],
+            name: vec!["Foo".to_string()],
+            base_type: FullyQualifiedTypeReference {
+                type_name: vec!["String".to_string()],
+                parameters: vec![],
             },
             doc_comment: Some("This is scalar type".to_string()),
             source: anonymous_type(vec![type_constraint(named_type_ref("string"))]),
@@ -433,12 +431,10 @@ mod model_tests {
 
         // sets all the information about the scalar type
         scalar_builder
-            .name(FullyQualifiedTypeReference {
-                type_name: vec!["Foo".to_string()],
-                parameters: vec![FullyQualifiedTypeReference {
-                    type_name: vec!["String".to_string()],
-                    parameters: vec![],
-                }],
+            .name(vec!["Foo".to_string()])
+            .base_type(FullyQualifiedTypeReference {
+                type_name: vec!["String".to_string()],
+                parameters: vec![],
             })
             .doc_comment(Some("This is scalar type".to_string()))
             .source(anonymous_type(vec![type_constraint(named_type_ref(
