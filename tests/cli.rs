@@ -239,6 +239,17 @@ mod code_gen_tests {
     & ["private int id;", "private String name;"],
     & ["public String getName() {", "public int getId() {"]
     )]
+    #[case(
+    "Scalar",
+    r#"
+        type::{
+         name: scalar,
+         type: string
+        }
+    "#,
+    & ["private String value;"],
+    & ["public String getValue() {"]
+    )]
     /// Calls ion-cli generate with different schema file. Pass the test if the return value contains the expected properties and accessors.
     fn test_code_generation_in_java(
         #[case] test_name: &str,
