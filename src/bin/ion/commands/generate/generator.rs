@@ -298,7 +298,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         // pop out the nested type name from the fully qualified namespace as it has been already added to the type store and to nested types
         self.current_type_fully_qualified_name.pop();
         data_model_node
-            .fully_qualified_type_ref()
+            .fully_qualified_type_ref::<L>()
             .ok_or(invalid_abstract_data_type_raw_error(
                 "Can not determine fully qualified name for the data model",
             ))
@@ -383,7 +383,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         // TODO: verify the `occurs` value within a field, by default the fields are optional.
         // add current data model node into the data model store
         self.data_model_store.insert(
-            abstract_data_type.fully_qualified_type_ref().ok_or(
+            abstract_data_type.fully_qualified_type_ref::<L>().ok_or(
                 invalid_abstract_data_type_raw_error(
                     "Can not determine fully qualified name for the data model",
                 ),
@@ -822,7 +822,9 @@ mod isl_to_model_tests {
         )?;
         let abstract_data_type = data_model_node.code_gen_type.unwrap();
         assert_eq!(
-            abstract_data_type.fully_qualified_type_ref().unwrap(),
+            abstract_data_type
+                .fully_qualified_type_ref::<JavaLanguage>()
+                .unwrap(),
             FullyQualifiedTypeReference {
                 type_name: vec![
                     "org".to_string(),
@@ -908,7 +910,9 @@ mod isl_to_model_tests {
         )?;
         let abstract_data_type = data_model_node.code_gen_type.unwrap();
         assert_eq!(
-            abstract_data_type.fully_qualified_type_ref().unwrap(),
+            abstract_data_type
+                .fully_qualified_type_ref::<JavaLanguage>()
+                .unwrap(),
             FullyQualifiedTypeReference {
                 type_name: vec![
                     "org".to_string(),
@@ -966,7 +970,7 @@ mod isl_to_model_tests {
                     .code_gen_type
                     .as_ref()
                     .unwrap()
-                    .fully_qualified_type_ref(),
+                    .fully_qualified_type_ref::<JavaLanguage>(),
                 Some(FullyQualifiedTypeReference {
                     type_name: vec![
                         "org".to_string(),

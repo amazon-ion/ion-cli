@@ -10,6 +10,7 @@ use std::fmt::{Display, Formatter};
 // _Note: This model will eventually use a map (FullQualifiedTypeReference, DataModel) to resolve some the references in container types(sequence or structure)._
 // TODO: This is not yet used in the implementation, modify current implementation to use this data model.
 use crate::commands::generate::context::SequenceType;
+use crate::commands::generate::utils::Language;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -70,10 +71,10 @@ impl DataModelNode {
         false
     }
 
-    pub fn fully_qualified_type_ref(&mut self) -> Option<FullyQualifiedTypeReference> {
+    pub fn fully_qualified_type_ref<L: Language>(&mut self) -> Option<FullyQualifiedTypeReference> {
         self.code_gen_type
             .as_ref()
-            .and_then(|t| t.fully_qualified_type_ref())
+            .and_then(|t| t.fully_qualified_type_ref::<L>())
     }
 }
 
@@ -203,14 +204,18 @@ impl AbstractDataType {
         }
     }
 
-    pub fn fully_qualified_type_ref(&self) -> Option<FullyQualifiedTypeReference> {
+    pub fn fully_qualified_type_ref<L: Language>(&self) -> Option<FullyQualifiedTypeReference> {
         match self {
             AbstractDataType::WrappedScalar(w) => {
                 Some(w.fully_qualified_type_name().to_owned().into())
             }
             AbstractDataType::Scalar(s) => Some(s.base_type.to_owned()),
-            AbstractDataType::Sequence(seq) => Some(seq.element_type.to_owned()),
-            AbstractDataType::WrappedSequence(seq) => Some(seq.element_type.to_owned()),
+            AbstractDataType::Sequence(seq) => {
+                Some(L::target_type_as_sequence(seq.element_type.to_owned()))
+            }
+            AbstractDataType::WrappedSequence(seq) => {
+                Some(L::target_type_as_sequence(seq.element_type.to_owned()))
+            }
             AbstractDataType::Structure(structure) => Some(structure.name.to_owned().into()),
         }
     }
