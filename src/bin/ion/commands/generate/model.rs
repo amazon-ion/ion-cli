@@ -176,7 +176,7 @@ pub enum AbstractDataType {
     Scalar(Scalar),
     // A series of zero or more values whose type is described by the nested `element_type`
     Sequence(Sequence),
-    // Represents a sequence type which also has anme attached to it and is nominally distinct from its element type.
+    // Represents a sequence type which also has name attached to it and is nominally distinct from its enclosed type.
     WrappedSequence(WrappedSequence),
     // A collection of field name/value pairs (e.g. a map)
     Structure(Structure),
