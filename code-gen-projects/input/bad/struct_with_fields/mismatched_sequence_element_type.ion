@@ -2,6 +2,6 @@
 {
  A: "hello",
  B: 12,
- C: (1 2 3),
+ C: (1 2 3), // expected sexpression of strings
  D: 10e2
 }
