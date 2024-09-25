@@ -4,6 +4,7 @@ type::{
  fields: {
     A: string,
     B: int,
+    C: { element: string, type: sexp },
     D: float,
  }
 }
