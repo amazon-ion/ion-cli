@@ -49,7 +49,7 @@
         {{ sequence_info["element_type"] | fully_qualified_type_name }} value
     {% elif inline_type.code_gen_type is containing("Scalar") %}
         {% set scalar_info = model.code_gen_type["WrappedScalar"] %}
-        {% set base_type = scalar_info["name"]["parameters"][0] | fully_qualified_type_name %}
+        {% set base_type = scalar_info["base_type"] | fully_qualified_type_name %}
         {{ base_type }} value
     {% endif %}
 {% endmacro %}
