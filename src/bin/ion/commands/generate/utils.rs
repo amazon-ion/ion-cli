@@ -245,7 +245,9 @@ impl TryFrom<&DataModelNode> for Template {
                 AbstractDataType::Scalar(_) | AbstractDataType::WrappedScalar(_) => {
                     Ok(Template::Scalar)
                 }
-                AbstractDataType::Sequence(_) => Ok(Template::Sequence),
+                AbstractDataType::Sequence(_) | AbstractDataType::WrappedSequence(_) => {
+                    Ok(Template::Sequence)
+                }
                 AbstractDataType::Structure(_) => Ok(Template::Struct),
             }
         } else {

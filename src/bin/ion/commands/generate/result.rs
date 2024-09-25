@@ -1,5 +1,6 @@
 use crate::commands::generate::model::{
     ScalarBuilderError, SequenceBuilderError, StructureBuilderError, WrappedScalarBuilderError,
+    WrappedSequenceBuilderError,
 };
 use ion_schema::result::IonSchemaError;
 use thiserror::Error;
@@ -65,6 +66,14 @@ impl From<ScalarBuilderError> for CodeGenError {
 
 impl From<SequenceBuilderError> for CodeGenError {
     fn from(value: SequenceBuilderError) -> Self {
+        CodeGenError::DataModelBuilderError {
+            description: value.to_string(),
+        }
+    }
+}
+
+impl From<WrappedSequenceBuilderError> for CodeGenError {
+    fn from(value: WrappedSequenceBuilderError) -> Self {
         CodeGenError::DataModelBuilderError {
             description: value.to_string(),
         }

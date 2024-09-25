@@ -119,13 +119,13 @@ import java.io.IOException;
              {% set field_value = field_val.0 | fully_qualified_type_name %}
              writer.setFieldName("{{ field_name }}");
              {% if field_value | is_built_in_type == false %}
-                this.{{ field_name | camel }}.writeTo(writer);
-             {% else %}
-                 {% if field_value is containing("ArrayList") %}
+                {% if field_value is containing("ArrayList") %}
                     {{ util_macros::write_as_sequence(field_value=field_value,field_name=field_name,type_store=type_store) }}
-                 {% else %}
+                {% else %}
+                    this.{{ field_name | camel }}.writeTo(writer);
+                {% endif %}
+             {% else %}
                     writer.write{{ field_value | replace(from="double", to="float") | replace(from="boolean", to="bool") | upper_camel }}(this.{{ field_name | camel }});
-                 {% endif %}
              {% endif %}
          {% endfor %}
          writer.stepOut();
