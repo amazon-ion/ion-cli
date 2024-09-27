@@ -50,6 +50,10 @@ pub trait Language {
     ///     In Rust, Template::Struct -> "struct"
     ///     In Java, Template::Struct -> "class"
     fn template_name(template: &Template) -> String;
+
+    fn namespace_separator() -> String;
+
+    fn add_type_to_namespace(is_nested_type: bool, type_name: &String, namespace: &mut Vec<String>);
 }
 
 pub struct JavaLanguage;
@@ -127,6 +131,18 @@ impl Language for JavaLanguage {
             Template::Sequence => "sequence".to_string(),
         }
     }
+
+    fn namespace_separator() -> String {
+        ".".to_string()
+    }
+
+    fn add_type_to_namespace(
+        _is_nested_type: bool,
+        type_name: &String,
+        namespace: &mut Vec<String>,
+    ) {
+        namespace.push(type_name.to_case(Case::UpperCamel))
+    }
 }
 
 impl JavaLanguage {
@@ -193,15 +209,7 @@ impl Language for RustLanguage {
     fn is_built_in_type(type_name: String) -> bool {
         matches!(
             type_name.as_str(),
-            "i64"
-                | "String"
-                | "bool"
-                | "Vec<u8>"
-                | "f64"
-                | "Vec<String>"
-                | "Vec<i64>"
-                | "Vec<bool>"
-                | "Vec<f64>"
+            "i64" | "String" | "bool" | "Vec<u8>" | "f64"
         )
     }
 
@@ -215,6 +223,38 @@ impl Language for RustLanguage {
             Template::Scalar => "scalar".to_string(),
             Template::Sequence => "sequence".to_string(),
         }
+    }
+
+    fn namespace_separator() -> String {
+        "::".to_string()
+    }
+
+    fn add_type_to_namespace(
+        is_nested_type: bool,
+        type_name: &String,
+        namespace: &mut Vec<String>,
+    ) {
+        // e.g. For example there is a `NestedType` inside `Foo` struct. Rust code generation also generates similar modules for the generated structs.
+        // ```rust
+        // mod foo {
+        //   struct Foo {
+        //     ...
+        //     mod nested_type {
+        //        struct NestedType {
+        //          ...
+        //        }
+        //     }
+        //   }
+        // }
+        // ```
+        if is_nested_type {
+            // Assume we have the current namespace as `foo::Foo`
+            // then the following step will remove `Foo` from the path for nested type.
+            // So that the final namespace path for `NestedType` will become `foo::nested_type::NestedType`
+            namespace.pop(); // Remove the parent struct/enum
+        }
+        namespace.push(type_name.to_case(Case::Snake)); // Add this type's module name to the namespace path
+        namespace.push(type_name.to_case(Case::UpperCamel)) // Add this type itself to the namespace path
     }
 }
 
