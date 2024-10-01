@@ -327,7 +327,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             &self
                 .data_model_store
                 .iter()
-                .map(|(k, v)| (format!("{}", k), v))
+                .map(|(k, v)| (k.string_representation::<L>(), v))
                 .collect::<HashMap<String, &DataModelNode>>(),
         );
         context.insert("model", &data_model_node);

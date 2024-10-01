@@ -1,17 +1,17 @@
 use derive_builder::Builder;
 use ion_schema::isl::isl_type::IslType;
 use std::collections::HashMap;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::Debug;
 // This module contains a data model that the code generator can use to render a template based on the type of the model.
 // Currently, this same data model is represented by `AbstractDataType` but it doesn't hold all the information for the template.
 // e.g. currently there are different fields in the template that hold this information like fields, target_kind_name, abstract_data_type.
 // Also, the current approach doesn't allow having nested sequences in the generated code. Because the `element_type` in `AbstractDataType::Sequence`
 // doesn't have information on its nested types' `element_type`. This can be resolved with below defined new data model.
 // _Note: This model will eventually use a map (FullQualifiedTypeReference, DataModel) to resolve some the references in container types(sequence or structure)._
-// Any changes to the model will require subsequent changes to the templates which uses this model.
+// Any changes to the model will require subsequent changes to the templates which use this model.
 // TODO: This is not yet used in the implementation, modify current implementation to use this data model.
 use crate::commands::generate::context::SequenceType;
-use crate::commands::generate::utils::{JavaLanguage, Language};
+use crate::commands::generate::utils::Language;
 use serde::ser::Error;
 use serde::{Serialize, Serializer};
 use serde_json::Value;
@@ -103,12 +103,6 @@ impl From<FullyQualifiedTypeName> for FullyQualifiedTypeReference {
             type_name: value,
             parameters: vec![],
         }
-    }
-}
-
-impl Display for FullyQualifiedTypeReference {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.string_representation::<JavaLanguage>())
     }
 }
 
@@ -245,7 +239,7 @@ where
 
 /// Helper function for checking to skip or serialize `source` field in abstract data type that represents an ISL type.
 /// This method returns true if the ISl type doesn't have a name, otherwise returns false.
-fn has_no_name(isl_type: &IslType) -> bool {
+fn is_anonymous(isl_type: &IslType) -> bool {
     isl_type.name().is_none()
 }
 
@@ -273,7 +267,7 @@ pub struct Scalar {
     // Represents the source ISL type which can be used to get other constraints useful for this type.
     // For example, getting the length of this sequence from `container_length` constraint or getting a `regex` value for string type.
     // This will also be useful for `text` type to verify if this is a `string` or `symbol`.
-    #[serde(skip_serializing_if = "has_no_name")]
+    #[serde(skip_serializing_if = "is_anonymous")]
     #[serde(serialize_with = "serialize_type_name")]
     source: IslType,
 }
@@ -314,7 +308,7 @@ pub struct WrappedScalar {
     // Represents the source ISL type which can be used to get other constraints useful for this type.
     // For example, getting the length of this sequence from `container_length` constraint or getting a `regex` value for string type.
     // This will also be useful for `text` type to verify if this is a `string` or `symbol`.
-    #[serde(skip_serializing_if = "has_no_name")]
+    #[serde(skip_serializing_if = "is_anonymous")]
     #[serde(serialize_with = "serialize_type_name")]
     source: IslType,
 }
@@ -358,7 +352,7 @@ pub struct WrappedSequence {
     // Represents the source ISL type which can be used to get other constraints useful for this type.
     // For example, getting the length of this sequence from `container_length` constraint or getting a `regex` value for string type.
     // This will also be useful for `text` type to verify if this is a `string` or `symbol`.
-    #[serde(skip_serializing_if = "has_no_name")]
+    #[serde(skip_serializing_if = "is_anonymous")]
     #[serde(serialize_with = "serialize_type_name")]
     source: IslType,
 }
@@ -393,7 +387,7 @@ pub struct Sequence {
     // Represents the source ISL type which can be used to get other constraints useful for this type.
     // For example, getting the length of this sequence from `container_length` constraint or getting a `regex` value for string type.
     // This will also be useful for `text` type to verify if this is a `string` or `symbol`.
-    #[serde(skip_serializing_if = "has_no_name")]
+    #[serde(skip_serializing_if = "is_anonymous")]
     #[serde(serialize_with = "serialize_type_name")]
     pub(crate) source: IslType,
 }
@@ -434,7 +428,7 @@ pub struct Structure {
     // Represents the source ISL type which can be used to get other constraints useful for this type.
     // For example, getting the length of this sequence from `container_length` constraint or getting a `regex` value for string type.
     // This will also be useful for `text` type to verify if this is a `string` or `symbol`.
-    #[serde(skip_serializing_if = "has_no_name")]
+    #[serde(skip_serializing_if = "is_anonymous")]
     #[serde(serialize_with = "serialize_type_name")]
     pub(crate) source: IslType,
 }

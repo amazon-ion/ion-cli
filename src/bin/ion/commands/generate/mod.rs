@@ -124,7 +124,6 @@ impl IonCliCommand for GenerateCommand {
                         CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().split('.').map(|s| s.to_string()).collect())
                             .generate_code_for_authorities(&authorities, &mut schema_system)?,
                     "rust" => {
-                        // TODO: Initialize and run code generator for `rust`, once the rust templates are modified based on new code generation model
                         CodeGenerator::<RustLanguage>::new(output)
                             .generate_code_for_authorities(&authorities, &mut schema_system)?
                     }
@@ -139,7 +138,6 @@ impl IonCliCommand for GenerateCommand {
                 match language {
                     "java" => CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().split('.').map(|s| s.to_string()).collect()).generate_code_for_schema(&mut schema_system, schema_id)?,
                     "rust" => {
-                        // TODO: Initialize and run code generator for `rust`, once the rust templates are modified based on new code generation model
                         CodeGenerator::<RustLanguage>::new(output)
                             .generate_code_for_authorities(&authorities, &mut schema_system)?
                     }

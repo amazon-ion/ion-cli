@@ -51,8 +51,24 @@ pub trait Language {
     ///     In Java, Template::Struct -> "class"
     fn template_name(template: &Template) -> String;
 
-    fn namespace_separator() -> String;
+    /// Returns the namespace separator for programming language
+    /// e.g. In Java, it returns "::"
+    ///      In Rust, it returns "."
+    fn namespace_separator() -> &'static str;
 
+    /// Modifies the given namespace to add the given type to the namespace path.
+    /// _Note:_ For Rust, it uses the `is_nested_type` field to only get modules in the path name until the leaf type is reached.
+    ///    e.g. given a module as below:
+    ///         ```
+    ///         mod foo {
+    ///             struct Foo { ... }
+    ///             mod nested_type {
+    ///                 struct NestedType { ... }
+    ///             }
+    ///         }
+    ///         ```
+    ///     To add `NestedType` into the namespace path, `is_nested_type` helps remove any prior types form the path and add this current type.
+    ///     i.e. given namespace path as `foo::Foo`, it will first remove `Foo` and then add the current type as `foo::nested_type::NestedType`.
     fn add_type_to_namespace(is_nested_type: bool, type_name: &String, namespace: &mut Vec<String>);
 }
 
@@ -90,7 +106,7 @@ impl Language for JavaLanguage {
     fn target_type_as_sequence(
         target_type: FullyQualifiedTypeReference,
     ) -> FullyQualifiedTypeReference {
-        match JavaLanguage::wrapper_class(&format!("{}", target_type)) {
+        match JavaLanguage::wrapper_class(&target_type.string_representation::<JavaLanguage>()) {
             Some(wrapper_name) => FullyQualifiedTypeReference {
                 type_name: vec![
                     "java".to_string(),
@@ -132,8 +148,8 @@ impl Language for JavaLanguage {
         }
     }
 
-    fn namespace_separator() -> String {
-        ".".to_string()
+    fn namespace_separator() -> &'static str {
+        "."
     }
 
     fn add_type_to_namespace(
@@ -225,8 +241,8 @@ impl Language for RustLanguage {
         }
     }
 
-    fn namespace_separator() -> String {
-        "::".to_string()
+    fn namespace_separator() -> &'static str {
+        "::"
     }
 
     fn add_type_to_namespace(
@@ -239,11 +255,11 @@ impl Language for RustLanguage {
         // mod foo {
         //   struct Foo {
         //     ...
-        //     mod nested_type {
-        //        struct NestedType {
-        //          ...
-        //        }
-        //     }
+        //   }
+        //   mod nested_type {
+        //      struct NestedType {
+        //        ...
+        //      }
         //   }
         // }
         // ```
