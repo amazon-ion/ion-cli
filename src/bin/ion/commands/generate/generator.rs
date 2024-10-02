@@ -212,7 +212,9 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         _map: &HashMap<String, tera::Value>,
     ) -> Result<tera::Value, tera::Error> {
         let fully_qualified_type_ref: &FullyQualifiedTypeReference = &value.try_into()?;
-        Ok(tera::Value::String(fully_qualified_type_ref.to_string()))
+        Ok(tera::Value::String(
+            fully_qualified_type_ref.string_representation::<L>(),
+        ))
     }
 
     /// Generates code for all the schemas in given authorities
@@ -325,7 +327,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             &self
                 .data_model_store
                 .iter()
-                .map(|(k, v)| (format!("{}", k), v))
+                .map(|(k, v)| (k.string_representation::<L>(), v))
                 .collect::<HashMap<String, &DataModelNode>>(),
         );
         context.insert("model", &data_model_node);
@@ -340,8 +342,11 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         code_gen_context: &mut CodeGenContext,
         is_nested_type: bool,
     ) -> CodeGenResult<DataModelNode> {
-        self.current_type_fully_qualified_name
-            .push(isl_type_name.to_case(Case::UpperCamel));
+        L::add_type_to_namespace(
+            is_nested_type,
+            isl_type_name,
+            &mut self.current_type_fully_qualified_name,
+        );
 
         let constraints = isl_type.constraints();
 
