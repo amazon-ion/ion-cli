@@ -232,12 +232,12 @@ mod code_gen_tests {
          name: simple_struct,
          fields: {
             name: string,
-            id: int,
+            id: { type: int, occurs: required },
          }
         }
     "#,
-    & ["private int id;", "private String name;"],
-    & ["public String getName() {", "public int getId() {"]
+    & ["private int id;", "private java.util.Optional<String> name;"],
+    & ["public java.util.Optional<String> getName() {", "public int getId() {"]
     )]
     #[case(
     "Scalar",

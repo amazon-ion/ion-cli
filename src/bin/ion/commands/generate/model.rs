@@ -434,7 +434,7 @@ pub struct Structure {
 }
 
 /// Represents whether the field is required or not
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Copy)]
 pub enum FieldPresence {
     #[allow(dead_code)]
     Required,

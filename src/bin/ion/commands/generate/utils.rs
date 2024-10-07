@@ -70,6 +70,13 @@ pub trait Language {
     ///     To add `NestedType` into the namespace path, `is_nested_type` helps remove any prior types form the path and add this current type.
     ///     i.e. given namespace path as `foo::Foo`, it will first remove `Foo` and then add the current type as `foo::nested_type::NestedType`.
     fn add_type_to_namespace(is_nested_type: bool, type_name: &String, namespace: &mut Vec<String>);
+
+    /// Returns the `FullyQualifiedReference` that represents the target type as optional in the given programming language
+    /// e.g. In Java, it will return "java.util.Optional<T>"
+    ///     In Rust, it will return "Option<T>"
+    fn target_type_as_optional(
+        target_type: FullyQualifiedTypeReference,
+    ) -> FullyQualifiedTypeReference;
 }
 
 pub struct JavaLanguage;
@@ -159,19 +166,57 @@ impl Language for JavaLanguage {
     ) {
         namespace.push(type_name.to_case(Case::UpperCamel))
     }
+
+    fn target_type_as_optional(
+        target_type: FullyQualifiedTypeReference,
+    ) -> FullyQualifiedTypeReference {
+        match JavaLanguage::wrapper_class(&target_type.string_representation::<JavaLanguage>()) {
+            Some(wrapper_name) => FullyQualifiedTypeReference {
+                type_name: vec![
+                    "java".to_string(),
+                    "util".to_string(),
+                    "Optional".to_string(),
+                ],
+                parameters: vec![FullyQualifiedTypeReference {
+                    type_name: vec![wrapper_name],
+                    parameters: vec![],
+                }],
+            },
+            None => FullyQualifiedTypeReference {
+                type_name: vec![
+                    "java".to_string(),
+                    "util".to_string(),
+                    "Optional".to_string(),
+                ],
+                parameters: vec![target_type],
+            },
+        }
+    }
 }
 
 impl JavaLanguage {
+    /// Returns the wrapper class for the given primitive data type
     fn wrapper_class(primitive_data_type: &str) -> Option<String> {
         match primitive_data_type {
             "int" => Some("Integer".to_string()),
-            "bool" => Some("Boolean".to_string()),
+            "boolean" => Some("Boolean".to_string()),
             "double" => Some("Double".to_string()),
             "long" => Some("Long".to_string()),
             _ => {
                 // for any other non-primitive types return None
                 None
             }
+        }
+    }
+
+    /// Returns the primitive data type for the given wrapper class
+    pub fn primitive_data_type(wrapper_class: &str) -> &str {
+        match wrapper_class {
+            "Integer" => "int",
+            "Boolean" => "boolean",
+            "Double" => "double",
+            "Long" => "long",
+            _ => wrapper_class,
         }
     }
 }
@@ -271,6 +316,17 @@ impl Language for RustLanguage {
         }
         namespace.push(type_name.to_case(Case::Snake)); // Add this type's module name to the namespace path
         namespace.push(type_name.to_case(Case::UpperCamel)) // Add this type itself to the namespace path
+    }
+
+    fn target_type_as_optional(
+        target_type: FullyQualifiedTypeReference,
+    ) -> FullyQualifiedTypeReference {
+        // TODO: un-comment following block for optional support in Rust, once the templates are changes accordingly
+        // FullyQualifiedTypeReference {
+        //     type_name: vec!["Option".to_string()],
+        //     parameters: vec![target_type],
+        // }
+        target_type
     }
 }
 

@@ -202,6 +202,42 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         ))
     }
 
+    /// A [tera] filter that returns the parameter names for given fully qualified type name.
+    ///
+    /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
+    ///
+    /// [tera]: <https://docs.rs/tera/latest/tera/>
+    pub fn parameters(
+        value: &tera::Value,
+        _map: &HashMap<String, tera::Value>,
+    ) -> Result<tera::Value, tera::Error> {
+        let fully_qualified_type_ref: &FullyQualifiedTypeReference = &value.try_into()?;
+        Ok(tera::Value::Array(
+            fully_qualified_type_ref
+                .parameters
+                .iter()
+                .map(|p| tera::Value::String(p.string_representation::<L>()))
+                .collect(),
+        ))
+    }
+
+    /// A [tera] filter that return primitive data type name for given wrapper class name.
+    ///
+    /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
+    ///
+    /// [tera]: <https://docs.rs/tera/latest/tera/>
+    pub fn primitive_data_type(
+        value: &tera::Value,
+        _map: &HashMap<String, tera::Value>,
+    ) -> Result<tera::Value, tera::Error> {
+        Ok(tera::Value::String(
+            JavaLanguage::primitive_data_type(value.as_str().ok_or(tera::Error::msg(
+                "Required string for `primitive_data_type` filter",
+            ))?)
+            .to_string(),
+        ))
+    }
+
     /// A [tera] filter that returns a string representation of a tera object i.e. `FullyQualifiedTypeReference`.
     ///
     /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
@@ -263,6 +299,10 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         self.tera
             .register_filter("fully_qualified_type_name", Self::fully_qualified_type_name);
 
+        self.tera.register_filter("parameters", Self::parameters);
+        self.tera
+            .register_filter("primitive_data_type", Self::primitive_data_type);
+
         // Iterate through the ISL types, generate an abstract data type for each
         for isl_type in schema.types() {
             // unwrap here is safe because all the top-level type definition always has a name
@@ -278,15 +318,19 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
 
     /// generates an nested type that can be part of another type definition.
     /// This will be used by the parent type to add this nested type in its namespace or module.
+    /// _Note: `field_presence` is only used ofr variably occurring type references and currently that is only supported with `fields` constraint.
+    /// For all other cases `field_presence` will be set as default `FieldPresence::Required`._
     fn generate_nested_type(
         &mut self,
         type_name: &String,
         isl_type: &IslType,
+        field_presence: FieldPresence,
         parent_code_gen_context: &mut CodeGenContext,
     ) -> CodeGenResult<FullyQualifiedTypeReference> {
         let mut code_gen_context = CodeGenContext::new();
         let mut data_model_node = self.convert_isl_type_def_to_data_model_node(
             type_name,
+            field_presence,
             isl_type,
             &mut code_gen_context,
             true,
@@ -299,11 +343,20 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
 
         // pop out the nested type name from the fully qualified namespace as it has been already added to the type store and to nested types
         self.current_type_fully_qualified_name.pop();
-        data_model_node
-            .fully_qualified_type_ref::<L>()
-            .ok_or(invalid_abstract_data_type_raw_error(
-                "Can not determine fully qualified name for the data model",
-            ))
+        match field_presence {
+            FieldPresence::Optional => Ok(L::target_type_as_optional(
+                data_model_node.fully_qualified_type_ref::<L>().ok_or(
+                    invalid_abstract_data_type_raw_error(
+                        "Can not determine fully qualified name for the data model",
+                    ),
+                )?,
+            )),
+            FieldPresence::Required => data_model_node.fully_qualified_type_ref::<L>().ok_or(
+                invalid_abstract_data_type_raw_error(
+                    "Can not determine fully qualified name for the data model",
+                ),
+            ),
+        }
     }
 
     fn generate_abstract_data_type(
@@ -316,6 +369,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
 
         let data_model_node = self.convert_isl_type_def_to_data_model_node(
             isl_type_name,
+            FieldPresence::Required, // Sets `field_presence` as `Required`, as the top level type definition can not be `Optional`.
             isl_type,
             &mut code_gen_context,
             false,
@@ -335,9 +389,12 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         self.render_generated_code(isl_type_name, &mut context, &data_model_node)
     }
 
+    /// _Note: `field_presence` is only used ofr variably occurring type references and currently that is only supported with `fields` constraint.
+    /// For all other cases `field_presence` will be set as default `FieldPresence::Required`._
     fn convert_isl_type_def_to_data_model_node(
         &mut self,
         isl_type_name: &String,
+        field_presence: FieldPresence,
         isl_type: &IslType,
         code_gen_context: &mut CodeGenContext,
         is_nested_type: bool,
@@ -398,14 +455,23 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
 
         // TODO: verify the `occurs` value within a field, by default the fields are optional.
         // add current data model node into the data model store
-        self.data_model_store.insert(
-            abstract_data_type.fully_qualified_type_ref::<L>().ok_or(
+        // verify if the field presence was provided as optional and set the type reference name as optional.
+        let type_name = match field_presence {
+            FieldPresence::Optional => abstract_data_type.fully_qualified_type_ref::<L>().ok_or(
                 invalid_abstract_data_type_raw_error(
                     "Can not determine fully qualified name for the data model",
                 ),
             )?,
-            data_model_node.to_owned(),
-        );
+            FieldPresence::Required => abstract_data_type.fully_qualified_type_ref::<L>().ok_or(
+                invalid_abstract_data_type_raw_error(
+                    "Can not determine fully qualified name for the data model",
+                ),
+            )?,
+        };
+
+        self.data_model_store
+            .insert(type_name, data_model_node.to_owned());
+
         Ok(data_model_node)
     }
 
@@ -459,10 +525,13 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     }
 
     /// Provides the `FullyQualifiedTypeReference` to be used for the `AbstractDataType` in the data model.
-    /// Returns None when the given ISL type is `struct`, `list` or `sexp` as open-ended types are not supported currently.
+    /// Returns `None` when the given ISL type is `struct`, `list` or `sexp` as open-ended types are not supported currently.
+    /// _Note: `field_presence` is only used ofr variably occurring type references and currently that is only supported with `fields` constraint.
+    /// For all other cases `field_presence` will be set as default `FieldPresence::Required`._
     fn fully_qualified_type_ref_name(
         &mut self,
         isl_type_ref: &IslTypeRef,
+        field_presence: FieldPresence,
         parent_code_gen_context: &mut CodeGenContext,
     ) -> CodeGenResult<Option<FullyQualifiedTypeReference>> {
         Ok(match isl_type_ref {
@@ -474,13 +543,25 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                         type_name: vec![type_name.to_string()],
                         parameters: vec![],
                     })
+                    .and_then(|t| {
+                        if field_presence == FieldPresence::Optional {
+                            Some(L::target_type_as_optional(t))
+                        } else {
+                            Some(t)
+                        }
+                    })
             }
             IslTypeRef::TypeImport(_, _) => {
                 unimplemented!("Imports in schema are not supported yet!");
             }
             IslTypeRef::Anonymous(type_def, _) => {
                 let name = self.next_nested_type_name();
-                Some(self.generate_nested_type(&name, type_def, parent_code_gen_context)?)
+                Some(self.generate_nested_type(
+                    &name,
+                    type_def,
+                    field_presence,
+                    parent_code_gen_context,
+                )?)
             }
         })
     }
@@ -498,6 +579,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         found_constraint: bool,
         constraint_name: &str,
         isl_type: &IslTypeRef,
+        field_presence: FieldPresence,
         code_gen_context: &mut CodeGenContext,
     ) -> CodeGenResult<FullyQualifiedTypeReference> {
         if found_constraint {
@@ -506,7 +588,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             ));
         }
 
-        self.fully_qualified_type_ref_name(isl_type, code_gen_context)?
+        self.fully_qualified_type_ref_name(isl_type, field_presence, code_gen_context)?
             .ok_or(invalid_abstract_data_type_raw_error(format!(
                 "Could not determine `FullQualifiedTypeReference` for type {:?}",
                 isl_type
@@ -556,20 +638,26 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     // TODO: Check for `closed` annotation on fields and based on that return error while reading if there are extra fields.
                     let mut fields = HashMap::new();
                     for (name, value) in struct_fields.iter() {
+                        let field_presence = if value.occurs().inclusive_endpoints() == (0, 1) {
+                            FieldPresence::Optional
+                        } else if value.occurs().inclusive_endpoints() == (1, 1) {
+                            FieldPresence::Required
+                        } else {
+                            // TODO: change the field presence based on occurs constraint
+                            return invalid_abstract_data_type_error("Fields with occurs as a range aren't supported with code generation");
+                        };
                         let type_name = self
                             .fully_qualified_type_ref_name(
                                 value.type_reference(),
+                                field_presence,
                                 code_gen_context,
                             )?
                             .ok_or(invalid_abstract_data_type_raw_error(
                                 "Given type doesn't have a name",
                             ))?;
-
-                        // TODO: change the field presence based on occurs constraint
-                        // by default the field presence is optional
                         fields.insert(
                             name.to_string(),
-                            FieldReference(type_name.to_owned(), FieldPresence::Optional),
+                            FieldReference(type_name.to_owned(), field_presence),
                         );
                     }
                     // unwrap here is safe as the `current_abstract_data_type_builder` will either be initialized with default implementation
@@ -631,6 +719,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                         found_base_type,
                         "type",
                         isl_type,
+                        FieldPresence::Required,
                         code_gen_context,
                     )?;
                     wrapped_scalar_builder.base_type(type_name);
@@ -687,6 +776,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                         found_base_type,
                         "type",
                         isl_type,
+                        FieldPresence::Required,
                         code_gen_context,
                     )?;
                     scalar_builder.base_type(type_name);
@@ -742,6 +832,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                         found_element_constraint,
                         "type",
                         isl_type_ref,
+                        FieldPresence::Required,
                         code_gen_context,
                     )?;
 
@@ -807,7 +898,11 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             match constraint.constraint() {
                 IslConstraintValue::Element(isl_type_ref, _) => {
                     let type_name = self
-                        .fully_qualified_type_ref_name(isl_type_ref, code_gen_context)?
+                        .fully_qualified_type_ref_name(
+                            isl_type_ref,
+                            FieldPresence::Required,
+                            code_gen_context,
+                        )?
                         .ok_or(invalid_abstract_data_type_raw_error(format!(
                             "Could not determine `FullQualifiedTypeReference` for type {:?}",
                             isl_type_ref
@@ -867,6 +962,7 @@ mod isl_to_model_tests {
         );
         let data_model_node = java_code_generator.convert_isl_type_def_to_data_model_node(
             &"my_struct".to_string(),
+            FieldPresence::Required,
             &isl_type,
             &mut CodeGenContext::new(),
             false,
@@ -904,8 +1000,15 @@ mod isl_to_model_tests {
                         "foo".to_string(),
                         FieldReference(
                             FullyQualifiedTypeReference {
-                                type_name: vec!["String".to_string()],
-                                parameters: vec![]
+                                type_name: vec![
+                                    "java".to_string(),
+                                    "util".to_string(),
+                                    "Optional".to_string()
+                                ],
+                                parameters: vec![FullyQualifiedTypeReference {
+                                    type_name: vec!["String".to_string()],
+                                    parameters: vec![]
+                                }]
                             },
                             FieldPresence::Optional
                         )
@@ -914,8 +1017,15 @@ mod isl_to_model_tests {
                         "bar".to_string(),
                         FieldReference(
                             FullyQualifiedTypeReference {
-                                type_name: vec!["int".to_string()],
-                                parameters: vec![]
+                                type_name: vec![
+                                    "java".to_string(),
+                                    "util".to_string(),
+                                    "Optional".to_string()
+                                ],
+                                parameters: vec![FullyQualifiedTypeReference {
+                                    type_name: vec!["Integer".to_string()],
+                                    parameters: vec![]
+                                }]
                             },
                             FieldPresence::Optional
                         )
@@ -939,7 +1049,7 @@ mod isl_to_model_tests {
                             fields: {
                                 baz: bool
                             },
-                            type: struct
+                            type: struct,
                         },
                         bar: int
                     },
@@ -955,6 +1065,7 @@ mod isl_to_model_tests {
         );
         let data_model_node = java_code_generator.convert_isl_type_def_to_data_model_node(
             &"my_nested_struct".to_string(),
+            FieldPresence::Required,
             &isl_type,
             &mut CodeGenContext::new(),
             false,
@@ -993,12 +1104,19 @@ mod isl_to_model_tests {
                         FieldReference(
                             FullyQualifiedTypeReference {
                                 type_name: vec![
-                                    "org".to_string(),
-                                    "example".to_string(),
-                                    "MyNestedStruct".to_string(),
-                                    "NestedType1".to_string()
+                                    "java".to_string(),
+                                    "util".to_string(),
+                                    "Optional".to_string()
                                 ],
-                                parameters: vec![]
+                                parameters: vec![FullyQualifiedTypeReference {
+                                    type_name: vec![
+                                        "org".to_string(),
+                                        "example".to_string(),
+                                        "MyNestedStruct".to_string(),
+                                        "NestedType1".to_string()
+                                    ],
+                                    parameters: vec![]
+                                }]
                             },
                             FieldPresence::Optional
                         )
@@ -1007,8 +1125,15 @@ mod isl_to_model_tests {
                         "bar".to_string(),
                         FieldReference(
                             FullyQualifiedTypeReference {
-                                type_name: vec!["int".to_string()],
-                                parameters: vec![]
+                                type_name: vec![
+                                    "java".to_string(),
+                                    "util".to_string(),
+                                    "Optional".to_string()
+                                ],
+                                parameters: vec![FullyQualifiedTypeReference {
+                                    type_name: vec!["Integer".to_string()],
+                                    parameters: vec![]
+                                }]
                             },
                             FieldPresence::Optional
                         )
