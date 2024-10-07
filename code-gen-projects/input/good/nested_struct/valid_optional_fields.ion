@@ -1,0 +1,9 @@
+// nested struct with some optional fields that are not provided
+{
+A: "hello",
+// B: 12, // since `B` is optional field, this is a valid struct
+C: {
+D: false,
+E: [1, 2, 3]
+}
+}
