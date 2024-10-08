@@ -26,22 +26,22 @@ class CodeGenTest {
          StructWithFields s = new StructWithFields();
 
          // set all the fields of `StructWithFields`
-         s.setA("hello");
-         s.setB(12);
-         s.setD(10e2);
+         s.setA(java.util.Optional.of("hello"));
+         s.setB(java.util.Optional.of(12));
+         s.setD(java.util.Optional.of(10e2));
 
          // getter tests for `StructWithFields`
-         assertEquals("hello", s.getA(), "s.getA() should return \"hello\"");
-         assertEquals(12, s.getB(), "s.getB() should return `12`");
-         assertEquals(10e2, s.getD(), "s.getD() should return `10e2`");
+         assertEquals("hello", s.getA().get(), "s.getA() should return \"hello\"");
+         assertEquals(12, s.getB().get(), "s.getB() should return `12`");
+         assertEquals(10e2, s.getD().get(), "s.getD() should return `10e2`");
 
          // setter tests for `StructWithFields`
-         s.setA("hi");
-         assertEquals("hi", s.getA(), "s.getA() should return \"hi\"");
-         s.setB(6);
-         assertEquals(6, s.getB(), "s.getB() should return `6`");
-         s.setD(11e3);
-         assertEquals(11e3 ,s.getD(), "s.getD() should return `11e3`");
+         s.setA(java.util.Optional.of("hi"));
+         assertEquals("hi", s.getA().get(), "s.getA() should return \"hi\"");
+         s.setB(java.util.Optional.of(6));
+         assertEquals(6, s.getB().get(), "s.getB() should return `6`");
+         s.setD(java.util.Optional.of(11e3));
+         assertEquals(11e3 ,s.getD().get(), "s.getD() should return `11e3`");
     }
 
     @Test void getterAndSetterTestForNestedStruct() {
@@ -53,25 +53,25 @@ class CodeGenTest {
          a.add(3);
 
          // set all the fields of `NestedStruct`
-         n.setA("hello");
-         n.setB(12);
-         n.setC(false, a);
+         n.setA(java.util.Optional.of("hello"));
+         n.setB(java.util.Optional.of(12));
+         n.setC(java.util.Optional.of(false), java.util.Optional.of(a));
 
          // getter tests for `NestedStruct`
-         assertEquals("hello", n.getA(), "n.getA() should return \"hello\"");
-         assertEquals(12, n.getB(), "n.getB() should return `12`");
-         assertEquals(false, n.getC().getD(), "n.getC().getD() should return `false`");
-         assertEquals(3, n.getC().getE().size(), "n.getC().getE().size() should return ArrayList fo size 3");
+         assertEquals("hello", n.getA().get(), "n.getA() should return \"hello\"");
+         assertEquals(12, n.getB().get(), "n.getB() should return `12`");
+         assertEquals(false, n.getC().get().getD().get(), "n.getC().getD() should return `false`");
+         assertEquals(3, n.getC().get().getE().get().size(), "n.getC().getE().size() should return ArrayList fo size 3");
 
           // setter tests for `NestedStruct`
-          n.setA("hi");
-          assertEquals("hi", n.getA(), "s.getA() should return \"hi\"");
-          n.setB(6);
-          assertEquals(6, n.getB(), "s.getB() should return `6`");
-          n.getC().setD(true);
-          assertEquals(true, n.getC().getD(), "s.getC().getD() should return `true`");
-          n.getC().setE(new ArrayList<Integer>());
-          assertEquals(0, n.getC().getE().size(), "s.getC().getE().size() should return ArrayList fo size 0");
+          n.setA(java.util.Optional.of("hi"));
+          assertEquals("hi", n.getA().get(), "s.getA() should return \"hi\"");
+          n.setB(java.util.Optional.of(6));
+          assertEquals(6, n.getB().get(), "s.getB() should return `6`");
+          n.getC().get().setD(java.util.Optional.of(true));
+          assertEquals(true, n.getC().get().getD().get(), "s.getC().getD() should return `true`");
+          n.getC().get().setE(java.util.Optional.of(new ArrayList<Integer>()));
+          assertEquals(0, n.getC().get().getE().get().size(), "s.getC().getE().size() should return ArrayList fo size 0");
     }
 
     @Test void getterAndSetterTestForSequence() {

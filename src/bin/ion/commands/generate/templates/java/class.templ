@@ -31,14 +31,17 @@ import java.io.IOException;
     }
     {% endfor %}
 
-    {% for field_name, field_value in struct_info["fields"] %}
-        {% set val = field_value.0 | fully_qualified_type_name %}
+    {% for field_name, field_val in struct_info["fields"] %}
+        {% set field_value = field_val.0 %}
+        {% set val = field_value | fully_qualified_type_name %}
+        {% set field_occurrence = field_val.1 %}
+        {% if field_occurrence == "Optional" %} {% set field_value = field_value | parameters | nth(n=0) | primitive_data_type %} {% endif %}
         {% if val is containing("NestedType") %}
           public void set{% filter upper_camel %}{{ field_name }}{% endfilter %}(
-          {{ macros::define_params_for_anonymous_type(nested_type=field_value.0, type_store=type_store, field_name=field_name, initial_field_name=field_name) }}
+          {{ macros::define_params_for_anonymous_type(nested_type=field_value, type_store=type_store, field_name=field_name, initial_field_name=field_name) }}
           ) {
-          {{ macros::initialize_anonymous_type(nested_type=field_value.0, type_store=type_store, field_name=field_name) }}
-          this.{{ field_name | camel }} = {{ field_name | camel }};
+          {{ macros::initialize_anonymous_type(nested_type=field_value, type_store=type_store, field_name=field_name) }}
+          this.{{ field_name | camel }} = {% if field_occurrence == "Optional" %}java.util.Optional.of({% endif %}{{ field_name | camel }}{% if field_occurrence == "Optional" %}){% endif %};
           return;
         {% else %}
         public void set{% filter upper_camel %}{{ field_name }}{% endfilter %}({{ val }} {{ field_name | camel }}) {
@@ -59,14 +62,9 @@ import java.io.IOException;
         {# Initializes all the fields of this class #}
         {% for field_name, field_val in struct_info["fields"] -%}
             {% set field_value = field_val.0 | fully_qualified_type_name %}
-            {{ field_value }} {{ field_name | camel }} =
-            {% if field_value == "boolean" %}
-                false
-            {% elif field_value == "int" or field_value == "double" %}
-                0
-            {% else %}
-                null
-            {% endif %};
+            {% set field_occurrence = field_val.1 %}
+            {# Initialize all the required fields as `java.util.Optional` to verify if the required fields were missing or not #}
+            {% if field_occurrence == "Required" %} java.util.Optional<{% endif %}{{ field_value }}{% if field_occurrence == "Required" %}>{% endif %} {{ field_name | camel }} = java.util.Optional.empty();
         {% endfor %}
 
         {# Reads `Structure` class with multiple fields based on `field.name` #}
@@ -77,19 +75,22 @@ import java.io.IOException;
             switch(fieldName) {
                 {% for field_name, field_val in struct_info["fields"] %}
                 {% set field_value = field_val.0 | fully_qualified_type_name %}
+                {% set field_occurrence = field_val.1 %}
+                {% if field_occurrence == "Optional" %} {% set field_value = field_val.0 | parameters | nth(n=0) | primitive_data_type %} {% endif %}
 
                 case "{{ field_name }}":
-                    {{ field_name | camel }} = {% if field_value | is_built_in_type %}
+                    {{ field_name | camel }} =  java.util.Optional.of(
+                                                {% if field_value | is_built_in_type %}
                                                    {% if field_value == "bytes[]" %}
-                                                        reader.newBytes();
+                                                        reader.newBytes()
                                                    {% else %}
-                                                        reader.{{ field_value | camel }}Value();
+                                                        reader.{{ field_value | camel }}Value()
                                                    {% endif %}
                                                 {% elif field_value is containing("ArrayList") %}
-                                                    {{ util_macros::read_as_sequence(field_value=field_value,field_name=field_name,type_store=type_store) }}
+                                                   {{ util_macros::read_as_sequence(field_value=field_value,field_name=field_name,type_store=type_store, field_occurrence=field_occurrence) }}
                                                 {% else %}
-                                                    {{ field_value }}.readFrom(reader);
-                                                {% endif %}
+                                                    {{ field_value }}.readFrom(reader)
+                                                {% endif %});
                     break;
                 {% endfor %}
                 default:
@@ -100,7 +101,17 @@ import java.io.IOException;
 
         {{ model.name }} {{ model.name | camel }} = new {{ model.name }}();
         {% for field_name, field_value in struct_info["fields"] -%}
-            {{ model.name | camel }}.{{ field_name | camel }} = {{ field_name | camel }};
+            {% set field_occurrence = field_value.1 %}
+            {% if field_occurrence == "Required" %}
+            // Verify if the required field was initialized
+            if (!{{ field_name | camel }}.isPresent()) {
+                throw new IonException("Can not find field name: {{ field_name }} for {{ model.name }} while reading Ion data.");
+            } else {
+                {{ model.name | camel }}.{{ field_name | camel }} = {{ field_name | camel }}.get();
+            }
+            {% else %}
+                {{ model.name | camel }}.{{ field_name | camel }} = {{ field_name | camel }};
+            {% endif %}
         {% endfor %}
 
         return  {{ model.name | camel }};
@@ -117,15 +128,33 @@ import java.io.IOException;
          writer.stepIn(IonType.STRUCT);
          {% for field_name, field_val in struct_info["fields"] %}
              {% set field_value = field_val.0 | fully_qualified_type_name %}
+             {% set field_occurrence = field_val.1 %}
+             {% if field_occurrence == "Optional" %} {% set field_value = field_val.0 | parameters | nth(n=0) | primitive_data_type %} {% endif %}
              writer.setFieldName("{{ field_name }}");
              {% if field_value | is_built_in_type == false %}
-                {% if field_value is containing("ArrayList") %}
-                    {{ util_macros::write_as_sequence(field_value=field_value,field_name=field_name,type_store=type_store) }}
+                {% if field_occurrence == "Optional" %}
+                     if (this.{{ field_name | camel }}.isPresent()) {
+                        {% if field_value is containing("ArrayList") %}
+                            {{ util_macros::write_as_sequence(field_value=field_value,field_name=field_name,type_store=type_store, field_occurrence=field_occurrence) }}
+                        {% else %}
+                            this.{{ field_name | camel }}.get().writeTo(writer);
+                        {% endif %}
+                     }
                 {% else %}
-                    this.{{ field_name | camel }}.writeTo(writer);
+                    {% if field_value is containing("ArrayList") %}
+                        {{ util_macros::write_as_sequence(field_value=field_value,field_name=field_name,type_store=type_store, field_occurrence=field_occurrence) }}
+                    {% else %}
+                        this.{{ field_name | camel }}.writeTo(writer);
+                    {% endif %}
                 {% endif %}
              {% else %}
-                    writer.write{{ field_value | replace(from="double", to="float") | replace(from="boolean", to="bool") | upper_camel }}(this.{{ field_name | camel }});
+                    {% if field_occurrence == "Optional" %}
+                        if (this.{{ field_name | camel }}.isPresent()) {
+                              writer.write{{ field_value | replace(from="double", to="float") | replace(from="boolean", to="bool") | upper_camel }}(this.{{ field_name | camel }}.get());
+                        }
+                    {% else %}
+                        writer.write{{ field_value | replace(from="double", to="float") | replace(from="boolean", to="bool") | upper_camel }}(this.{{ field_name | camel }});
+                    {% endif %}
              {% endif %}
          {% endfor %}
          writer.stepOut();

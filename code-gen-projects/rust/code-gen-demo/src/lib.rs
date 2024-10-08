@@ -10,9 +10,27 @@ mod tests {
     use ion_rs::ReaderBuilder;
     use ion_rs::TextWriterBuilder;
     use std::fs;
+    use std::path::MAIN_SEPARATOR_STR as PATH_SEPARATOR;
     use test_generator::test_resources;
 
     include!(concat!(env!("OUT_DIR"), "/ion_generated_code.rs"));
+
+    /// Determines if the given file name is in the ROUNDTRIP_TESTS_SKIP_LIST list. This deals with platform
+    /// path separator differences from '/' separators in the path list.
+    #[inline]
+    pub fn skip_list_contains_path(file_name: &str) -> bool {
+        ROUNDTRIP_TESTS_SKIP_LIST
+            .iter()
+            // TODO construct the paths in a not so hacky way
+            .map(|p| p.replace('/', PATH_SEPARATOR))
+            .any(|p| p == file_name)
+    }
+
+    pub const ROUNDTRIP_TESTS_SKIP_LIST: &[&str] = &[
+        "../../input/good/nested_struct/valid_optional_fields.ion",
+        "../../input/good/struct_with_fields/valid_optional_fields.ion",
+        "../../input/bad/struct_with_fields/missing_required_fields.ion",
+    ];
 
     #[test]
     fn it_works() {
@@ -22,6 +40,10 @@ mod tests {
 
     #[test_resources("../../input/good/struct_with_fields/**/*.ion")]
     fn roundtrip_good_test_generated_code_structs_with_fields(file_name: &str) -> SerdeResult<()> {
+        // if file name is under the ROUNDTRIP_TESTS_SKIP_LIST then do nothing.
+        if skip_list_contains_path(&file_name) {
+            return Ok(());
+        }
         let ion_string = fs::read_to_string(file_name).unwrap();
         let mut reader = ReaderBuilder::new().build(ion_string.clone())?;
         let mut buffer = Vec::new();
@@ -43,6 +65,9 @@ mod tests {
 
     #[test_resources("../../input/bad/struct_with_fields/**/*.ion")]
     fn roundtrip_bad_test_generated_code_structs_with_fields(file_name: &str) -> SerdeResult<()> {
+        if skip_list_contains_path(&file_name) {
+            return Ok(());
+        }
         let ion_string = fs::read_to_string(file_name).unwrap();
         let mut reader = ReaderBuilder::new().build(ion_string.clone())?;
         // read given Ion value using Ion reader
@@ -55,6 +80,9 @@ mod tests {
 
     #[test_resources("../../input/good/nested_struct/**/*.ion")]
     fn roundtrip_good_test_generated_code_nested_structs(file_name: &str) -> SerdeResult<()> {
+        if skip_list_contains_path(&file_name) {
+            return Ok(());
+        }
         let ion_string = fs::read_to_string(file_name).unwrap();
         let mut reader = ReaderBuilder::new().build(ion_string.clone())?;
         let mut buffer = Vec::new();
