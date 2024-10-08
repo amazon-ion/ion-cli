@@ -543,11 +543,11 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                         type_name: vec![type_name.to_string()],
                         parameters: vec![],
                     })
-                    .and_then(|t| {
+                    .map(|t| {
                         if field_presence == FieldPresence::Optional {
-                            Some(L::target_type_as_optional(t))
+                            L::target_type_as_optional(t)
                         } else {
-                            Some(t)
+                            t
                         }
                     })
             }

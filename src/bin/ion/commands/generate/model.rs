@@ -151,7 +151,7 @@ impl FullyQualifiedTypeReference {
     /// Provides string representation of this `FullyQualifiedTypeReference`
     pub fn string_representation<L: Language>(&self) -> String {
         if self.parameters.is_empty() {
-            return format!("{}", self.type_name.join(&L::namespace_separator()));
+            return self.type_name.join(L::namespace_separator()).to_string();
         }
         let parameters = self
             .parameters
@@ -161,7 +161,7 @@ impl FullyQualifiedTypeReference {
             .join(", ");
         format!(
             "{}<{}>",
-            self.type_name.join(&L::namespace_separator()),
+            self.type_name.join(L::namespace_separator()),
             parameters
         )
     }

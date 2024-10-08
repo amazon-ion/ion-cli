@@ -69,7 +69,7 @@ pub trait Language {
     ///         ```
     ///     To add `NestedType` into the namespace path, `is_nested_type` helps remove any prior types form the path and add this current type.
     ///     i.e. given namespace path as `foo::Foo`, it will first remove `Foo` and then add the current type as `foo::nested_type::NestedType`.
-    fn add_type_to_namespace(is_nested_type: bool, type_name: &String, namespace: &mut Vec<String>);
+    fn add_type_to_namespace(is_nested_type: bool, type_name: &str, namespace: &mut Vec<String>);
 
     /// Returns the `FullyQualifiedReference` that represents the target type as optional in the given programming language
     /// e.g. In Java, it will return "java.util.Optional<T>"
@@ -159,11 +159,7 @@ impl Language for JavaLanguage {
         "."
     }
 
-    fn add_type_to_namespace(
-        _is_nested_type: bool,
-        type_name: &String,
-        namespace: &mut Vec<String>,
-    ) {
+    fn add_type_to_namespace(_is_nested_type: bool, type_name: &str, namespace: &mut Vec<String>) {
         namespace.push(type_name.to_case(Case::UpperCamel))
     }
 
@@ -290,11 +286,7 @@ impl Language for RustLanguage {
         "::"
     }
 
-    fn add_type_to_namespace(
-        is_nested_type: bool,
-        type_name: &String,
-        namespace: &mut Vec<String>,
-    ) {
+    fn add_type_to_namespace(is_nested_type: bool, type_name: &str, namespace: &mut Vec<String>) {
         // e.g. For example there is a `NestedType` inside `Foo` struct. Rust code generation also generates similar modules for the generated structs.
         // ```rust
         // mod foo {
