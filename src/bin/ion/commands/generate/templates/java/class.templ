@@ -98,23 +98,13 @@ import java.io.IOException;
 
         {{ model.name }} {{ model.name | camel }} = new {{ model.name }}();
         {% for field_name, field_val in struct_info["fields"] -%}
-            {% set field_value = field_val.0 | fully_qualified_type_name %}
-            {% set field_occurrence = field_val.1 %}
-            {% if field_occurrence == "Required" %}
-            // Verify if the required field was initialized
+            {# field_val.1 is the field occurrence #}
+            {% if field_val.1 == "Required" %}
             if (!{{ field_name | camel }}.isPresent()) {
                 throw new IonException("Can not find field name: {{ field_name }} for {{ model.name }} while reading Ion data.");
-            } else {
-                {{ model.name | camel }}.{{ field_name | camel }} = {{ field_name | camel }}.get();
-            }
-            {% else %}
-            if (!{{ field_name | camel }}.isPresent()) {
-                // sets optional field as null when not present
-                {{ model.name | camel }}.{{ field_name | camel }} = null;
-            } else {
-                {{ model.name | camel }}.{{ field_name | camel }} = {{ field_name | camel }}.get();
             }
             {% endif %}
+            {{ model.name | camel }}.{{ field_name | camel }} = {{ field_name | camel }}.orElse(null);
         {% endfor %}
 
         return  {{ model.name | camel }};

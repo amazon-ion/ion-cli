@@ -196,6 +196,7 @@ impl JavaLanguage {
     }
 
     /// Returns the wrapper class for the given primitive data type
+    /// If `data_type` is a primitive, returns the boxed equivalent, otherwise returns `data_type`.
     pub fn wrapper_class(primitive_data_type: &str) -> String {
         match Self::wrapper_class_or_none(primitive_data_type) {
             None => primitive_data_type.to_string(),
@@ -203,13 +204,18 @@ impl JavaLanguage {
         }
     }
 
-    /// Returns the primitive data type for the given wrapper class
+    /// Returns the primitive data type for the given wrapper class, or `wrapper_class`
+    /// if it does not have an equivalent primitive type.
     pub fn primitive_data_type(wrapper_class: &str) -> &str {
         match wrapper_class {
             "Integer" => "int",
             "Boolean" => "boolean",
             "Double" => "double",
             "Long" => "long",
+            "Short" => "short",
+            "Byte" => "byte",
+            "Float" => "float",
+            "Character" => "char",
             _ => wrapper_class,
         }
     }

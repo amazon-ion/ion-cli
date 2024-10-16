@@ -407,7 +407,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         self.render_generated_code(isl_type_name, &mut context, &data_model_node)
     }
 
-    /// _Note: `field_presence` is only used ofr variably occurring type references and currently that is only supported with `fields` constraint.
+    /// _Note: `field_presence` is only used for variably occurring type references and currently that is only supported with `fields` constraint.
     /// For all other cases `field_presence` will be set as default `FieldPresence::Required`._
     fn convert_isl_type_def_to_data_model_node(
         &mut self,
@@ -544,7 +544,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
 
     /// Provides the `FullyQualifiedTypeReference` to be used for the `AbstractDataType` in the data model.
     /// Returns `None` when the given ISL type is `struct`, `list` or `sexp` as open-ended types are not supported currently.
-    /// _Note: `field_presence` is only used ofr variably occurring type references and currently that is only supported with `fields` constraint.
+    /// _Note: `field_presence` is only used for variably occurring type references and currently that is only supported with `fields` constraint.
     /// For all other cases `field_presence` will be set as default `FieldPresence::Required`._
     fn fully_qualified_type_ref_name(
         &mut self,
