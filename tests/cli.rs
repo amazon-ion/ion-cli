@@ -236,8 +236,8 @@ mod code_gen_tests {
          }
         }
     "#,
-    & ["private int id;", "private java.util.Optional<String> name;"],
-    & ["public java.util.Optional<String> getName() {", "public int getId() {"]
+    & ["private int id;", "private String name;"],
+    & ["public String getName() {", "public int getId() {"]
     )]
     #[case(
     "Scalar",
