@@ -1,13 +1,8 @@
 use crate::commands::IonCliCommand;
 use anyhow::{Context, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
+use ion_rs::{v1_0, Element, Sequence, SequenceWriter, StructWriter, TextFormat, Writer};
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
-use ion_schema::external::ion_rs::element::reader::ElementReader;
-use ion_schema::external::ion_rs::element::writer::ElementWriter;
-use ion_schema::external::ion_rs::element::writer::TextKind;
-use ion_schema::external::ion_rs::element::Element;
-use ion_schema::external::ion_rs::{IonResult, TextWriterBuilder};
-use ion_schema::external::ion_rs::{IonType, IonWriter, ReaderBuilder};
 use ion_schema::system::SchemaSystem;
 use std::fs;
 use std::path::Path;
@@ -87,9 +82,7 @@ impl IonCliCommand for ValidateCommand {
         let input_file = args.get_one::<String>("input").unwrap();
         let value =
             fs::read(input_file).with_context(|| format!("Could not open '{}'", schema_id))?;
-        let owned_elements: Vec<Element> = ReaderBuilder::new()
-            .build(value.as_slice())?
-            .read_all_elements()
+        let elements: Sequence = Element::read_all(value)
             .with_context(|| format!("Could not parse Ion file: '{}'", schema_id))?;
 
         // Set up document authorities vector
@@ -113,46 +106,27 @@ impl IonCliCommand for ValidateCommand {
             .with_context(|| format!("Schema {} does not have type {}", schema_id, schema_type))?;
 
         // create a text writer to make the output
-        let mut output = vec![];
-        let mut writer = TextWriterBuilder::new(TextKind::Pretty).build(&mut output)?;
+        let mut writer = Writer::new(v1_0::Text.with_format(TextFormat::Pretty), vec![])?;
 
         // validate owned_elements according to type_ref
-        for owned_element in owned_elements {
+        for owned_element in elements {
             // create a validation report with validation result, value, schema and/or violation
-            writer.step_in(IonType::Struct)?;
+            let mut struct_writer = writer.struct_writer()?;
             let validation_result = type_ref.validate(&owned_element);
-            writer.set_field_name("result");
             match validation_result {
                 Ok(_) => {
-                    writer.write_string("Valid")?;
-                    writer.set_field_name("value");
-                    writer.write_string(element_to_string(&owned_element)?)?;
-                    writer.set_field_name("schema");
-                    writer.write_string(schema_id)?;
+                    struct_writer.write("result", "Valid")?;
+                    struct_writer.write("value", format!("{}", &owned_element))?;
+                    struct_writer.write("schema", schema_id)?;
                 }
                 Err(error) => {
-                    writer.write_string("Invalid")?;
-                    writer.set_field_name("violation");
-                    writer.write_string(format!("{:#?}", error))?;
+                    struct_writer.write("result", "Invalid")?;
+                    struct_writer.write("violation", format!("{:#?}", error))?;
                 }
             }
-            writer.step_out()?;
         }
-        drop(writer);
         println!("Validation report:");
-        println!("{}", from_utf8(&output).unwrap());
+        println!("{}", from_utf8(writer.output()).unwrap());
         Ok(())
     }
-}
-
-// TODO: this will be provided by Element's implementation of `Display` in a future
-//       release of ion-rs.
-fn element_to_string(element: &Element) -> IonResult<String> {
-    let mut buffer = Vec::new();
-    let mut text_writer = TextWriterBuilder::new(TextKind::Pretty).build(&mut buffer)?;
-    text_writer.write_element(element)?;
-    text_writer.flush()?;
-    Ok(from_utf8(text_writer.output().as_slice())
-        .expect("Invalid UTF-8 output")
-        .to_string())
 }

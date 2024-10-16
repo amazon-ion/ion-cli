@@ -449,7 +449,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                     match invocation.kind() {
                         EExp(eexp_arg) => self.inspect_eexp(depth + 1, eexp_arg)?,
                         EExpArgGroup(_) => todo!("e-exp arg groups"),
-                        TemplateMacro(_) => {
+                        TemplateMacro(_) | TemplateArgGroup(_) => {
                             unreachable!("e-exp args by definition cannot be template invocations")
                         }
                     }
@@ -544,6 +544,9 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             }
             Template(_, _element) => {
                 self.inspect_ephemeral_sequence(depth, "(", "", ")", delimiter, sexp, no_comment())
+            }
+            Constructed(_, _) => {
+                todo!()
             }
         }
     }
@@ -662,10 +665,9 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                 depth,
                 element.annotations().iter().map(|s| Ok(SymbolRef::from(s))),
             ),
-            ExpandedValueSource::Constructed(annotations, _) => self.inspect_ephemeral_annotations(
-                depth,
-                annotations.iter().copied().map(|s| Ok(s.into())),
-            ),
+            ExpandedValueSource::Constructed(annotations, _) => {
+                self.inspect_ephemeral_annotations(depth, annotations.iter().copied().map(Ok))
+            }
             ExpandedValueSource::SingletonEExp(eexp) => self.inspect_ephemeral_annotations(
                 depth,
                 eexp.require_singleton_annotations().map(|s| Ok(s.into())),

@@ -20,9 +20,9 @@ sha2 = "0.9"
 sha3 = "0.9"
 flate2 = "1.0"
 infer = "0.15.0"
-ion-rs = { version = "1.0.0-rc.7", features = ["experimental", "experimental-ion-hash"] }
+ion-rs = { version = "1.0.0-rc.8", features = ["experimental", "experimental-ion-hash"] }
 tempfile = "3.2.0"
-ion-schema = "0.10.0"
+ion-schema = "0.14.0"
 lowcharts = "0.5.8"
 serde = { version = "1.0.163", features = ["derive"] }
 serde_json = { version = "1.0.81", features = ["arbitrary_precision", "preserve_order"] }

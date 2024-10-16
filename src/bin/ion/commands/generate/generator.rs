@@ -216,8 +216,8 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         // Iterate through the ISL types, generate an abstract data type for each
         for isl_type in schema.types() {
             // unwrap here is safe because all the top-level type definition always has a name
-            let isl_type_name = isl_type.name().clone().unwrap();
-            self.generate_abstract_data_type(&isl_type_name, isl_type)?;
+            let isl_type_name = isl_type.name().unwrap();
+            self.generate_abstract_data_type(isl_type_name, isl_type)?;
         }
 
         Ok(())
@@ -266,7 +266,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
 
     fn generate_abstract_data_type(
         &mut self,
-        isl_type_name: &String,
+        isl_type_name: &str,
         isl_type: &IslType,
     ) -> CodeGenResult<()> {
         let mut context = Context::new();

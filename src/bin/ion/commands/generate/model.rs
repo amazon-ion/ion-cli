@@ -391,31 +391,28 @@ mod model_tests {
             name: vec!["org".to_string(), "example".to_string(), "Foo".to_string()],
             doc_comment: "This is a structure".to_string(),
             is_closed: false,
-            fields: HashMap::from_iter(
-                vec![
-                    (
-                        "foo".to_string(),
-                        FieldReference(
-                            FullyQualifiedTypeReference {
-                                type_name: vec!["String".to_string()],
-                                parameters: vec![],
-                            },
-                            FieldPresence::Required,
-                        ),
+            fields: HashMap::from_iter(vec![
+                (
+                    "foo".to_string(),
+                    FieldReference(
+                        FullyQualifiedTypeReference {
+                            type_name: vec!["String".to_string()],
+                            parameters: vec![],
+                        },
+                        FieldPresence::Required,
                     ),
-                    (
-                        "bar".to_string(),
-                        FieldReference(
-                            FullyQualifiedTypeReference {
-                                type_name: vec!["int".to_string()],
-                                parameters: vec![],
-                            },
-                            FieldPresence::Required,
-                        ),
+                ),
+                (
+                    "bar".to_string(),
+                    FieldReference(
+                        FullyQualifiedTypeReference {
+                            type_name: vec!["int".to_string()],
+                            parameters: vec![],
+                        },
+                        FieldPresence::Required,
                     ),
-                ]
-                .into_iter(),
-            ),
+                ),
+            ]),
             source: anonymous_type(vec![
                 type_constraint(named_type_ref("struct")),
                 fields(
@@ -436,6 +433,7 @@ mod model_tests {
                         ),
                     ]
                     .into_iter(),
+                    true,
                 ),
             ]),
         };
@@ -451,31 +449,28 @@ mod model_tests {
             ])
             .doc_comment("This is a structure")
             .is_closed(false)
-            .fields(HashMap::from_iter(
-                vec![
-                    (
-                        "foo".to_string(),
-                        FieldReference(
-                            FullyQualifiedTypeReference {
-                                type_name: vec!["String".to_string()],
-                                parameters: vec![],
-                            },
-                            FieldPresence::Required,
-                        ),
+            .fields(HashMap::from_iter(vec![
+                (
+                    "foo".to_string(),
+                    FieldReference(
+                        FullyQualifiedTypeReference {
+                            type_name: vec!["String".to_string()],
+                            parameters: vec![],
+                        },
+                        FieldPresence::Required,
                     ),
-                    (
-                        "bar".to_string(),
-                        FieldReference(
-                            FullyQualifiedTypeReference {
-                                type_name: vec!["int".to_string()],
-                                parameters: vec![],
-                            },
-                            FieldPresence::Required,
-                        ),
+                ),
+                (
+                    "bar".to_string(),
+                    FieldReference(
+                        FullyQualifiedTypeReference {
+                            type_name: vec!["int".to_string()],
+                            parameters: vec![],
+                        },
+                        FieldPresence::Required,
                     ),
-                ]
-                .into_iter(),
-            ))
+                ),
+            ]))
             .source(anonymous_type(vec![
                 type_constraint(named_type_ref("struct")),
                 fields(
@@ -496,6 +491,7 @@ mod model_tests {
                         ),
                     ]
                     .into_iter(),
+                    true,
                 ),
             ]));
 
