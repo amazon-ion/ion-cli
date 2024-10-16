@@ -238,6 +238,22 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         ))
     }
 
+    /// A [tera] filter that return wrapper class name for a primitive data type. This filter is only used for Java templates.
+    ///
+    /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
+    ///
+    /// [tera]: <https://docs.rs/tera/latest/tera/>
+    pub fn wrapper_class(
+        value: &tera::Value,
+        _map: &HashMap<String, tera::Value>,
+    ) -> Result<tera::Value, tera::Error> {
+        Ok(tera::Value::String(JavaLanguage::wrapper_class(
+            value.as_str().ok_or(tera::Error::msg(
+                "Required string for `primitive_data_type` filter",
+            ))?,
+        )))
+    }
+
     /// A [tera] filter that returns a string representation of a tera object i.e. `FullyQualifiedTypeReference`.
     ///
     /// For more information: <https://docs.rs/tera/1.19.0/tera/struct.Tera.html#method.register_filter>
@@ -302,6 +318,8 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         self.tera.register_filter("parameters", Self::parameters);
         self.tera
             .register_filter("primitive_data_type", Self::primitive_data_type);
+        self.tera
+            .register_filter("wrapper_class", Self::wrapper_class);
 
         // Iterate through the ISL types, generate an abstract data type for each
         for isl_type in schema.types() {
@@ -1000,15 +1018,8 @@ mod isl_to_model_tests {
                         "foo".to_string(),
                         FieldReference(
                             FullyQualifiedTypeReference {
-                                type_name: vec![
-                                    "java".to_string(),
-                                    "util".to_string(),
-                                    "Optional".to_string()
-                                ],
-                                parameters: vec![FullyQualifiedTypeReference {
-                                    type_name: vec!["String".to_string()],
-                                    parameters: vec![]
-                                }]
+                                type_name: vec!["String".to_string()],
+                                parameters: vec![]
                             },
                             FieldPresence::Optional
                         )
@@ -1017,15 +1028,8 @@ mod isl_to_model_tests {
                         "bar".to_string(),
                         FieldReference(
                             FullyQualifiedTypeReference {
-                                type_name: vec![
-                                    "java".to_string(),
-                                    "util".to_string(),
-                                    "Optional".to_string()
-                                ],
-                                parameters: vec![FullyQualifiedTypeReference {
-                                    type_name: vec!["Integer".to_string()],
-                                    parameters: vec![]
-                                }]
+                                type_name: vec!["Integer".to_string()],
+                                parameters: vec![]
                             },
                             FieldPresence::Optional
                         )
@@ -1104,19 +1108,12 @@ mod isl_to_model_tests {
                         FieldReference(
                             FullyQualifiedTypeReference {
                                 type_name: vec![
-                                    "java".to_string(),
-                                    "util".to_string(),
-                                    "Optional".to_string()
+                                    "org".to_string(),
+                                    "example".to_string(),
+                                    "MyNestedStruct".to_string(),
+                                    "NestedType1".to_string()
                                 ],
-                                parameters: vec![FullyQualifiedTypeReference {
-                                    type_name: vec![
-                                        "org".to_string(),
-                                        "example".to_string(),
-                                        "MyNestedStruct".to_string(),
-                                        "NestedType1".to_string()
-                                    ],
-                                    parameters: vec![]
-                                }]
+                                parameters: vec![]
                             },
                             FieldPresence::Optional
                         )
@@ -1125,15 +1122,8 @@ mod isl_to_model_tests {
                         "bar".to_string(),
                         FieldReference(
                             FullyQualifiedTypeReference {
-                                type_name: vec![
-                                    "java".to_string(),
-                                    "util".to_string(),
-                                    "Optional".to_string()
-                                ],
-                                parameters: vec![FullyQualifiedTypeReference {
-                                    type_name: vec!["Integer".to_string()],
-                                    parameters: vec![]
-                                }]
+                                type_name: vec!["Integer".to_string()],
+                                parameters: vec![]
                             },
                             FieldPresence::Optional
                         )

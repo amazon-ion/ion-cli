@@ -113,7 +113,9 @@ impl Language for JavaLanguage {
     fn target_type_as_sequence(
         target_type: FullyQualifiedTypeReference,
     ) -> FullyQualifiedTypeReference {
-        match JavaLanguage::wrapper_class(&target_type.string_representation::<JavaLanguage>()) {
+        match JavaLanguage::wrapper_class_or_none(
+            &target_type.string_representation::<JavaLanguage>(),
+        ) {
             Some(wrapper_name) => FullyQualifiedTypeReference {
                 type_name: vec![
                     "java".to_string(),
@@ -166,33 +168,21 @@ impl Language for JavaLanguage {
     fn target_type_as_optional(
         target_type: FullyQualifiedTypeReference,
     ) -> FullyQualifiedTypeReference {
-        match JavaLanguage::wrapper_class(&target_type.string_representation::<JavaLanguage>()) {
+        match JavaLanguage::wrapper_class_or_none(
+            &target_type.string_representation::<JavaLanguage>(),
+        ) {
             Some(wrapper_name) => FullyQualifiedTypeReference {
-                type_name: vec![
-                    "java".to_string(),
-                    "util".to_string(),
-                    "Optional".to_string(),
-                ],
-                parameters: vec![FullyQualifiedTypeReference {
-                    type_name: vec![wrapper_name],
-                    parameters: vec![],
-                }],
+                type_name: vec![wrapper_name],
+                parameters: vec![],
             },
-            None => FullyQualifiedTypeReference {
-                type_name: vec![
-                    "java".to_string(),
-                    "util".to_string(),
-                    "Optional".to_string(),
-                ],
-                parameters: vec![target_type],
-            },
+            None => target_type,
         }
     }
 }
 
 impl JavaLanguage {
-    /// Returns the wrapper class for the given primitive data type
-    fn wrapper_class(primitive_data_type: &str) -> Option<String> {
+    /// Returns the wrapper class for the given primitive data type, otherwise returns None.
+    fn wrapper_class_or_none(primitive_data_type: &str) -> Option<String> {
         match primitive_data_type {
             "int" => Some("Integer".to_string()),
             "boolean" => Some("Boolean".to_string()),
@@ -202,6 +192,14 @@ impl JavaLanguage {
                 // for any other non-primitive types return None
                 None
             }
+        }
+    }
+
+    /// Returns the wrapper class for the given primitive data type
+    pub fn wrapper_class(primitive_data_type: &str) -> String {
+        match Self::wrapper_class_or_none(primitive_data_type) {
+            None => primitive_data_type.to_string(),
+            Some(wrapper_class) => wrapper_class,
         }
     }
 
