@@ -167,7 +167,7 @@ impl IonCliCommand for GenerateCommand {
 impl GenerateCommand {
     // Prints warning messages for Java code generation
     fn print_java_code_gen_warnings() {
-        println!("{}","WARNING: Code generation in Java does not support any `$NOMINAL_ION_TYPES` data type.(For more information: https://amazon-ion.github.io/ion-schema/docs/isl-2-0/spec#built-in-types)".yellow().bold());
+        println!("{}","WARNING: Code generation in Java does not support any `$NOMINAL_ION_TYPES` data type.(For more information: https://amazon-ion.github.io/ion-schema/docs/isl-2-0/spec#built-in-types) Reference issue: https://github.com/amazon-ion/ion-cli/issues/101".yellow().bold());
         println!(
             "{}",
             "Optional fields in generated code are represented with the wrapper class of that primitive data type and are set to `null` when missing."
@@ -179,7 +179,7 @@ impl GenerateCommand {
 
     // Prints warning messages for Rust code generation
     fn print_rust_code_gen_warnings() {
-        println!("{}","WARNING: Code generation in Rust does not support any `$NOMINAL_ION_TYPES` data type.(For more information: https://amazon-ion.github.io/ion-schema/docs/isl-2-0/spec#built-in-types)".yellow().bold());
-        println!("{}","Code generation in Rust does not support optional/required fields. It does not have any checks added for this on read or write methods.".yellow().bold());
+        println!("{}","WARNING: Code generation in Rust does not yet support any `$NOMINAL_ION_TYPES` data type.(For more information: https://amazon-ion.github.io/ion-schema/docs/isl-2-0/spec#built-in-types) Reference issue: https://github.com/amazon-ion/ion-cli/issues/101".yellow().bold());
+        println!("{}","Code generation in Rust does not yet support optional/required fields. It does not have any checks added for this on read or write methods. Reference issue: https://github.com/amazon-ion/ion-cli/issues/106".yellow().bold());
     }
 }
