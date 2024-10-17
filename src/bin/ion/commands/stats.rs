@@ -100,13 +100,12 @@ fn analyze_data_stream<Input: IonInput>(reader: &mut SystemReader<AnyEncoding, I
     // Reduce the number of shared symbols.
     let symbols_count = reader.symbol_table().symbols().iter().len() - 10;
 
-    let out = Output {
+    Output {
         size_vec,
         symtab_count,
         symbols_count,
         max_depth,
-    };
-    return out;
+    }
 }
 
 fn top_level_max_depth(value: LazyValue<AnyEncoding>) -> usize {
