@@ -154,6 +154,7 @@ impl Language for JavaLanguage {
             Template::Struct => "class".to_string(),
             Template::Scalar => "scalar".to_string(),
             Template::Sequence => "sequence".to_string(),
+            Template::Enum => "enum".to_string(),
         }
     }
 
@@ -283,6 +284,9 @@ impl Language for RustLanguage {
             Template::Struct => "struct".to_string(),
             Template::Scalar => "scalar".to_string(),
             Template::Sequence => "sequence".to_string(),
+            Template::Enum => {
+                unimplemented!("Rust enums are not supported yet!")
+            }
         }
     }
 
@@ -342,6 +346,7 @@ pub enum Template {
     Struct,   // Represents a template for a Rust struct or Java class with Ion struct value
     Sequence, // Represents a template for a Rust struct or Java class with Ion sequence value
     Scalar,   // Represents a template for a Rust struct or Java class with Ion scalar value
+    Enum,     // Represents a template for a Rust or Java enum
 }
 
 impl TryFrom<&DataModelNode> for Template {
@@ -357,6 +362,7 @@ impl TryFrom<&DataModelNode> for Template {
                     Ok(Template::Sequence)
                 }
                 AbstractDataType::Structure(_) => Ok(Template::Struct),
+                AbstractDataType::Enum(_) => Ok(Template::Enum),
             }
         } else {
             invalid_abstract_data_type_error(

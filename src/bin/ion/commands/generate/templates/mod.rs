@@ -17,6 +17,7 @@ pub(crate) mod java {
     pub(crate) const CLASS: &str = include_template!("java/class.templ");
     pub(crate) const SCALAR: &str = include_template!("java/scalar.templ");
     pub(crate) const SEQUENCE: &str = include_template!("java/sequence.templ");
+    pub(crate) const ENUM: &str = include_template!("java/enum.templ");
     pub(crate) const UTIL_MACROS: &str = include_template!("java/util_macros.templ");
     pub(crate) const NESTED_TYPE: &str = include_template!("java/nested_type.templ");
 }

@@ -1,0 +1,63 @@
+{% set full_namespace = namespace | join(sep=".") %}
+{% if is_nested == false %}
+package {{ full_namespace }};
+import com.amazon.ion.IonReader;
+import com.amazon.ion.IonException;
+import com.amazon.ion.IonWriter;
+import com.amazon.ion.IonType;
+import java.io.IOException;
+{% endif %}
+
+{# Verify that the abstract data type is a enum and store information for this enum #}
+{% set enum_info = model.code_gen_type["Enum"] %}
+
+{% if is_nested == true %} static {% endif %} enum {{ model.name }} {
+    {% for variant in enum_info["variants"] -%}
+           {{ variant.name | upper }} {
+                    @Override
+                    public void writeTo(IonWriter writer) throws IOException {
+                         {# Writes the enum variant as a string or symbol  #}
+                         writer.write{{variant.variant_type}}("{{ variant.name }}");
+                    }
+           }
+           {% if loop.last == false %},{% endif %}
+    {% endfor %};
+
+
+    /**
+     * Writes a {{ model.name }} as Ion from an {@link IonWriter}.
+     *
+     * This method does not close the writer after writing is complete.
+     * The caller is responsible for closing the stream associated with the writer.
+     */
+    public abstract void writeTo(IonWriter writer) throws IOException;
+
+    /**
+     * Reads a {{ model.name }} from an {@link IonReader}.
+     *
+     * This method does not advance the reader at the current level.
+     * The caller is responsible for positioning the reader on the value to read.
+     */
+    public static {{ model.name }} readFrom(IonReader reader) {
+        {# Reads given value as a string #}
+        String value = reader.stringValue();
+        switch(value.toUpperCase()) {
+            {% for variant in enum_info["variants"] %}
+            case "{{ variant.name | upper }}":
+                    {# Enums are only supported for string or symbol types #}
+                    {% if variant.variant_type == "Symbol" %}
+                        if (reader.getType() != IonType.SYMBOL) {
+                            throw new IonException("Expected symbol, found " + reader.getType() + " while reading {{ model.name }}");
+                        }
+                    {% elif variant.variant_type == "String" %}
+                        if (reader.getType() != IonType.STRING) {
+                            throw new IonException("Expected string, found " + reader.getType() + " while reading {{ model.name }}");
+                        }
+                    {% endif %}
+                return {{ variant.name | upper }};
+            {% endfor %}
+            default:
+                throw new IonException(value + "is not a valid value for {{ model.name }}");
+        }
+    }
+}

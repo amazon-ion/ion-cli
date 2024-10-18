@@ -1,6 +1,7 @@
 use derive_builder::Builder;
 use ion_schema::isl::isl_type::IslType;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt::Debug;
 // This module contains a data model that the code generator can use to render a template based on the type of the model.
 // Currently, this same data model is represented by `AbstractDataType` but it doesn't hold all the information for the template.
@@ -182,6 +183,8 @@ pub enum AbstractDataType {
     WrappedSequence(WrappedSequence),
     // A collection of field name/value pairs (e.g. a map)
     Structure(Structure),
+    // Represents an enum type
+    Enum(Enum),
 }
 
 impl AbstractDataType {
@@ -203,6 +206,9 @@ impl AbstractDataType {
             AbstractDataType::Structure(Structure { doc_comment, .. }) => {
                 doc_comment.as_ref().map(|s| s.as_str())
             }
+            AbstractDataType::Enum(Enum { doc_comment, .. }) => {
+                doc_comment.as_ref().map(|s| s.as_str())
+            }
         }
     }
 
@@ -219,6 +225,7 @@ impl AbstractDataType {
                 Some(L::target_type_as_sequence(seq.element_type.to_owned()))
             }
             AbstractDataType::Structure(structure) => Some(structure.name.to_owned().into()),
+            AbstractDataType::Enum(enum_type) => Some(enum_type.name.to_owned().into()),
         }
     }
 }
@@ -447,6 +454,58 @@ pub struct FieldReference(
     pub(crate) FullyQualifiedTypeReference,
     pub(crate) FieldPresence,
 );
+
+/// Represents an enum type
+/// e.g. Given below ISL,
+/// ```
+/// type::{
+///   name: enum_type,
+///   valid_values: [foo, bar, baz]
+/// }
+/// ```
+/// Corresponding generated code in Rust would look like following:
+/// ```
+/// enum EnumType {
+///    Foo,
+///    Bar,
+///    Baz
+/// }
+/// ```
+#[allow(dead_code)]
+#[derive(Debug, Clone, Builder, PartialEq, Serialize)]
+#[builder(setter(into))]
+pub struct Enum {
+    // Represents the fully qualified name for this data model
+    pub(crate) name: FullyQualifiedTypeName,
+    // Represents enum variants
+    variants: HashSet<EnumVariant>,
+    // Represents doc comment for the generated code
+    // If the doc comment is provided for this scalar type then this is `Some(doc_comment)`, other it is None.
+    #[builder(default)]
+    doc_comment: Option<String>,
+    // Represents the source ISL type which can be used to get other constraints useful for this type.
+    // For example, getting the length of this sequence from `container_length` constraint or getting a `regex` value for string type.
+    // This will also be useful for `text` type to verify if this is a `string` or `symbol`.
+    #[serde(skip_serializing_if = "is_anonymous")]
+    #[serde(serialize_with = "serialize_type_name")]
+    source: IslType,
+}
+
+/// Represent an enum variant which has a variant name and type(either symbol or string).
+/// This is used by `AbstractDataType::Enum` to represent an enum variant.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+pub struct EnumVariant {
+    pub(crate) name: String,
+    pub(crate) variant_type: EnumVariantType,
+}
+
+/// Represents an enum variant type which could either be a symbol or string.
+/// This is used by `enumVariant` to represent enum variant type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+pub enum EnumVariantType {
+    Symbol,
+    String,
+}
 
 #[cfg(test)]
 mod model_tests {
