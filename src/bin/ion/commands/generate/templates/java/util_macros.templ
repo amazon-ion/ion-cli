@@ -1,24 +1,27 @@
 {# following macro defines statements to read a class field as sequence #}
-{% macro read_as_sequence(field_name, field_value, type_store) %}
-    {% set field_value_model = type_store[field_value] %}
-    new {{ field_value }}();
-    {# Reads `Sequence` field that is an `ArrayList` #}
-    if(reader.getType() != IonType.{{ field_value_model.code_gen_type["Sequence"].sequence_type | upper }}) {
-       throw new IonException("Expected {{ field_value_model.code_gen_type["Sequence"].sequence_type }}, found " + reader.getType() + " while reading {{ field_name | camel }}.");
-    }
-    reader.stepIn();
-    {# Iterate through the `ArrayList` and read each element in it based on the data type provided in `field.abstract_data_type[Sequence]` #}
-    while (reader.hasNext()) {
-        reader.next();
-        {% if field_value_model.code_gen_type["Sequence"].element_type | fully_qualified_type_name | is_built_in_type  == false %}
-            {{ field_name | camel }}.add({{ field_value_model.code_gen_type["Sequence"].element_type }}.readFrom(reader));
-        {% elif field_value_model.code_gen_type["Sequence"].element_type == "bytes[]" %}
-            {{ field_name | camel }}.add(reader.newBytes());
-        {% else %}
-            {{ field_name | camel }}.add(reader.{{ field_value_model.code_gen_type["Sequence"].element_type | fully_qualified_type_name | camel }}Value());
-        {% endif %}
-    }
-    reader.stepOut();
+{% macro read_as_sequence(field_name, field_value, type_store, field_occurrence) %}
+    ((java.util.function.Supplier<{{ field_value }}>) () -> {
+        {% set field_value_model = type_store[field_value] %}
+        {{ field_value }} {{ field_name | camel }}List = new {{ field_value }}();
+        {# Reads `Sequence` field that is an `ArrayList` #}
+        if(reader.getType() != IonType.{{ field_value_model.code_gen_type["Sequence"].sequence_type | upper }}) {
+           throw new IonException("Expected {{ field_value_model.code_gen_type["Sequence"].sequence_type }}, found " + reader.getType() + " while reading {{ field_name | camel }}.");
+        }
+        reader.stepIn();
+        {# Iterate through the `ArrayList` and read each element in it based on the data type provided in `field.abstract_data_type[Sequence]` #}
+        while (reader.hasNext()) {
+            reader.next();
+            {% if field_value_model.code_gen_type["Sequence"].element_type | fully_qualified_type_name | is_built_in_type  == false %}
+                {{ field_name | camel }}List.add({{ field_value_model.code_gen_type["Sequence"].element_type }}.readFrom(reader));
+            {% elif field_value_model.code_gen_type["Sequence"].element_type == "bytes[]" %}
+                {{ field_name | camel }}List.add(reader.newBytes());
+            {% else %}
+                {{ field_name | camel }}List.add(reader.{{ field_value_model.code_gen_type["Sequence"].element_type | fully_qualified_type_name | camel }}Value());
+            {% endif %}
+        }
+        reader.stepOut();
+        return  {{ field_name | camel }}List;
+    }).get()
 {% endmacro %}
 {# following macro defines statements to write a class field as sequence #}
 {% macro write_as_sequence(field_name, field_value, type_store) %}

@@ -9,9 +9,8 @@
 
 {# following macro defines statements to initialize anonymous types for setter methods #}
 {% macro initialize_anonymous_type(nested_type, type_store, field_name) %}
-        {% set key = nested_type | fully_qualified_type_name %}
-        {% set inline_type = type_store[key] %}
-        {{ key }} {{ field_name | camel }} = new {{ key }}();
+        {% set inline_type = type_store[nested_type] %}
+        {{ nested_type }} {{ field_name | camel }} = new {{ nested_type }}();
         {% if inline_type.code_gen_type is containing("Sequence") %}
             {{ field_name | camel }}.setValue(value);
         {% elif inline_type.code_gen_type is containing("Scalar") %}
@@ -25,8 +24,7 @@
 
 {# following macro defines arguments to setter methods for anonymous types #}
 {% macro define_params_for_anonymous_type(nested_type, field_name, initial_field_name) %}
-    {% set field_name = nested_type | fully_qualified_type_name %}
-    {% set inline_type = type_store[field_name] %}
+    {% set inline_type = type_store[nested_type] %}
     {% if inline_type.code_gen_type is containing("Structure") %}
         {% set inline_struct_type_info = inline_type.code_gen_type["Structure"] %}
         {% set field_names = inline_struct_type_info["fields"] | field_names %}

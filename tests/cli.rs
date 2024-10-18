@@ -232,7 +232,7 @@ mod code_gen_tests {
          name: simple_struct,
          fields: {
             name: string,
-            id: int,
+            id: { type: int, occurs: required },
          }
         }
     "#,

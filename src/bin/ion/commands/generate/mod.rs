@@ -11,10 +11,12 @@ use crate::commands::generate::utils::{JavaLanguage, RustLanguage};
 use crate::commands::IonCliCommand;
 use anyhow::{bail, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command};
+use colored::Colorize;
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
 use ion_schema::system::SchemaSystem;
 use std::fs;
 use std::path::{Path, PathBuf};
+
 pub struct GenerateCommand;
 
 impl IonCliCommand for GenerateCommand {
@@ -120,10 +122,13 @@ impl IonCliCommand for GenerateCommand {
             None => {
                 // generate code based on schema and programming language
                 match language {
-                    "java" =>
+                    "java" => {
+                        Self::print_java_code_gen_warnings();
                         CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().split('.').map(|s| s.to_string()).collect())
-                            .generate_code_for_authorities(&authorities, &mut schema_system)?,
+                            .generate_code_for_authorities(&authorities, &mut schema_system)?
+                    },
                     "rust" => {
+                        Self::print_rust_code_gen_warnings();
                         CodeGenerator::<RustLanguage>::new(output)
                             .generate_code_for_authorities(&authorities, &mut schema_system)?
                     }
@@ -136,8 +141,12 @@ impl IonCliCommand for GenerateCommand {
             Some(schema_id) => {
                 // generate code based on schema and programming language
                 match language {
-                    "java" => CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().split('.').map(|s| s.to_string()).collect()).generate_code_for_schema(&mut schema_system, schema_id)?,
+                    "java" =>  {
+                        Self::print_java_code_gen_warnings();
+                        CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().split('.').map(|s| s.to_string()).collect()).generate_code_for_schema(&mut schema_system, schema_id)?
+                    },
                     "rust" => {
+                        Self::print_rust_code_gen_warnings();
                         CodeGenerator::<RustLanguage>::new(output)
                             .generate_code_for_authorities(&authorities, &mut schema_system)?
                     }
@@ -152,5 +161,25 @@ impl IonCliCommand for GenerateCommand {
         println!("Code generation complete successfully!");
         println!("Path to generated code: {}", output.display());
         Ok(())
+    }
+}
+
+impl GenerateCommand {
+    // Prints warning messages for Java code generation
+    fn print_java_code_gen_warnings() {
+        println!("{}","WARNING: Code generation in Java does not support any `$NOMINAL_ION_TYPES` data type.(For more information: https://amazon-ion.github.io/ion-schema/docs/isl-2-0/spec#built-in-types) Reference issue: https://github.com/amazon-ion/ion-cli/issues/101".yellow().bold());
+        println!(
+            "{}",
+            "Optional fields in generated code are represented with the wrapper class of that primitive data type and are set to `null` when missing."
+                .yellow()
+                .bold()
+        );
+        println!("{}", "When the `writeTo` method is used on an optional field and if the field value is set as null then it would skip serializing that field.".yellow().bold());
+    }
+
+    // Prints warning messages for Rust code generation
+    fn print_rust_code_gen_warnings() {
+        println!("{}","WARNING: Code generation in Rust does not yet support any `$NOMINAL_ION_TYPES` data type.(For more information: https://amazon-ion.github.io/ion-schema/docs/isl-2-0/spec#built-in-types) Reference issue: https://github.com/amazon-ion/ion-cli/issues/101".yellow().bold());
+        println!("{}","Code generation in Rust does not yet support optional/required fields. It does not have any checks added for this on read or write methods. Reference issue: https://github.com/amazon-ion/ion-cli/issues/106".yellow().bold());
     }
 }
