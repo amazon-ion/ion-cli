@@ -24,7 +24,7 @@ import java.io.IOException;
            private {{ field_value.0 | fully_qualified_type_name }} {{ field_name | camel }};
     {% endfor %}
 
-    public {{ model.name }}() {}
+    private {{ model.name }}() {}
 
     {% for field_name, field_value in struct_info["fields"] -%}public {{ field_value.0 | fully_qualified_type_name }} get{% filter upper_camel %}{{ field_name }}{% endfilter %}() {
         return this.{{ field_name | camel }};
@@ -39,6 +39,45 @@ import java.io.IOException;
         }
     {% endfor %}
 
+    public static class {{ model.name }}Builder {
+        {% for field_name, field_val in struct_info["fields"] -%}
+            {% set field_value = field_val.0 | fully_qualified_type_name %}
+            private java.util.Optional<{{ field_value | wrapper_class }}> {{ field_name | camel }};
+        {% endfor %}
+
+        {{ model.name }}Builder() {
+            {# Initializes all the fields of this class #}
+            {% for field_name, field_val in struct_info["fields"] -%}
+                {% set field_value = field_val.0 | fully_qualified_type_name %}
+                {% set field_occurrence = field_val.1 %}
+                {# Initialize all the required fields as `java.util.Optional` to verify if the required fields were missing or not #}
+                this.{{ field_name | camel }} = java.util.Optional.empty();
+            {% endfor %}
+        }
+
+        {% for field_name, field_val in struct_info["fields"] %}
+            {% set field_value = field_val.0 %}
+            {% set val = field_value | fully_qualified_type_name %}
+            public {{ model.name }}Builder {{ field_name | camel }}({{ val }} {{ field_name | camel }}) {
+                this.{{ field_name | camel }} = java.util.Optional.of({{ field_name | camel }});
+                return this;
+            }
+        {% endfor %}
+
+        public {{ model.name }} build() {
+            {{ model.name }} {{ model.name | camel }} = new {{ model.name }}();
+            {% for field_name, field_val in struct_info["fields"] -%}
+                {# field_val.1 is the field occurrence #}
+                {% if field_val.1 == "Required" %}
+                if (!{{ field_name | camel }}.isPresent()) {
+                    throw new IonException("Can not find field name: {{ field_name }} for {{ model.name }} while reading Ion data.");
+                }
+                {% endif %}
+                {{ model.name | camel }}.{{ field_name | camel }} = {{ field_name | camel }}.orElse(null);
+            {% endfor %}
+            return {{ model.name | camel }};
+        }
+    }
 
     /**
      * Reads a {{ model.name }} from an {@link IonReader}.
@@ -47,13 +86,8 @@ import java.io.IOException;
      * The caller is responsible for positioning the reader on the value to read.
      */
     public static {{ model.name }} readFrom(IonReader reader) {
-        {# Initializes all the fields of this class #}
-        {% for field_name, field_val in struct_info["fields"] -%}
-            {% set field_value = field_val.0 | fully_qualified_type_name %}
-            {% set field_occurrence = field_val.1 %}
-            {# Initialize all the required fields as `java.util.Optional` to verify if the required fields were missing or not #}
-            java.util.Optional<{{ field_value | wrapper_class }}> {{ field_name | camel }} = java.util.Optional.empty();
-        {% endfor %}
+        {# Initializes the builder for this class #}
+        {{ model.name }}Builder {{ model.name | camel }}Builder = new {{ model.name }}Builder();
 
         {# Reads `Structure` class with multiple fields based on `field.name` #}
         reader.stepIn();
@@ -66,7 +100,7 @@ import java.io.IOException;
                 {% set field_occurrence = field_val.1 %}
                 {% if field_occurrence == "Optional" %} {% set field_value = field_value | primitive_data_type %} {% endif %}
                 case "{{ field_name }}":
-                    {{ field_name | camel }} =  java.util.Optional.of(
+                  {{ model.name | camel }}Builder = {{ model.name | camel }}Builder.{{ field_name | camel }}(
                                                 {% if field_value | is_built_in_type %}
                                                    {% if field_value == "bytes[]" %}
                                                         reader.newBytes()
@@ -86,18 +120,7 @@ import java.io.IOException;
         }
         reader.stepOut();
 
-        {{ model.name }} {{ model.name | camel }} = new {{ model.name }}();
-        {% for field_name, field_val in struct_info["fields"] -%}
-            {# field_val.1 is the field occurrence #}
-            {% if field_val.1 == "Required" %}
-            if (!{{ field_name | camel }}.isPresent()) {
-                throw new IonException("Can not find field name: {{ field_name }} for {{ model.name }} while reading Ion data.");
-            }
-            {% endif %}
-            {{ model.name | camel }}.{{ field_name | camel }} = {{ field_name | camel }}.orElse(null);
-        {% endfor %}
-
-        return  {{ model.name | camel }};
+        return  {{ model.name | camel }}Builder.build();
     }
 
     /**

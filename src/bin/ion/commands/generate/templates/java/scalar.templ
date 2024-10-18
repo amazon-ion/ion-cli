@@ -26,6 +26,34 @@ class {{ model.name }} {
         return;
     }
 
+   public static class {{ model.name }}Builder {
+        {{ base_type }} value;
+
+        {{ model.name }}Builder() {
+            {# Initializes value #}
+            this.value =
+            {% if base_type == "boolean" %}
+                false
+            {% elif base_type == "int" or base_type == "double" %}
+                0
+            {% else %}
+                null
+            {% endif %};
+        }
+
+        public {{ model.name }}Builder value({{ base_type }} value) {
+            this.value = value;
+            return this;
+        }
+
+        public {{ model.name }} build() {
+            {{ model.name }} {{ model.name | camel }} = new {{ model.name }}();
+            {{ model.name | camel }}.value = value;
+
+            return  {{ model.name | camel }};
+        }
+   }
+
     /**
      * Reads a {{ model.name }} from an {@link IonReader}.
      *
@@ -33,29 +61,21 @@ class {{ model.name }} {
      * The caller is responsible for positioning the reader on the value to read.
      */
     public static {{ model.name }} readFrom(IonReader reader) {
-        {# Initializes all the fields of this class #}
-        {{ base_type }} value =
-        {% if base_type == "boolean" %}
-            false
-        {% elif base_type == "int" or base_type == "double" %}
-            0
-        {% else %}
-            null
-        {% endif %};
+        {# Initializes the builder for this class #}
+        {{ model.name }}Builder {{ model.name | camel }}Builder = new {{ model.name }}Builder();
+
         {# Reads `Value` class with a single field `value` #}
-        value = {% if base_type | is_built_in_type %}
+        {{ model.name | camel }}Builder = {{ model.name | camel }}Builder.value({% if base_type | is_built_in_type %}
                     {% if base_type == "bytes[]" %}
                         reader.newBytes();
                     {% else %}
-                        reader.{{ base_type | camel }}Value();
+                        reader.{{ base_type | camel }}Value()
                     {% endif %}
                  {% else %}
-                    {{ base_type }}.readFrom(reader);
-                 {% endif %}
-        {{ model.name }} {{ model.name | camel }} = new {{ model.name }}();
-        {{ model.name | camel }}.value = value;
+                    {{ base_type }}.readFrom(reader)
+                 {% endif %});
 
-        return  {{ model.name | camel }};
+        return  {{ model.name | camel }}Builder.build();
     }
 
     /**

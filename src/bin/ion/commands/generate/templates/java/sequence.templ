@@ -17,7 +17,7 @@ import java.io.IOException;
 class {{ model.name }} {
     private java.util.ArrayList<{{ sequence_info["element_type"] | fully_qualified_type_name }}> value;
 
-    public {{ model.name }}() {}
+    private {{ model.name }}() {}
 
     public java.util.ArrayList<{{ sequence_info["element_type"] | fully_qualified_type_name }}> getValue() {
         return this.value;
@@ -27,6 +27,26 @@ class {{ model.name }} {
         this.value = value;
         return;
     }
+
+     public static class {{ model.name }}Builder {
+        java.util.ArrayList<{{ sequence_info["element_type"] | fully_qualified_type_name }}> value;
+
+        {{ model.name }}Builder() {
+            this.value = null;
+        }
+
+        public {{ model.name }}Builder value(java.util.ArrayList<{{ sequence_info["element_type"] | fully_qualified_type_name }}> value) {
+            this.value = value;
+            return this;
+        }
+
+        public {{ model.name }} build() {
+            {{ model.name }} {{ model.name | camel }} = new {{ model.name }}();
+            {{ model.name | camel }}.value = value;
+
+            return  {{ model.name | camel }};
+        }
+     }
 
     /**
      * Reads a {{ model.name }} from an {@link IonReader}.
@@ -54,10 +74,10 @@ class {{ model.name }} {
             {% endif %}
         }
         reader.stepOut();
-        {{ model.name }} {{ model.name | camel }} = new {{ model.name }}();
-        {{ model.name | camel }}.value = value;
+        {# Initializes the builder for this class #}
+        {{ model.name }}Builder {{ model.name | camel }}Builder = new {{ model.name }}Builder();
 
-        return  {{ model.name | camel }};
+        return  {{ model.name | camel }}Builder.value(value).build();
     }
 
     /**
