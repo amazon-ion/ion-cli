@@ -47,15 +47,18 @@ class CodeGenTest {
     @Test void getterAndSetterTestForNestedStruct() {
          // getter tests for `NestedStruct`
          NestedStruct n = new NestedStruct();
-         ArrayList<Integer> a = new ArrayList<Integer>();
-         a.add(1);
-         a.add(2);
-         a.add(3);
+         ArrayList<Integer> e = new ArrayList<Integer>();
+         e.add(1);
+         e.add(2);
+         e.add(3);
 
          // set all the fields of `NestedStruct`
          n.setA("hello");
          n.setB(12);
-         n.setC(false, a);
+         NestedStruct.NestedType1 n1 = new NestedStruct.NestedType1();
+         n1.setD(false);
+         n1.setE(e);
+         n.setC(n1);
 
          // getter tests for `NestedStruct`
          assertEquals("hello", n.getA(), "n.getA() should return \"hello\"");

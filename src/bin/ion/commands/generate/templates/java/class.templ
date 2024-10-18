@@ -32,21 +32,11 @@ import java.io.IOException;
     {% endfor %}
 
     {% for field_name, field_val in struct_info["fields"] %}
-        {% set field_value = field_val.0 %}
-        {% set val = field_value | fully_qualified_type_name %}
-        {% if val is containing("NestedType") %}
-          public void set{% filter upper_camel %}{{ field_name }}{% endfilter %}(
-          {{ macros::define_params_for_anonymous_type(nested_type=val, type_store=type_store, field_name=field_name, initial_field_name=field_name) }}
-          ) {
-          {{ macros::initialize_anonymous_type(nested_type=val, type_store=type_store, field_name=field_name) }}
-          this.{{ field_name | camel }} = {{ field_name | camel }};
-          return;
-        {% else %}
+        {% set val = field_val.0 | fully_qualified_type_name %}
         public void set{% filter upper_camel %}{{ field_name }}{% endfilter %}({{ val }} {{ field_name | camel }}) {
             this.{{ field_name | camel }} = {{ field_name | camel }};
             return;
-        {% endif %}
-    }
+        }
     {% endfor %}
 
 
