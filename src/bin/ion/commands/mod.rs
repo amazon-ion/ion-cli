@@ -11,6 +11,7 @@ use termcolor::{ColorChoice, StandardStream, StandardStreamLock};
 
 pub mod cat;
 mod command_namespace;
+pub mod complaint;
 pub mod from;
 pub mod generate;
 pub mod hash;
@@ -53,6 +54,11 @@ pub trait IonCliCommand {
     /// A brief message describing this command's functionality.
     fn about(&self) -> &'static str;
 
+    /// A long message describing this command's functionality.
+    fn long_about(&self) -> Option<&'static str> {
+        None
+    }
+
     /// Initializes a [`ClapCommand`] representing this command and its subcommands (if any).
     ///
     /// Commands wishing to customize their `ClapCommand`'s arguments should override
@@ -77,6 +83,10 @@ pub trait IonCliCommand {
                     .display_order(usize::MAX)
                     .hide(true),
             );
+
+        if let Some(long_about) = self.long_about() {
+            base_command = base_command.long_about(long_about)
+        }
 
         if !self.is_stable() {
             let about = base_command.get_about().map(|x| x.to_string());

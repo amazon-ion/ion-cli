@@ -22,14 +22,18 @@ impl IonCliCommand for StatsCommand {
     }
 
     fn about(&self) -> &'static str {
-        "Print the analysis report of the input data stream, including the total number of top-level values, their minimum, maximum, and mean sizes,\n\
-        and plot the size distribution of the input stream. The report should also include the number of symbol tables in the input stream,\n\
-        the total number of different symbols that occurred in the input stream, and the maximum depth of the input data stream.\n\
-        Currently, this subcommand only supports data analysis on binary Ion data."
+        "Print statistics about an Ion stream"
     }
 
     fn configure_args(&self, command: Command) -> Command {
-        command.with_input()
+        command
+            .long_about("Print the analysis report of the input data stream, including the total number of\n\
+        top-level values, their minimum, maximum, and mean sizes, and plot the size distribution of\n\
+        the input stream. The report should also include the number of symbol tables in the input\n\
+        stream, the total number of different symbols that occurred in the input stream, and the\n\
+        maximum depth of the input data stream. Currently, this subcommand only supports data\n\
+        analysis on binary Ion data.")
+            .with_input()
     }
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
         CommandIo::new(args).for_each_input(|_output, input| {
