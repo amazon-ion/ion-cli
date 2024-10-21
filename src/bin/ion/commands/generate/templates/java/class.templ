@@ -76,7 +76,7 @@ import java.io.IOException;
      */
     public static {{ model.name }} readFrom(IonReader reader) {
         {# Initializes the builder for this class #}
-        Builder {{ model.name | camel }}Builder = new Builder();
+        Builder builder = new Builder();
 
         {# Reads `Structure` class with multiple fields based on `field.name` #}
         reader.stepIn();
@@ -89,7 +89,7 @@ import java.io.IOException;
                 {% set field_occurrence = field_val.1 %}
                 {% if field_occurrence == "Optional" %} {% set field_value = field_value | primitive_data_type %} {% endif %}
                 case "{{ field_name }}":
-                  {{ model.name | camel }}Builder = {{ model.name | camel }}Builder.{{ field_name | camel }}(
+                  builder.{{ field_name | camel }}(
                                                 {% if field_value | is_built_in_type %}
                                                    {% if field_value == "bytes[]" %}
                                                         reader.newBytes()
@@ -109,7 +109,7 @@ import java.io.IOException;
         }
         reader.stepOut();
 
-        return  {{ model.name | camel }}Builder.build();
+        return  builder.build();
     }
 
     /**
