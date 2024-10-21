@@ -23,7 +23,7 @@ class CodeGenTest {
     private static final IonLoader ionLoader = ionSystem.getLoader();
 
     @Test void builderTestForStructWithFields() {
-         StructWithFields.StructWithFieldsBuilder sb = new StructWithFields.StructWithFieldsBuilder();
+         StructWithFields.Builder sb = new StructWithFields.Builder();
          ArrayList<String> c = new ArrayList<String>();
          c.add("foo");
          c.add("bar");
@@ -41,14 +41,14 @@ class CodeGenTest {
 
     @Test void builderTestForNestedStruct() {
          // getter tests for `NestedStruct`
-         NestedStruct.NestedStructBuilder nb = new NestedStruct.NestedStructBuilder();
+         NestedStruct.Builder nb = new NestedStruct.Builder();
          ArrayList<Integer> e = new ArrayList<Integer>();
          e.add(1);
          e.add(2);
          e.add(3);
 
          // set all the fields of `NestedStruct`
-         NestedStruct.NestedType1.NestedType1Builder nb1 = new NestedStruct.NestedType1.NestedType1Builder();
+         NestedStruct.NestedType1.Builder nb1 = new NestedStruct.NestedType1.Builder();
          NestedStruct.NestedType1 c = nb1.d(false).e(e).build();
          NestedStruct n = nb.a("hello").b(12).c(c).build();
 
@@ -57,26 +57,44 @@ class CodeGenTest {
          assertEquals(12, n.getB(), "n.getB() should return `12`");
          assertEquals(false, n.getC().getD(), "n.getC().getD() should return `false`");
          assertEquals(3, n.getC().getE().size(), "n.getC().getE().size() should return ArrayList fo size 3");
+
+          // setter tests for `NestedStruct`
+          n.setA("hi");
+          assertEquals("hi", n.getA(), "s.getA() should return \"hi\"");
+          n.setB(6);
+          assertEquals(6, n.getB(), "s.getB() should return `6`");
+          n.getC().setD(true);
+          assertEquals(true, n.getC().getD(), "s.getC().getD() should return `true`");
+          n.getC().setE(new ArrayList<Integer>());
+          assertEquals(0, n.getC().getE().size(), "s.getC().getE().size() should return ArrayList fo size 0");
     }
 
-    @Test void builderTestForSequence() {
-         Sequence.SequenceBuilder sb = new Sequence.SequenceBuilder();
+    @Test void getterAndSetterTestForSequence() {
          ArrayList<String> a = new ArrayList<String>();
          a.add("foo");
          a.add("bar");
          a.add("baz");
-         Sequence s = sb.value(a).build();
+         Sequence s = new Sequence();
+
+         // set all the fields of `Sequence`
+         s.setValue(a);
 
          // getter tests for `Sequence`
          assertEquals(3, s.getValue().size(), "s.getValue().size() should return ArrayList fo size 3");
     }
 
-    @Test void builderTestForScalar() {
-         Scalar.ScalarBuilder sb = new Scalar.ScalarBuilder();
-         Scalar s = sb.value("hello").build();
+    @Test void getterAndSetterTestForScalar() {
+         Scalar s = new Scalar();
+
+         // set all the fields of `Scalar`
+         s.setValue("hello");
 
          // getter tests for `Scalar`
          assertEquals("hello", s.getValue(), "s.getValue() should return \"hello\"");
+
+         // setter tests for `Scalar`
+         s.setValue("hi");
+         assertEquals("hi", s.getValue(), "s.getValue() should return \"hi\"");
     }
 
     @FunctionalInterface
