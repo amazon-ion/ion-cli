@@ -17,7 +17,7 @@ fn main() {
         .arg("-l")
         .arg("rust")
         .arg("-d")
-        .arg(format!("{}/../../schema", crate_dir))
+        .arg(format!("{}/../../schema/rust", crate_dir))
         .arg("-o")
         .arg(&out_dir);
 

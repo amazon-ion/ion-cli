@@ -1,0 +1,8 @@
+// simple struct with all valid fields
+{
+ A: "hello",
+ B: 12,
+ C: ("foo" "bar" "baz"),
+ // D: 10e2, // since `D` is optional field, this is a valid struct
+ E: foo,
+}
