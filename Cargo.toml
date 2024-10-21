@@ -1,6 +1,6 @@
 [package]
 name = "ion-cli"
-version = "0.7.0"
+version = "0.7.1"
 authors = ["The Ion Team <ion-team@amazon.com>"]
 edition = "2021"
 description = "Command line tool for working with the Ion data format."
@@ -20,7 +20,7 @@ sha2 = "0.9"
 sha3 = "0.9"
 flate2 = "1.0"
 infer = "0.15.0"
-ion-rs = { version = "1.0.0-rc.7", features = ["experimental", "experimental-ion-hash"] }
+ion-rs = { version = "=1.0.0-rc.7", features = ["experimental", "experimental-ion-hash"] }
 tempfile = "3.2.0"
 ion-schema = "0.10.0"
 lowcharts = "0.5.8"
