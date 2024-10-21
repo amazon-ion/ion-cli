@@ -22,43 +22,35 @@ class CodeGenTest {
     private static final IonSystem ionSystem = IonSystemBuilder.standard().build();
     private static final IonLoader ionLoader = ionSystem.getLoader();
 
-    @Test void getterAndSetterTestForStructWithFields() {
-         StructWithFields s = new StructWithFields();
+    @Test void builderTestForStructWithFields() {
+         StructWithFields.Builder sb = new StructWithFields.Builder();
+         ArrayList<String> c = new ArrayList<String>();
+         c.add("foo");
+         c.add("bar");
+         c.add("baz");
 
          // set all the fields of `StructWithFields`
-         s.setA("hello");
-         s.setB(12);
-         s.setD(10e2);
+         StructWithFields s = sb.a("hello").b(12).c(c).d(10e2).build();
 
          // getter tests for `StructWithFields`
          assertEquals("hello", s.getA(), "s.getA() should return \"hello\"");
          assertEquals(12, s.getB(), "s.getB() should return `12`");
+         assertEquals(3, s.getC().size(), "s.getC() should return ArrayList fo size 3");
          assertEquals(10e2, s.getD(), "s.getD() should return `10e2`");
-
-         // setter tests for `StructWithFields`
-         s.setA("hi");
-         assertEquals("hi", s.getA(), "s.getA() should return \"hi\"");
-         s.setB(6);
-         assertEquals(6, s.getB(), "s.getB() should return `6`");
-         s.setD(11e3);
-         assertEquals(11e3 ,s.getD(), "s.getD() should return `11e3`");
     }
 
-    @Test void getterAndSetterTestForNestedStruct() {
+    @Test void builderTestForNestedStruct() {
          // getter tests for `NestedStruct`
-         NestedStruct n = new NestedStruct();
+         NestedStruct.Builder nb = new NestedStruct.Builder();
          ArrayList<Integer> e = new ArrayList<Integer>();
          e.add(1);
          e.add(2);
          e.add(3);
 
          // set all the fields of `NestedStruct`
-         n.setA("hello");
-         n.setB(12);
-         NestedStruct.NestedType1 n1 = new NestedStruct.NestedType1();
-         n1.setD(false);
-         n1.setE(e);
-         n.setC(n1);
+         NestedStruct.NestedType1.Builder nb1 = new NestedStruct.NestedType1.Builder();
+         NestedStruct.NestedType1 c = nb1.d(false).e(e).build();
+         NestedStruct n = nb.a("hello").b(12).c(c).build();
 
          // getter tests for `NestedStruct`
          assertEquals("hello", n.getA(), "n.getA() should return \"hello\"");
@@ -89,10 +81,6 @@ class CodeGenTest {
 
          // getter tests for `Sequence`
          assertEquals(3, s.getValue().size(), "s.getValue().size() should return ArrayList fo size 3");
-
-         // setter tests for `Sequence`
-         s.setValue(new ArrayList<String>());
-         assertEquals(true, s.getValue().isEmpty(), "s.getValue().isEmpty() should return `true`");
     }
 
     @Test void getterAndSetterTestForScalar() {
