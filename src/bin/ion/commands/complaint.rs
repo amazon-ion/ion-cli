@@ -20,7 +20,7 @@ impl IonCliCommand for SucksCommand {
         command.hide(true)
     }
 
-    fn run(&self, command_path: &mut Vec<String>, args: &ArgMatches) -> anyhow::Result<()> {
+    fn run(&self, _command_path: &mut Vec<String>, _args: &ArgMatches) -> anyhow::Result<()> {
         println!(
             "
         We're very sorry to hear that!
