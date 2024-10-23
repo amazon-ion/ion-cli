@@ -285,7 +285,9 @@ impl Language for RustLanguage {
             Template::Scalar => "scalar".to_string(),
             Template::Sequence => "sequence".to_string(),
             Template::Enum => {
-                unimplemented!("Rust enums are not supported yet!")
+                //TODO: Rust enums are not supported yet
+                // The template `enum.templ` is just a placeholder
+                "enum".to_string()
             }
         }
     }

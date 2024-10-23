@@ -49,6 +49,7 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
             ("struct.templ", templates::rust::STRUCT),
             ("scalar.templ", templates::rust::SCALAR),
             ("sequence.templ", templates::rust::SEQUENCE),
+            ("enum.templ", templates::rust::ENUM),
             ("util_macros.templ", templates::rust::UTIL_MACROS),
             ("import.templ", templates::rust::IMPORT),
             ("nested_type.templ", templates::rust::NESTED_TYPE),
