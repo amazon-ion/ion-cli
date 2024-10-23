@@ -333,7 +333,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             self.generate_abstract_data_type(&isl_type_name, isl_type)?;
             // Since the fully qualified name of this generator represents the current fully qualified name,
             // remove it before generating code for the next ISL type.
-            self.current_type_fully_qualified_name.pop();
+            L::reset_namespace(&mut self.current_type_fully_qualified_name);
         }
 
         Ok(())
