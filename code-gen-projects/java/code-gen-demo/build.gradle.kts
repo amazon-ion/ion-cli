@@ -23,7 +23,7 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:5.7.1")
 }
 
-val ionSchemaSourceCodeDir = "../../schema/java/"
+val ionSchemaSourceCodeDir = "../../schema/"
 val generatedIonSchemaModelDir = "${layout.buildDirectory.get()}/generated/java"
 sourceSets {
     main {

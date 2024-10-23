@@ -133,8 +133,8 @@ class CodeGenTest {
     }
 
     @Test
-    void roundtripBadTestForEnum() throws IOException {
-        runRoundtripBadTest("/bad/enum", Enum::readFrom);
+    void roundtripBadTestForEnumType() throws IOException {
+        runRoundtripBadTest("/bad/enum_type", EnumType::readFrom);
     }
 
     private <T> void runRoundtripBadTest(String path, ReaderFunction<T> readerFunction) throws IOException {
@@ -178,8 +178,8 @@ class CodeGenTest {
 
 
     @Test
-    void roundtripGoodTestForEnum() throws IOException {
-        runRoundtripGoodTest("/good/enum", Enum::readFrom, (item, writer) -> item.writeTo(writer));
+    void roundtripGoodTestForEnumType() throws IOException {
+        runRoundtripGoodTest("/good/enum_type", EnumType::readFrom, (item, writer) -> item.writeTo(writer));
     }
 
     private <T> void runRoundtripGoodTest(String path, ReaderFunction<T> readerFunction, WriterFunction<T> writerFunction) throws IOException {
