@@ -477,8 +477,8 @@ pub struct FieldReference(
 pub struct Enum {
     // Represents the fully qualified name for this data model
     pub(crate) name: FullyQualifiedTypeName,
-    // Represents enum variants
-    variants: HashSet<EnumVariant>,
+    // The variants of this enum
+    variants: HashSet<String>,
     // Represents doc comment for the generated code
     // If the doc comment is provided for this scalar type then this is `Some(doc_comment)`, other it is None.
     #[builder(default)]
@@ -489,22 +489,6 @@ pub struct Enum {
     #[serde(skip_serializing_if = "is_anonymous")]
     #[serde(serialize_with = "serialize_type_name")]
     source: IslType,
-}
-
-/// Represent an enum variant which has a variant name and type(either symbol or string).
-/// This is used by `AbstractDataType::Enum` to represent an enum variant.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
-pub struct EnumVariant {
-    pub(crate) name: String,
-    pub(crate) variant_type: EnumVariantType,
-}
-
-/// Represents an enum variant type which could either be a symbol or string.
-/// This is used by `enumVariant` to represent enum variant type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
-pub enum EnumVariantType {
-    Symbol,
-    String,
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 use crate::commands::generate::context::{CodeGenContext, SequenceType};
 use crate::commands::generate::model::{
-    AbstractDataType, DataModelNode, EnumBuilder, EnumVariant, EnumVariantType, FieldPresence,
-    FieldReference, FullyQualifiedTypeReference, ScalarBuilder, SequenceBuilder, StructureBuilder,
+    AbstractDataType, DataModelNode, EnumBuilder, FieldPresence, FieldReference,
+    FullyQualifiedTypeReference, ScalarBuilder, SequenceBuilder, StructureBuilder,
     WrappedScalarBuilder, WrappedSequenceBuilder,
 };
 use crate::commands::generate::result::{
@@ -622,21 +622,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             )))
     }
 
-    /// Verify if the enum variant has `Some` value and it is same as expected type if it is set.
-    pub fn verify_enum_variant_type(
-        actual_enum_variant_type: Option<EnumVariantType>,
-        expected_enum_variant_type: EnumVariantType,
-    ) -> CodeGenResult<()> {
-        if let Some(variant_type) = actual_enum_variant_type {
-            if variant_type != expected_enum_variant_type {
-                return invalid_abstract_data_type_error(
-                    "Could not determine the abstract data type due to conflicting constraints",
-                );
-            }
-        }
-        Ok(())
-    }
-
     /// Builds `AbstractDataType::Structure` from the given constraints.
     /// e.g. for a given type definition as below:
     /// ```
@@ -726,8 +711,8 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     /// ```
     /// type::{
     ///   name: Foo,
-    ///   type: string,
-    ///   valid_values: ["foo", bar, "baz"]
+    ///   type: symbol,
+    ///   valid_values: [foo, bar, baz]
     /// }
     /// ```
     /// This method builds `AbstractDataType`as following:
@@ -737,9 +722,9 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     ///     name: vec!["org", "example", "Foo"], // assuming the namespace is `org.example`
     ///     variants: HashSet::from_iter(
     ///                vec![
-    ///                 EnumVariant { name: "foo", variant_type: EnumVariantType::String },
-    ///                 EnumVariant { name: "bar", variant_type: EnumVariantType::Symbol },
-    ///                 EnumVariant { name: "baz", variant_type: EnumVariantType::String }
+    ///                 "foo",
+    ///                 "bar",
+    ///                 "baz"
     ///               ].iter()) // Represents enum variants
     ///     doc_comment: None // There is no doc comment defined in above ISL type def
     ///     source: IslType {name: "foo", .. } // Represents the `IslType` that is getting converted to `AbstractDataType`
@@ -757,26 +742,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             .name(self.current_type_fully_qualified_name.to_owned())
             .source(parent_isl_type.to_owned());
         let mut found_base_type = false;
-        let mut enum_variant_type: Option<EnumVariantType> = None;
-
-        // Extract enum variant type from type constraint if `type` constraint is present
-        if let Some(IslConstraintValue::Type(isl_type_ref)) = constraints.iter().find_map(|it| {
-            if matches!(it.constraint(), IslConstraintValue::Type(_)) {
-                Some(it.constraint())
-            } else {
-                None
-            }
-        }) {
-            if isl_type_ref.name() == "string" {
-                enum_variant_type = Some(EnumVariantType::String);
-            } else if isl_type_ref.name() == "symbol" {
-                enum_variant_type = Some(EnumVariantType::Symbol);
-            } else {
-                return invalid_abstract_data_type_error(
-                    "Only `valid_values` constraint with values of type `string` or `symbol` are supported yet!"
-                );
-            }
-        }
 
         for constraint in constraints {
             match constraint.constraint() {
@@ -785,37 +750,25 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                         .values()
                         .iter()
                         .map(|v| match v {
-                            ValidValue::Element(value) => match value {
-                                Value::String(string_val) => {
-                                    Self::verify_enum_variant_type(enum_variant_type, EnumVariantType::String)?;
-                                    Ok(EnumVariant {
-                                        name: string_val.text().to_string(),
-                                        variant_type: EnumVariantType::String,
-                                    })
-                                },
-                                Value::Symbol(symbol_val) => {
-                                    Self::verify_enum_variant_type(enum_variant_type, EnumVariantType::Symbol)?;
-                                    symbol_val.text().map(|s| EnumVariant {
-                                        name: s.to_string(),
-                                        variant_type: EnumVariantType::Symbol,
-                                    }).ok_or(invalid_abstract_data_type_raw_error(
+                            ValidValue::Element(Value::Symbol(symbol_val) ) => {
+                                    symbol_val.text().map(|s| s.to_string()).ok_or(invalid_abstract_data_type_raw_error(
                                         "Could not determine enum variant name",
                                     ))
                                 }
-                                _ => invalid_abstract_data_type_error(
-                                    "Only `valid_values` constraint with values of type `string` or `symbol` are supported yet!"
-                                    ),
-                            },
                             _ => invalid_abstract_data_type_error(
-                                "Only `valid_values` constraint with values of type `string` or `symbol` are supported yet!"
+                                "Only `valid_values` constraint with values of type `symbol` are supported yet!"
                             ),
                         })
-                        .collect::<CodeGenResult<Vec<EnumVariant>>>()?;
+                        .collect::<CodeGenResult<Vec<String>>>()?;
                     enum_builder.variants(HashSet::from_iter(valid_values));
                 }
                 IslConstraintValue::Type(isl_type_ref) => {
-                    // This block only checks for duplicate type constraint as the type of enum variant
-                    // is already initialized before this for-loop.
+                    if isl_type_ref.name() != "symbol" {
+                        return invalid_abstract_data_type_error(
+                            "Only `valid_values` constraint with values of type `symbol` are supported yet!"
+                        );
+                    }
+
                     let _type_name = self.handle_duplicate_constraint(
                         found_base_type,
                         "type",

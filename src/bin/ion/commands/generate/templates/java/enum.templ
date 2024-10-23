@@ -11,18 +11,16 @@ import java.io.IOException;
 {# Verify that the abstract data type is a enum and store information for this enum #}
 {% set enum_info = model.code_gen_type["Enum"] %}
 
-{% if is_nested == true %} static {% endif %} enum {{ model.name }} {
+public {% if is_nested == true %} static {% endif %} enum {{ model.name }} {
     {% for variant in enum_info["variants"] -%}
-           {{ variant.name | upper }} {
-                    @Override
-                    public void writeTo(IonWriter writer) throws IOException {
-                         {# Writes the enum variant as a string or symbol  #}
-                         writer.write{{variant.variant_type}}("{{ variant.name }}");
-                    }
-           }
-           {% if loop.last == false %},{% endif %}
+           {{ variant | snake | upper }}("{{variant}}"),
     {% endfor %};
 
+    private String textValue;
+
+    {{model.name}}(String textValue) {
+        this.textValue = textValue;
+    }
 
     /**
      * Writes a {{ model.name }} as Ion from an {@link IonWriter}.
@@ -30,7 +28,10 @@ import java.io.IOException;
      * This method does not close the writer after writing is complete.
      * The caller is responsible for closing the stream associated with the writer.
      */
-    public abstract void writeTo(IonWriter writer) throws IOException;
+    public void writeTo(IonWriter writer) throws IOException {
+         {# Writes the enum variant as a string or symbol  #}
+         writer.writeSymbol(this.textValue);
+    }
 
     /**
      * Reads a {{ model.name }} from an {@link IonReader}.
@@ -39,22 +40,16 @@ import java.io.IOException;
      * The caller is responsible for positioning the reader on the value to read.
      */
     public static {{ model.name }} readFrom(IonReader reader) {
+        {# Enums are only supported for symbol types #}
+        if (reader.getType() != IonType.SYMBOL) {
+            throw new IonException("Expected symbol, found " + reader.getType() + " while reading {{ model.name }}");
+        }
         {# Reads given value as a string #}
         String value = reader.stringValue();
-        switch(value.toUpperCase()) {
+        switch(value) {
             {% for variant in enum_info["variants"] %}
-            case "{{ variant.name | upper }}":
-                    {# Enums are only supported for string or symbol types #}
-                    {% if variant.variant_type == "Symbol" %}
-                        if (reader.getType() != IonType.SYMBOL) {
-                            throw new IonException("Expected symbol, found " + reader.getType() + " while reading {{ model.name }}");
-                        }
-                    {% elif variant.variant_type == "String" %}
-                        if (reader.getType() != IonType.STRING) {
-                            throw new IonException("Expected string, found " + reader.getType() + " while reading {{ model.name }}");
-                        }
-                    {% endif %}
-                return {{ variant.name | upper }};
+            case "{{ variant }}":
+                return {{ variant | snake | upper }};
             {% endfor %}
             default:
                 throw new IonException(value + "is not a valid value for {{ model.name }}");
