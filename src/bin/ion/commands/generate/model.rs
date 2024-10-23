@@ -1,7 +1,6 @@
 use derive_builder::Builder;
 use ion_schema::isl::isl_type::IslType;
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Debug;
 // This module contains a data model that the code generator can use to render a template based on the type of the model.
 // Currently, this same data model is represented by `AbstractDataType` but it doesn't hold all the information for the template.
@@ -478,9 +477,8 @@ pub struct Enum {
     // Represents the fully qualified name for this data model
     pub(crate) name: FullyQualifiedTypeName,
     // The variants of this enum
-    variants: HashSet<String>,
+    variants: BTreeSet<String>,
     // Represents doc comment for the generated code
-    // If the doc comment is provided for this scalar type then this is `Some(doc_comment)`, other it is None.
     #[builder(default)]
     doc_comment: Option<String>,
     // Represents the source ISL type which can be used to get other constraints useful for this type.

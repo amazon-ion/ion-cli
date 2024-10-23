@@ -18,7 +18,7 @@ use ion_schema::isl::isl_type_reference::IslTypeRef;
 use ion_schema::isl::util::ValidValue;
 use ion_schema::isl::IslSchema;
 use ion_schema::system::SchemaSystem;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -760,7 +760,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                             ),
                         })
                         .collect::<CodeGenResult<Vec<String>>>()?;
-                    enum_builder.variants(HashSet::from_iter(valid_values));
+                    enum_builder.variants(BTreeSet::from_iter(valid_values));
                 }
                 IslConstraintValue::Type(isl_type_ref) => {
                     if isl_type_ref.name() != "symbol" {

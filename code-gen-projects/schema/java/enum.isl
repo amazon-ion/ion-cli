@@ -1,4 +1,4 @@
 type::{
   name: enum,
-  valid_values: [foo, bar, baz]
+  valid_values: [foo, bar, baz, FooBarBaz]
 }
