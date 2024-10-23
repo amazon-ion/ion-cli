@@ -71,6 +71,9 @@ pub trait Language {
     ///     i.e. given namespace path as `foo::Foo`, it will first remove `Foo` and then add the current type as `foo::nested_type::NestedType`.
     fn add_type_to_namespace(is_nested_type: bool, type_name: &str, namespace: &mut Vec<String>);
 
+    /// Resets the namespace when code generation is complete for a single ISL type
+    fn reset_namespace(namespace: &mut Vec<String>);
+
     /// Returns the `FullyQualifiedReference` that represents the target type as optional in the given programming language
     /// e.g. In Java, it will return "java.util.Optional<T>"
     ///     In Rust, it will return "Option<T>"
@@ -164,6 +167,11 @@ impl Language for JavaLanguage {
 
     fn add_type_to_namespace(_is_nested_type: bool, type_name: &str, namespace: &mut Vec<String>) {
         namespace.push(type_name.to_case(Case::UpperCamel))
+    }
+
+    fn reset_namespace(namespace: &mut Vec<String>) {
+        // resets the namespace by removing current abstract dta type name
+        namespace.pop();
     }
 
     fn target_type_as_optional(
@@ -318,6 +326,12 @@ impl Language for RustLanguage {
         }
         namespace.push(type_name.to_case(Case::Snake)); // Add this type's module name to the namespace path
         namespace.push(type_name.to_case(Case::UpperCamel)) // Add this type itself to the namespace path
+    }
+
+    fn reset_namespace(namespace: &mut Vec<String>) {
+        // Resets the namespace by removing current abstract data type name and module name
+        namespace.pop();
+        namespace.pop();
     }
 
     fn target_type_as_optional(
