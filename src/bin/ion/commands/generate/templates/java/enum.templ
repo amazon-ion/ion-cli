@@ -29,7 +29,6 @@ public {% if is_nested == true %} static {% endif %} enum {{ model.name }} {
      * The caller is responsible for closing the stream associated with the writer.
      */
     public void writeTo(IonWriter writer) throws IOException {
-         {# Writes the enum variant as a string or symbol  #}
          writer.writeSymbol(this.textValue);
     }
 

@@ -441,6 +441,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         //      * The sequence type for `Sequence` will be stored based on `type` constraint with either `list` or `sexp`.
         // * If given list of constraints has any `type` constraint except `type: list`, `type: struct` and `type: sexp`, then `AbstractDataType::Scalar` needs to be constructed.
         //      * The `base_type` for `Scalar` will be stored based on `type` constraint.
+        // * If given list of constraints has any `valida_values` constraint with symbol values, then `AbstractDataType::Enum` needs to be constructed.
         // * All the other constraints except the above ones are not yet supported by code generator.
         let abstract_data_type = if constraints
             .iter()
@@ -460,10 +461,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     isl_type,
                 )?
             }
-        } else if constraints
-            .iter()
-            .any(|it| matches!(it.constraint(), IslConstraintValue::ValidValues(_)))
-        {
+        } else if Self::contains_enum_constraints(constraints) {
             self.build_enum_from_constraints(constraints, code_gen_context, isl_type)?
         } else if Self::contains_scalar_constraints(constraints) {
             if is_nested_type {
@@ -508,6 +506,20 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         constraints.iter().any(|it| matches!(it.constraint(), IslConstraintValue::Type(isl_type_ref) if isl_type_ref.name().as_str() != "list"
                      && isl_type_ref.name().as_str() != "sexp"
                      && isl_type_ref.name().as_str() != "struct"))
+    }
+
+    /// Verifies if the given constraints contain a `valid_values` constraint with only symbol values.
+    fn contains_enum_constraints(constraints: &[IslConstraint]) -> bool {
+        constraints.iter().any(|it| {
+            if let IslConstraintValue::ValidValues(valid_values) = it.constraint() {
+                valid_values
+                    .values()
+                    .iter()
+                    .all(|val| matches!(val, ValidValue::Element(Value::Symbol(_))))
+            } else {
+                false
+            }
+        })
     }
 
     fn render_generated_code(
