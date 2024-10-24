@@ -441,7 +441,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         //      * The sequence type for `Sequence` will be stored based on `type` constraint with either `list` or `sexp`.
         // * If given list of constraints has any `type` constraint except `type: list`, `type: struct` and `type: sexp`, then `AbstractDataType::Scalar` needs to be constructed.
         //      * The `base_type` for `Scalar` will be stored based on `type` constraint.
-        // * If given list of constraints has any `valida_values` constraint with symbol values, then `AbstractDataType::Enum` needs to be constructed.
+        // * If given list of constraints has any `valid_values` constraint which contains exclusively symbol values, then `AbstractDataType::Enum` needs to be constructed.
         // * All the other constraints except the above ones are not yet supported by code generator.
         let abstract_data_type = if constraints
             .iter()
