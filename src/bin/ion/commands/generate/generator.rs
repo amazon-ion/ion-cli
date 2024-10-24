@@ -1,7 +1,8 @@
 use crate::commands::generate::context::{CodeGenContext, SequenceType};
 use crate::commands::generate::model::{
-    AbstractDataType, DataModelNode, FieldPresence, FieldReference, FullyQualifiedTypeReference,
-    ScalarBuilder, SequenceBuilder, StructureBuilder, WrappedScalarBuilder, WrappedSequenceBuilder,
+    AbstractDataType, DataModelNode, EnumBuilder, FieldPresence, FieldReference,
+    FullyQualifiedTypeReference, ScalarBuilder, SequenceBuilder, StructureBuilder,
+    WrappedScalarBuilder, WrappedSequenceBuilder,
 };
 use crate::commands::generate::result::{
     invalid_abstract_data_type_error, invalid_abstract_data_type_raw_error, CodeGenResult,
@@ -10,12 +11,14 @@ use crate::commands::generate::templates;
 use crate::commands::generate::utils::{IonSchemaType, Template};
 use crate::commands::generate::utils::{JavaLanguage, Language, RustLanguage};
 use convert_case::{Case, Casing};
+use ion_schema::external::ion_rs::element::Value;
 use ion_schema::isl::isl_constraint::{IslConstraint, IslConstraintValue};
 use ion_schema::isl::isl_type::IslType;
 use ion_schema::isl::isl_type_reference::IslTypeRef;
+use ion_schema::isl::util::ValidValue;
 use ion_schema::isl::IslSchema;
 use ion_schema::system::SchemaSystem;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -46,6 +49,7 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
             ("struct.templ", templates::rust::STRUCT),
             ("scalar.templ", templates::rust::SCALAR),
             ("sequence.templ", templates::rust::SEQUENCE),
+            ("enum.templ", templates::rust::ENUM),
             ("util_macros.templ", templates::rust::UTIL_MACROS),
             ("import.templ", templates::rust::IMPORT),
             ("nested_type.templ", templates::rust::NESTED_TYPE),
@@ -89,6 +93,7 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
             ("class.templ", templates::java::CLASS),
             ("scalar.templ", templates::java::SCALAR),
             ("sequence.templ", templates::java::SEQUENCE),
+            ("enum.templ", templates::java::ENUM),
             ("util_macros.templ", templates::java::UTIL_MACROS),
             ("nested_type.templ", templates::java::NESTED_TYPE),
         ])
@@ -328,7 +333,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             self.generate_abstract_data_type(&isl_type_name, isl_type)?;
             // Since the fully qualified name of this generator represents the current fully qualified name,
             // remove it before generating code for the next ISL type.
-            self.current_type_fully_qualified_name.pop();
+            L::reset_namespace(&mut self.current_type_fully_qualified_name);
         }
 
         Ok(())
@@ -436,6 +441,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         //      * The sequence type for `Sequence` will be stored based on `type` constraint with either `list` or `sexp`.
         // * If given list of constraints has any `type` constraint except `type: list`, `type: struct` and `type: sexp`, then `AbstractDataType::Scalar` needs to be constructed.
         //      * The `base_type` for `Scalar` will be stored based on `type` constraint.
+        // * If given list of constraints has any `valid_values` constraint which contains exclusively symbol values, then `AbstractDataType::Enum` needs to be constructed.
         // * All the other constraints except the above ones are not yet supported by code generator.
         let abstract_data_type = if constraints
             .iter()
@@ -455,6 +461,8 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     isl_type,
                 )?
             }
+        } else if Self::contains_enum_constraints(constraints) {
+            self.build_enum_from_constraints(constraints, code_gen_context, isl_type)?
         } else if Self::contains_scalar_constraints(constraints) {
             if is_nested_type {
                 self.build_scalar_from_constraints(constraints, code_gen_context, isl_type)?
@@ -498,6 +506,20 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         constraints.iter().any(|it| matches!(it.constraint(), IslConstraintValue::Type(isl_type_ref) if isl_type_ref.name().as_str() != "list"
                      && isl_type_ref.name().as_str() != "sexp"
                      && isl_type_ref.name().as_str() != "struct"))
+    }
+
+    /// Verifies if the given constraints contain a `valid_values` constraint with only symbol values.
+    fn contains_enum_constraints(constraints: &[IslConstraint]) -> bool {
+        constraints.iter().any(|it| {
+            if let IslConstraintValue::ValidValues(valid_values) = it.constraint() {
+                valid_values
+                    .values()
+                    .iter()
+                    .all(|val| matches!(val, ValidValue::Element(Value::Symbol(_))))
+            } else {
+                false
+            }
+        })
     }
 
     fn render_generated_code(
@@ -695,6 +717,89 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         }
 
         Ok(AbstractDataType::Structure(structure_builder.build()?))
+    }
+
+    /// Builds `AbstractDataType::Enum` from the given constraints.
+    /// e.g. for a given type definition as below:
+    /// ```
+    /// type::{
+    ///   name: Foo,
+    ///   type: symbol,
+    ///   valid_values: [foo, bar, baz]
+    /// }
+    /// ```
+    /// This method builds `AbstractDataType`as following:
+    /// ```
+    /// AbstractDataType::Enum(
+    ///  Enum {
+    ///     name: vec!["org", "example", "Foo"], // assuming the namespace is `org.example`
+    ///     variants: HashSet::from_iter(
+    ///                vec![
+    ///                 "foo",
+    ///                 "bar",
+    ///                 "baz"
+    ///               ].iter()) // Represents enum variants
+    ///     doc_comment: None // There is no doc comment defined in above ISL type def
+    ///     source: IslType {name: "foo", .. } // Represents the `IslType` that is getting converted to `AbstractDataType`
+    ///  }
+    /// )
+    /// ```
+    fn build_enum_from_constraints(
+        &mut self,
+        constraints: &[IslConstraint],
+        code_gen_context: &mut CodeGenContext,
+        parent_isl_type: &IslType,
+    ) -> CodeGenResult<AbstractDataType> {
+        let mut enum_builder = EnumBuilder::default();
+        enum_builder
+            .name(self.current_type_fully_qualified_name.to_owned())
+            .source(parent_isl_type.to_owned());
+        let mut found_base_type = false;
+
+        for constraint in constraints {
+            match constraint.constraint() {
+                IslConstraintValue::ValidValues(valid_values_constraint) => {
+                    let valid_values = valid_values_constraint
+                        .values()
+                        .iter()
+                        .map(|v| match v {
+                            ValidValue::Element(Value::Symbol(symbol_val) ) => {
+                                    symbol_val.text().map(|s| s.to_string()).ok_or(invalid_abstract_data_type_raw_error(
+                                        "Could not determine enum variant name",
+                                    ))
+                                }
+                            _ => invalid_abstract_data_type_error(
+                                "Only `valid_values` constraint with values of type `symbol` are supported yet!"
+                            ),
+                        })
+                        .collect::<CodeGenResult<Vec<String>>>()?;
+                    enum_builder.variants(BTreeSet::from_iter(valid_values));
+                }
+                IslConstraintValue::Type(isl_type_ref) => {
+                    if isl_type_ref.name() != "symbol" {
+                        return invalid_abstract_data_type_error(
+                            "Only `valid_values` constraint with values of type `symbol` are supported yet!"
+                        );
+                    }
+
+                    let _type_name = self.handle_duplicate_constraint(
+                        found_base_type,
+                        "type",
+                        isl_type_ref,
+                        FieldPresence::Required,
+                        code_gen_context,
+                    )?;
+                    found_base_type = true;
+                }
+                _ => {
+                    return invalid_abstract_data_type_error(
+                        "Could not determine the abstract data type due to conflicting constraints",
+                    )
+                }
+            }
+        }
+
+        Ok(AbstractDataType::Enum(enum_builder.build()?))
     }
 
     /// Builds `AbstractDataType::WrappedScalar` from the given constraints.

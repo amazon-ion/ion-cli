@@ -4,5 +4,7 @@
 {% macro nested_type(model, is_nested) -%}
     {% if model.code_gen_type is containing("Structure")%}
         {% include "class.templ" %}
+    {% elif model.code_gen_type is containing("Enum")%}
+        {% include "enum.templ" %}
     {% endif %}
 {% endmacro nested_type -%}

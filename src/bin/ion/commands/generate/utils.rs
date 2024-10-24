@@ -71,6 +71,9 @@ pub trait Language {
     ///     i.e. given namespace path as `foo::Foo`, it will first remove `Foo` and then add the current type as `foo::nested_type::NestedType`.
     fn add_type_to_namespace(is_nested_type: bool, type_name: &str, namespace: &mut Vec<String>);
 
+    /// Resets the namespace when code generation is complete for a single ISL type
+    fn reset_namespace(namespace: &mut Vec<String>);
+
     /// Returns the `FullyQualifiedReference` that represents the target type as optional in the given programming language
     /// e.g. In Java, it will return "java.util.Optional<T>"
     ///     In Rust, it will return "Option<T>"
@@ -154,6 +157,7 @@ impl Language for JavaLanguage {
             Template::Struct => "class".to_string(),
             Template::Scalar => "scalar".to_string(),
             Template::Sequence => "sequence".to_string(),
+            Template::Enum => "enum".to_string(),
         }
     }
 
@@ -163,6 +167,11 @@ impl Language for JavaLanguage {
 
     fn add_type_to_namespace(_is_nested_type: bool, type_name: &str, namespace: &mut Vec<String>) {
         namespace.push(type_name.to_case(Case::UpperCamel))
+    }
+
+    fn reset_namespace(namespace: &mut Vec<String>) {
+        // resets the namespace by removing current abstract dta type name
+        namespace.pop();
     }
 
     fn target_type_as_optional(
@@ -283,6 +292,11 @@ impl Language for RustLanguage {
             Template::Struct => "struct".to_string(),
             Template::Scalar => "scalar".to_string(),
             Template::Sequence => "sequence".to_string(),
+            Template::Enum => {
+                //TODO: Rust enums are not supported yet
+                // The template `enum.templ` is just a placeholder
+                "enum".to_string()
+            }
         }
     }
 
@@ -314,6 +328,12 @@ impl Language for RustLanguage {
         namespace.push(type_name.to_case(Case::UpperCamel)) // Add this type itself to the namespace path
     }
 
+    fn reset_namespace(namespace: &mut Vec<String>) {
+        // Resets the namespace by removing current abstract data type name and module name
+        namespace.pop();
+        namespace.pop();
+    }
+
     fn target_type_as_optional(
         target_type: FullyQualifiedTypeReference,
     ) -> FullyQualifiedTypeReference {
@@ -342,6 +362,7 @@ pub enum Template {
     Struct,   // Represents a template for a Rust struct or Java class with Ion struct value
     Sequence, // Represents a template for a Rust struct or Java class with Ion sequence value
     Scalar,   // Represents a template for a Rust struct or Java class with Ion scalar value
+    Enum,     // Represents a template for a Rust or Java enum
 }
 
 impl TryFrom<&DataModelNode> for Template {
@@ -357,6 +378,7 @@ impl TryFrom<&DataModelNode> for Template {
                     Ok(Template::Sequence)
                 }
                 AbstractDataType::Structure(_) => Ok(Template::Struct),
+                AbstractDataType::Enum(_) => Ok(Template::Enum),
             }
         } else {
             invalid_abstract_data_type_error(

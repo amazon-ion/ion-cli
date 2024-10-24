@@ -127,6 +127,16 @@ class CodeGenTest {
         runRoundtripBadTest("/bad/nested_struct", NestedStruct::readFrom);
     }
 
+    @Test
+    void roundtripBadTestForStructWithEnumFields() throws IOException {
+        runRoundtripBadTest("/bad/struct_with_enum_fields", StructWithEnumFields::readFrom);
+    }
+
+    @Test
+    void roundtripBadTestForEnumType() throws IOException {
+        runRoundtripBadTest("/bad/enum_type", EnumType::readFrom);
+    }
+
     private <T> void runRoundtripBadTest(String path, ReaderFunction<T> readerFunction) throws IOException {
         File dir = new File(System.getenv("ION_INPUT") + path);
         String[] fileNames = dir.list();
@@ -159,6 +169,17 @@ class CodeGenTest {
     @Test
     void roundtripGoodTestForNestedStruct() throws IOException {
         runRoundtripGoodTest("/good/nested_struct", NestedStruct::readFrom, (item, writer) -> item.writeTo(writer));
+    }
+
+    @Test
+    void roundtripGoodTestForStructWithEnumFields() throws IOException {
+        runRoundtripGoodTest("/good/struct_with_enum_fields", StructWithEnumFields::readFrom, (item, writer) -> item.writeTo(writer));
+    }
+
+
+    @Test
+    void roundtripGoodTestForEnumType() throws IOException {
+        runRoundtripGoodTest("/good/enum_type", EnumType::readFrom, (item, writer) -> item.writeTo(writer));
     }
 
     private <T> void runRoundtripGoodTest(String path, ReaderFunction<T> readerFunction, WriterFunction<T> writerFunction) throws IOException {
