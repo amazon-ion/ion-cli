@@ -1,0 +1,22 @@
+// Enum support is not yet completed for Rust code generation
+// This template is just used as placeholder for enums.
+
+
+use {{ model.name | snake }}::{{ model.name }};
+pub mod  {{ model.name | snake }} {
+    use super::*;
+    #[derive(Debug, Clone, Default)]
+    pub enum {{ model.name }} {
+        #[default]
+        Unit // This is just a placeholder variant for enum generation
+    }
+    impl {{ model.name }} {
+        pub fn read_from(reader: &mut Reader) -> SerdeResult<Self> {
+            todo!("Enums are not supported with code generation yet!")
+        }
+
+        pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> SerdeResult<()> {
+            todo!("Enums are not supported with code generation yet!")
+        }
+    }
+}
