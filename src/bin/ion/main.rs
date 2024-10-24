@@ -1,3 +1,4 @@
+mod ansi_codes;
 mod auto_decompress;
 mod commands;
 mod file_writer;
