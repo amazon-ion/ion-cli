@@ -331,9 +331,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             // unwrap here is safe because all the top-level type definition always has a name
             let isl_type_name = isl_type.name().clone().unwrap();
             self.generate_abstract_data_type(&isl_type_name, isl_type)?;
-            // Since the fully qualified name of this generator represents the current fully qualified name,
-            // remove it before generating code for the next ISL type.
-            L::reset_namespace(&mut self.current_type_fully_qualified_name);
         }
 
         Ok(())
@@ -353,7 +350,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         let mut code_gen_context = CodeGenContext::new();
         let mut data_model_node = self.convert_isl_type_def_to_data_model_node(
             type_name,
-            field_presence,
             isl_type,
             &mut code_gen_context,
             true,
@@ -365,7 +361,20 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             .push(data_model_node.to_owned());
 
         // pop out the nested type name from the fully qualified namespace as it has been already added to the type store and to nested types
-        self.current_type_fully_qualified_name.pop();
+        // For sequence type, it would already have popped out the nested type name.
+        if !data_model_node.is_sequence() {
+            // Since the fully qualified name of this generator represents the current fully qualified name,
+            // remove it before generating code for the next ISL type.
+            L::reset_namespace(&mut self.current_type_fully_qualified_name);
+        }
+
+        // since nested sequence does not create a separate class, all its nested types should also be added to parent code gen context
+        if data_model_node.is_sequence() {
+            parent_code_gen_context
+                .nested_types
+                .extend_from_slice(&data_model_node.nested_types);
+        }
+
         match field_presence {
             FieldPresence::Optional => Ok(L::target_type_as_optional(
                 data_model_node.fully_qualified_type_ref::<L>().ok_or(
@@ -392,7 +401,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
 
         let data_model_node = self.convert_isl_type_def_to_data_model_node(
             isl_type_name,
-            FieldPresence::Required, // Sets `field_presence` as `Required`, as the top level type definition can not be `Optional`.
             isl_type,
             &mut code_gen_context,
             false,
@@ -409,7 +417,17 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         );
         context.insert("model", &data_model_node);
 
-        self.render_generated_code(isl_type_name, &mut context, &data_model_node)
+        self.render_generated_code(isl_type_name, &mut context, &data_model_node)?;
+
+        // pop out the nested type name from the fully qualified namespace as it has been already added to the type store and to nested types
+        // For sequence type, it would already have popped out the nested type name.
+        if !data_model_node.is_sequence() {
+            // Since the fully qualified name of this generator represents the current fully qualified name,
+            // remove it before generating code for the next ISL type.
+            L::reset_namespace(&mut self.current_type_fully_qualified_name);
+        }
+
+        Ok(())
     }
 
     /// _Note: `field_presence` is only used for variably occurring type references and currently that is only supported with `fields` constraint.
@@ -417,7 +435,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     fn convert_isl_type_def_to_data_model_node(
         &mut self,
         isl_type_name: &String,
-        field_presence: FieldPresence,
         isl_type: &IslType,
         code_gen_context: &mut CodeGenContext,
         is_nested_type: bool,
@@ -482,18 +499,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         // TODO: verify the `occurs` value within a field, by default the fields are optional.
         // add current data model node into the data model store
         // verify if the field presence was provided as optional and set the type reference name as optional.
-        let type_name = match field_presence {
-            FieldPresence::Optional => abstract_data_type.fully_qualified_type_ref::<L>().ok_or(
-                invalid_abstract_data_type_raw_error(
-                    "Can not determine fully qualified name for the data model",
-                ),
-            )?,
-            FieldPresence::Required => abstract_data_type.fully_qualified_type_ref::<L>().ok_or(
-                invalid_abstract_data_type_raw_error(
-                    "Can not determine fully qualified name for the data model",
-                ),
-            )?,
-        };
+        let type_name = abstract_data_type.fully_qualified_type_ref::<L>();
 
         self.data_model_store
             .insert(type_name, data_model_node.to_owned());
@@ -1016,6 +1022,10 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         parent_isl_type: &IslType,
     ) -> CodeGenResult<AbstractDataType> {
         let mut sequence_builder = SequenceBuilder::default();
+        // For nested sequence type remove the anonymous type name from current fully qualified name
+        // Nested sequence does not create a separate class, so the anonymous type name shouldn't be used for the fully qualified type name.
+        L::reset_namespace(&mut self.current_type_fully_qualified_name);
+
         sequence_builder.source(parent_isl_type.to_owned());
         for constraint in constraints {
             match constraint.constraint() {
@@ -1085,16 +1095,13 @@ mod isl_to_model_tests {
         );
         let data_model_node = java_code_generator.convert_isl_type_def_to_data_model_node(
             &"my_struct".to_string(),
-            FieldPresence::Required,
             &isl_type,
             &mut CodeGenContext::new(),
             false,
         )?;
         let abstract_data_type = data_model_node.code_gen_type.unwrap();
         assert_eq!(
-            abstract_data_type
-                .fully_qualified_type_ref::<JavaLanguage>()
-                .unwrap(),
+            abstract_data_type.fully_qualified_type_ref::<JavaLanguage>(),
             FullyQualifiedTypeReference {
                 type_name: vec![
                     "org".to_string(),
@@ -1174,16 +1181,13 @@ mod isl_to_model_tests {
         );
         let data_model_node = java_code_generator.convert_isl_type_def_to_data_model_node(
             &"my_nested_struct".to_string(),
-            FieldPresence::Required,
             &isl_type,
             &mut CodeGenContext::new(),
             false,
         )?;
         let abstract_data_type = data_model_node.code_gen_type.unwrap();
         assert_eq!(
-            abstract_data_type
-                .fully_qualified_type_ref::<JavaLanguage>()
-                .unwrap(),
+            abstract_data_type.fully_qualified_type_ref::<JavaLanguage>(),
             FullyQualifiedTypeReference {
                 type_name: vec![
                     "org".to_string(),
@@ -1242,7 +1246,7 @@ mod isl_to_model_tests {
                     .as_ref()
                     .unwrap()
                     .fully_qualified_type_ref::<JavaLanguage>(),
-                Some(FullyQualifiedTypeReference {
+                FullyQualifiedTypeReference {
                     type_name: vec![
                         "org".to_string(),
                         "example".to_string(),
@@ -1250,7 +1254,7 @@ mod isl_to_model_tests {
                         "NestedType1".to_string()
                     ],
                     parameters: vec![]
-                })
+                }
             );
         }
         Ok(())
