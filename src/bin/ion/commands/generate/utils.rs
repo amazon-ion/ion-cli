@@ -319,10 +319,15 @@ impl Language for RustLanguage {
         // }
         // ```
         if is_nested_type {
-            // Assume we have the current namespace as `foo::Foo`
-            // then the following step will remove `Foo` from the path for nested type.
-            // So that the final namespace path for `NestedType` will become `foo::nested_type::NestedType`
-            namespace.pop(); // Remove the parent struct/enum
+            if let Some(last_value) = namespace.last() {
+                // Assume we have the current namespace as `foo::Foo`
+                // then the following step will remove `Foo` from the path for nested type.
+                // So that the final namespace path for `NestedType` will become `foo::nested_type::NestedType`
+                if !last_value.is_case(Case::Snake) {
+                    // if the last value is not module name then pop the type name from namespace
+                    namespace.pop(); // Remove the parent struct/enum
+                }
+            }
         }
         namespace.push(type_name.to_case(Case::Snake)); // Add this type's module name to the namespace path
         namespace.push(type_name.to_case(Case::UpperCamel)) // Add this type itself to the namespace path
@@ -330,8 +335,18 @@ impl Language for RustLanguage {
 
     fn reset_namespace(namespace: &mut Vec<String>) {
         // Resets the namespace by removing current abstract data type name and module name
-        namespace.pop();
-        namespace.pop();
+        if let Some(last_value) = namespace.last() {
+            // Check if it is a type then pop the type and module
+            if last_value.is_case(Case::Snake) {
+                // if this is a module then only pop once for the module
+                namespace.pop();
+            } else if last_value.is_case(Case::UpperCamel) {
+                namespace.pop();
+                if !namespace.is_empty() {
+                    namespace.pop();
+                }
+            }
+        }
     }
 
     fn target_type_as_optional(
