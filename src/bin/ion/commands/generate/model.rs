@@ -76,7 +76,7 @@ impl DataModelNode {
     pub fn fully_qualified_type_ref<L: Language>(&mut self) -> Option<FullyQualifiedTypeReference> {
         self.code_gen_type
             .as_ref()
-            .and_then(|t| t.fully_qualified_type_ref::<L>())
+            .map(|t| t.fully_qualified_type_ref::<L>())
     }
 }
 
@@ -211,20 +211,18 @@ impl AbstractDataType {
         }
     }
 
-    pub fn fully_qualified_type_ref<L: Language>(&self) -> Option<FullyQualifiedTypeReference> {
+    pub fn fully_qualified_type_ref<L: Language>(&self) -> FullyQualifiedTypeReference {
         match self {
-            AbstractDataType::WrappedScalar(w) => {
-                Some(w.fully_qualified_type_name().to_owned().into())
-            }
-            AbstractDataType::Scalar(s) => Some(s.base_type.to_owned()),
+            AbstractDataType::WrappedScalar(w) => w.fully_qualified_type_name().to_owned().into(),
+            AbstractDataType::Scalar(s) => s.base_type.to_owned(),
             AbstractDataType::Sequence(seq) => {
-                Some(L::target_type_as_sequence(seq.element_type.to_owned()))
+                L::target_type_as_sequence(seq.element_type.to_owned())
             }
             AbstractDataType::WrappedSequence(seq) => {
-                Some(L::target_type_as_sequence(seq.element_type.to_owned()))
+                L::target_type_as_sequence(seq.element_type.to_owned())
             }
-            AbstractDataType::Structure(structure) => Some(structure.name.to_owned().into()),
-            AbstractDataType::Enum(enum_type) => Some(enum_type.name.to_owned().into()),
+            AbstractDataType::Structure(structure) => structure.name.to_owned().into(),
+            AbstractDataType::Enum(enum_type) => enum_type.name.to_owned().into(),
         }
     }
 }
