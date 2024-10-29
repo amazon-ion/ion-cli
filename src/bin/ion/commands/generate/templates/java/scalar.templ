@@ -1,3 +1,5 @@
+{% import "nested_type.templ"  as macros %}
+
 {% macro scalar(model) %}
 {% set full_namespace = namespace | join(sep=".") %}
 
@@ -72,6 +74,11 @@ class {{ model.name }} {
             writer.write{{ base_type | replace(from="double", to="float") | replace(from="boolean", to="bool") | upper_camel }}(this.value);
         {% endif %}
     }
+
+    {% for inline_type in model.nested_types -%}
+        {% set is_nested = true %}
+        {{ macros::nested_type(model=inline_type, is_nested=is_nested) }}
+    {% endfor -%}
 }
 {% endmacro %}
 {{ self::scalar(model=model) }}

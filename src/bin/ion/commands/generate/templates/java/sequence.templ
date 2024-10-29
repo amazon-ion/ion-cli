@@ -1,3 +1,5 @@
+{% import "nested_type.templ"  as macros %}
+
 {% macro sequence(model) %}
 
 {% if is_nested == false %}
@@ -78,6 +80,11 @@ class {{ model.name }} {
         }
         writer.stepOut();
     }
+
+    {% for inline_type in model.nested_types -%}
+        {% set is_nested = true %}
+        {{ macros::nested_type(model=inline_type, is_nested=is_nested) }}
+    {% endfor -%}
 }
 {% endmacro %}
 {{ self::sequence(model=model) }}
