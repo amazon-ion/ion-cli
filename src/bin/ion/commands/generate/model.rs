@@ -79,6 +79,12 @@ impl DataModelNode {
             .as_ref()
             .map(|t| t.fully_qualified_type_ref::<L>())
     }
+
+    pub fn fully_qualified_type_name(&self) -> Option<FullyQualifiedTypeName> {
+        self.code_gen_type
+            .as_ref()
+            .and_then(|t| t.fully_qualified_type_name())
+    }
 }
 
 /// Represents a fully qualified type name for a type definition
@@ -261,6 +267,18 @@ impl AbstractDataType {
             }
             AbstractDataType::Structure(structure) => structure.name.to_owned().into(),
             AbstractDataType::Enum(enum_type) => enum_type.name.to_owned().into(),
+        }
+    }
+
+    pub fn fully_qualified_type_name(&self) -> Option<FullyQualifiedTypeName> {
+        // nested types would return None
+        match self {
+            AbstractDataType::WrappedScalar(w) => Some(w.fully_qualified_type_name().to_owned()),
+            AbstractDataType::Scalar(_) => None,
+            AbstractDataType::Sequence(_) => None,
+            AbstractDataType::WrappedSequence(seq) => Some(seq.name.to_owned()),
+            AbstractDataType::Structure(structure) => Some(structure.name.to_owned()),
+            AbstractDataType::Enum(enum_type) => Some(enum_type.name.to_owned()),
         }
     }
 }

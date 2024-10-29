@@ -360,14 +360,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             .nested_types
             .push(data_model_node.to_owned());
 
-        // pop out the nested type name from the fully qualified namespace as it has been already added to the type store and to nested types
-        // For sequence type, it would already have popped out the nested type name.
-        if !data_model_node.is_sequence() {
-            // Since the fully qualified name of this generator represents the current fully qualified name,
-            // remove it before generating code for the next ISL type.
-            L::reset_namespace(&mut self.current_type_fully_qualified_name);
-        }
-
         // since nested sequence does not create a separate class, all its nested types should also be added to parent code gen context
         if data_model_node.is_sequence() {
             parent_code_gen_context
@@ -417,17 +409,15 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         );
         context.insert("model", &data_model_node);
 
-        self.render_generated_code(isl_type_name, &mut context, &data_model_node)?;
-
-        // pop out the nested type name from the fully qualified namespace as it has been already added to the type store and to nested types
-        // For sequence type, it would already have popped out the nested type name.
-        if !data_model_node.is_sequence() {
-            // Since the fully qualified name of this generator represents the current fully qualified name,
-            // remove it before generating code for the next ISL type.
-            L::reset_namespace(&mut self.current_type_fully_qualified_name);
-        }
-
-        Ok(())
+        self.render_generated_code(
+            isl_type_name,
+            &mut context,
+            &data_model_node,
+            &data_model_node
+                .fully_qualified_type_name()
+                .unwrap()
+                .as_slice(),
+        )
     }
 
     /// _Note: `field_presence` is only used for variably occurring type references and currently that is only supported with `fields` constraint.
@@ -504,6 +494,14 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         self.data_model_store
             .insert(type_name, data_model_node.to_owned());
 
+        // pop out the nested type name from the fully qualified namespace as it has been already added to the type store and to nested types
+        // For sequence type, it would already have popped out the nested type name.
+        if !data_model_node.is_sequence() {
+            // Since the fully qualified name of this generator represents the current fully qualified name,
+            // remove it before generating code for the next ISL type.
+            L::reset_namespace(&mut self.current_type_fully_qualified_name);
+        }
+
         Ok(data_model_node)
     }
 
@@ -533,12 +531,19 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         type_name: &str,
         context: &mut Context,
         data_model_node: &DataModelNode,
+        fully_qualified_name: &[NamespaceNode],
     ) -> CodeGenResult<()> {
         // Add namespace to tera context
         let mut import_context = Context::new();
-        let namespace_ref = self.current_type_fully_qualified_name.as_slice();
-        context.insert("namespace", &namespace_ref[0..namespace_ref.len() - 1]);
-        import_context.insert("namespace", &namespace_ref[0..namespace_ref.len() - 1]);
+
+        context.insert(
+            "namespace",
+            &fully_qualified_name[0..fully_qualified_name.len() - 1],
+        );
+        import_context.insert(
+            "namespace",
+            &fully_qualified_name[0..fully_qualified_name.len() - 1],
+        );
 
         // Render or generate file for the template with the given context
         let template: &Template = &data_model_node.try_into()?;
