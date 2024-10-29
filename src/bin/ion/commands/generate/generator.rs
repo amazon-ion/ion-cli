@@ -413,7 +413,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             isl_type_name,
             &mut context,
             &data_model_node,
-            &data_model_node
+            data_model_node
                 .fully_qualified_type_name()
                 .unwrap()
                 .as_slice(),
