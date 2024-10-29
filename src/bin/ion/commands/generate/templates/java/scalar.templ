@@ -76,8 +76,7 @@ class {{ model.name }} {
     }
 
     {% for inline_type in model.nested_types -%}
-        {% set is_nested = true %}
-        {{ macros::nested_type(model=inline_type, is_nested=is_nested) }}
+        {{ macros::nested_type(model=inline_type, is_nested=true) }}
     {% endfor -%}
 }
 {% endmacro %}
