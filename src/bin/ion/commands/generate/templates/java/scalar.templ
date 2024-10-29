@@ -1,7 +1,7 @@
 {% import "nested_type.templ"  as macros %}
 
 {% macro scalar(model) %}
-{% set full_namespace = namespace | join(sep=".") %}
+{% set full_namespace = namespace | map(attribute="Package") | join(sep=".") %}
 
 package {{ full_namespace }};
 import com.amazon.ion.IonReader;

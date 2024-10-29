@@ -34,6 +34,7 @@ thiserror = "1.0.50"
 zstd = "0.13.0"
 termcolor = "1.4.1"
 derive_builder = "0.20.0"
+itertools = "0.13.0"
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 pager = "0.16.1"

@@ -3,7 +3,7 @@
 {% macro sequence(model) %}
 
 {% if is_nested == false %}
-{% set full_namespace = namespace | join(sep=".") %}
+{% set full_namespace = namespace | map(attribute="Package") | join(sep=".") %}
 
 package {{ full_namespace }};
 import com.amazon.ion.IonReader;

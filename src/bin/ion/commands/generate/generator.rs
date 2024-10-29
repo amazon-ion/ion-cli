@@ -1,7 +1,7 @@
 use crate::commands::generate::context::{CodeGenContext, SequenceType};
 use crate::commands::generate::model::{
     AbstractDataType, DataModelNode, EnumBuilder, FieldPresence, FieldReference,
-    FullyQualifiedTypeReference, ScalarBuilder, SequenceBuilder, StructureBuilder,
+    FullyQualifiedTypeReference, NamespaceNode, ScalarBuilder, SequenceBuilder, StructureBuilder,
     WrappedScalarBuilder, WrappedSequenceBuilder,
 };
 use crate::commands::generate::result::{
@@ -32,7 +32,7 @@ pub(crate) struct CodeGenerator<'a, L: Language> {
     pub(crate) tera: Tera,
     output: &'a Path,
     // This field is used by Java code generation to get the namespace for generated code.
-    current_type_fully_qualified_name: Vec<String>,
+    current_type_fully_qualified_name: Vec<NamespaceNode>,
     // Represents a counter for naming nested type definitions
     pub(crate) nested_type_counter: usize,
     pub(crate) data_model_store: HashMap<FullyQualifiedTypeReference, DataModelNode>,
@@ -85,7 +85,7 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
 }
 
 impl<'a> CodeGenerator<'a, JavaLanguage> {
-    pub fn new(output: &'a Path, namespace: Vec<String>) -> CodeGenerator<'a, JavaLanguage> {
+    pub fn new(output: &'a Path, namespace: Vec<NamespaceNode>) -> CodeGenerator<'a, JavaLanguage> {
         let mut tera = Tera::default();
         // Add all templates using `java_templates` module constants
         // This allows packaging binary without the need of template resources.
@@ -586,7 +586,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 L::target_type(&schema_type)
                     .as_ref()
                     .map(|type_name| FullyQualifiedTypeReference {
-                        type_name: vec![type_name.to_string()],
+                        type_name: vec![NamespaceNode::Type(type_name.to_string())],
                         parameters: vec![],
                     })
                     .map(|t| {
@@ -1091,7 +1091,10 @@ mod isl_to_model_tests {
         // Initialize code generator for Java
         let mut java_code_generator = CodeGenerator::<JavaLanguage>::new(
             Path::new("./"),
-            vec!["org".to_string(), "example".to_string()],
+            vec![
+                NamespaceNode::Package("org".to_string()),
+                NamespaceNode::Package("example".to_string()),
+            ],
         );
         let data_model_node = java_code_generator.convert_isl_type_def_to_data_model_node(
             &"my_struct".to_string(),
@@ -1104,9 +1107,9 @@ mod isl_to_model_tests {
             abstract_data_type.fully_qualified_type_ref::<JavaLanguage>(),
             FullyQualifiedTypeReference {
                 type_name: vec![
-                    "org".to_string(),
-                    "example".to_string(),
-                    "MyStruct".to_string()
+                    NamespaceNode::Package("org".to_string()),
+                    NamespaceNode::Package("example".to_string()),
+                    NamespaceNode::Type("MyStruct".to_string())
                 ],
                 parameters: vec![]
             }
@@ -1116,9 +1119,9 @@ mod isl_to_model_tests {
             assert_eq!(
                 structure.name,
                 vec![
-                    "org".to_string(),
-                    "example".to_string(),
-                    "MyStruct".to_string()
+                    NamespaceNode::Package("org".to_string()),
+                    NamespaceNode::Package("example".to_string()),
+                    NamespaceNode::Type("MyStruct".to_string())
                 ]
             );
             assert!(!structure.is_closed);
@@ -1130,7 +1133,7 @@ mod isl_to_model_tests {
                         "foo".to_string(),
                         FieldReference(
                             FullyQualifiedTypeReference {
-                                type_name: vec!["String".to_string()],
+                                type_name: vec![NamespaceNode::Type("String".to_string())],
                                 parameters: vec![]
                             },
                             FieldPresence::Optional
@@ -1140,7 +1143,7 @@ mod isl_to_model_tests {
                         "bar".to_string(),
                         FieldReference(
                             FullyQualifiedTypeReference {
-                                type_name: vec!["Integer".to_string()],
+                                type_name: vec![NamespaceNode::Type("Integer".to_string())],
                                 parameters: vec![]
                             },
                             FieldPresence::Optional
@@ -1177,7 +1180,10 @@ mod isl_to_model_tests {
         // Initialize code generator for Java
         let mut java_code_generator = CodeGenerator::<JavaLanguage>::new(
             Path::new("./"),
-            vec!["org".to_string(), "example".to_string()],
+            vec![
+                NamespaceNode::Package("org".to_string()),
+                NamespaceNode::Package("example".to_string()),
+            ],
         );
         let data_model_node = java_code_generator.convert_isl_type_def_to_data_model_node(
             &"my_nested_struct".to_string(),
@@ -1190,9 +1196,9 @@ mod isl_to_model_tests {
             abstract_data_type.fully_qualified_type_ref::<JavaLanguage>(),
             FullyQualifiedTypeReference {
                 type_name: vec![
-                    "org".to_string(),
-                    "example".to_string(),
-                    "MyNestedStruct".to_string()
+                    NamespaceNode::Package("org".to_string()),
+                    NamespaceNode::Package("example".to_string()),
+                    NamespaceNode::Type("MyNestedStruct".to_string())
                 ],
                 parameters: vec![]
             }
@@ -1202,9 +1208,9 @@ mod isl_to_model_tests {
             assert_eq!(
                 structure.name,
                 vec![
-                    "org".to_string(),
-                    "example".to_string(),
-                    "MyNestedStruct".to_string()
+                    NamespaceNode::Package("org".to_string()),
+                    NamespaceNode::Package("example".to_string()),
+                    NamespaceNode::Type("MyNestedStruct".to_string())
                 ]
             );
             assert!(!structure.is_closed);
@@ -1217,10 +1223,10 @@ mod isl_to_model_tests {
                         FieldReference(
                             FullyQualifiedTypeReference {
                                 type_name: vec![
-                                    "org".to_string(),
-                                    "example".to_string(),
-                                    "MyNestedStruct".to_string(),
-                                    "NestedType1".to_string()
+                                    NamespaceNode::Package("org".to_string()),
+                                    NamespaceNode::Package("example".to_string()),
+                                    NamespaceNode::Type("MyNestedStruct".to_string()),
+                                    NamespaceNode::Type("NestedType1".to_string())
                                 ],
                                 parameters: vec![]
                             },
@@ -1231,7 +1237,7 @@ mod isl_to_model_tests {
                         "bar".to_string(),
                         FieldReference(
                             FullyQualifiedTypeReference {
-                                type_name: vec!["Integer".to_string()],
+                                type_name: vec![NamespaceNode::Type("Integer".to_string())],
                                 parameters: vec![]
                             },
                             FieldPresence::Optional
@@ -1248,10 +1254,10 @@ mod isl_to_model_tests {
                     .fully_qualified_type_ref::<JavaLanguage>(),
                 FullyQualifiedTypeReference {
                     type_name: vec![
-                        "org".to_string(),
-                        "example".to_string(),
-                        "MyNestedStruct".to_string(),
-                        "NestedType1".to_string()
+                        NamespaceNode::Package("org".to_string()),
+                        NamespaceNode::Package("example".to_string()),
+                        NamespaceNode::Type("MyNestedStruct".to_string()),
+                        NamespaceNode::Type("NestedType1".to_string())
                     ],
                     parameters: vec![]
                 }
