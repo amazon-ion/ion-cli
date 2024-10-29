@@ -1,1 +1,1 @@
-[failed] // expected values are either pass or fail, found failed.
+[foobar] // expected values are either foo , bar or baz, found foobar.
