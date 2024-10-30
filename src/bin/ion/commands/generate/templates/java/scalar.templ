@@ -74,10 +74,6 @@ class {{ model.name }} {
             writer.write{{ base_type | replace(from="double", to="float") | replace(from="boolean", to="bool") | upper_camel }}(this.value);
         {% endif %}
     }
-
-    {% for inline_type in model.nested_types -%}
-        {{ macros::nested_type(model=inline_type, is_nested=true) }}
-    {% endfor -%}
 }
 {% endmacro %}
 {{ self::scalar(model=model) }}

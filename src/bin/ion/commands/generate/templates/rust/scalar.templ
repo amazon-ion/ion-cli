@@ -45,8 +45,4 @@ pub mod  {{ model.name | snake }} {
             Ok(())
         }
     }
-
-    {% for inline_type in model.nested_types -%}
-            {{ macros::nested_type(model=inline_type, is_nested=true) }}
-    {% endfor -%}
 }

@@ -849,6 +849,12 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         for constraint in constraints {
             match constraint.constraint() {
                 IslConstraintValue::Type(isl_type) => {
+                    // Nested/Anonymous types are not allowed within wrapped scalar models
+                    if matches!(isl_type, IslTypeRef::Anonymous(_, _)) {
+                        return invalid_abstract_data_type_error(
+                            "Nested types are not supported within wrapped scalar types(i.e. within top level ISL type definition's `type` constraint)",
+                        );
+                    }
                     let type_name = self.handle_duplicate_constraint(
                         found_base_type,
                         "type",
