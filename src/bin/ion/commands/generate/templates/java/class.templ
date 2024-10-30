@@ -5,7 +5,7 @@
 {% macro class(model, is_nested) %}
 
 {% if is_nested == false %}
-{% set full_namespace = namespace | join(sep=".") %}
+{% set full_namespace = namespace | map(attribute="Package") | join(sep=".") %}
 
 package {{ full_namespace }};
 import com.amazon.ion.IonReader;
@@ -147,8 +147,7 @@ import java.io.IOException;
     }
 
     {% for inline_type in model.nested_types -%}
-        {% set is_nested = true %}
-        {{ macros::nested_type(model=inline_type, is_nested=is_nested) }}
+        {{ macros::nested_type(model=inline_type, is_nested=true) }}
     {% endfor -%}
 }
 {% endmacro model %}

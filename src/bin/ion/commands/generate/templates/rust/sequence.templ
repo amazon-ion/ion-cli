@@ -1,4 +1,7 @@
+{% import "nested_type.templ"  as macros %}
+
 {% set sequence_info = model.code_gen_type["WrappedSequence"] %}
+
 
 use {{ model.name | snake }}::{{ model.name }};
 
@@ -39,7 +42,7 @@ pub mod  {{ model.name | snake }} {
 
                  while reader.next()? != StreamItem::Nothing {
                     {% if sequence_info["element_type"] | fully_qualified_type_name | is_built_in_type == false %}
-                        values.push({{ sequence_info["element_type"] }}::read_from(reader)?);
+                        values.push({{ sequence_info["element_type"] | fully_qualified_type_name }}::read_from(reader)?);
                     {% else %}
                         values.push(reader.read_{% if field.source is defined and field.source == "symbol" %}symbol()?.text().unwrap(){% else %}{{ sequence_info["element_type"] | fully_qualified_type_name | lower | replace(from="string", to ="str") }}()?{% endif %}{% if sequence_info["element_type"] | fully_qualified_type_name | lower== "string" %} .to_string() {% endif %});
                     {% endif %}
@@ -63,4 +66,9 @@ pub mod  {{ model.name | snake }} {
             Ok(())
         }
     }
+
+
+    {% for inline_type in model.nested_types -%}
+            {{ macros::nested_type(model=inline_type, is_nested=true) }}
+    {% endfor -%}
 }

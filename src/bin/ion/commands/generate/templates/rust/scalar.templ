@@ -1,3 +1,5 @@
+{% import "nested_type.templ"  as macros %}
+
 {# Verify that the abstract data type is a scalar type and store information for this scalar value #}
 {% set scalar_info = model.code_gen_type["WrappedScalar"] %}
 {% set base_type = scalar_info["base_type"] | fully_qualified_type_name %}

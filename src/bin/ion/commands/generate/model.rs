@@ -1,5 +1,6 @@
 use derive_builder::Builder;
 use ion_schema::isl::isl_type::IslType;
+use itertools::Itertools;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Debug;
 // This module contains a data model that the code generator can use to render a template based on the type of the model.
@@ -76,7 +77,13 @@ impl DataModelNode {
     pub fn fully_qualified_type_ref<L: Language>(&mut self) -> Option<FullyQualifiedTypeReference> {
         self.code_gen_type
             .as_ref()
-            .and_then(|t| t.fully_qualified_type_ref::<L>())
+            .map(|t| t.fully_qualified_type_ref::<L>())
+    }
+
+    pub fn fully_qualified_type_name(&self) -> Option<FullyQualifiedTypeName> {
+        self.code_gen_type
+            .as_ref()
+            .and_then(|t| t.fully_qualified_type_name())
     }
 }
 
@@ -84,7 +91,23 @@ impl DataModelNode {
 /// e.g. For a `Foo` class in `org.example` namespace
 ///     In Java, `org.example.Foo`
 ///     In Rust, `org::example::Foo`
-type FullyQualifiedTypeName = Vec<String>;
+type FullyQualifiedTypeName = Vec<NamespaceNode>;
+
+/// Represents a node in the fully qualified namespace path
+#[derive(Debug, Clone, PartialEq, Serialize, Hash, Eq)]
+pub enum NamespaceNode {
+    Package(String), // represents a package or module name
+    Type(String),    // represents a class, struct or enum type name
+}
+
+impl NamespaceNode {
+    pub fn name(&self) -> &String {
+        match self {
+            NamespaceNode::Package(name) => name,
+            NamespaceNode::Type(name) => name,
+        }
+    }
+}
 
 /// Represents a fully qualified type name for a type reference
 #[derive(Debug, Clone, PartialEq, Serialize, Hash, Eq)]
@@ -122,7 +145,21 @@ impl TryFrom<&Value> for FullyQualifiedTypeReference {
                     .as_array()
                     .unwrap()
                     .iter()
-                    .map(|s| s.as_str().unwrap().to_string())
+                    .map(|s| {
+                        let namespace_node = s.as_object().unwrap();
+                        if let Some(package_name) = namespace_node.get("Package") {
+                            NamespaceNode::Package(package_name.as_str().unwrap().to_string())
+                        } else {
+                            NamespaceNode::Type(
+                                namespace_node
+                                    .get("Type")
+                                    .unwrap()
+                                    .as_str()
+                                    .unwrap()
+                                    .to_string(),
+                            )
+                        }
+                    })
                     .collect();
             } else {
                 let parameters_result: Result<Vec<FullyQualifiedTypeReference>, tera::Error> =
@@ -151,7 +188,11 @@ impl FullyQualifiedTypeReference {
     /// Provides string representation of this `FullyQualifiedTypeReference`
     pub fn string_representation<L: Language>(&self) -> String {
         if self.parameters.is_empty() {
-            return self.type_name.join(L::namespace_separator()).to_string();
+            return self
+                .type_name
+                .iter()
+                .map(|n| n.name())
+                .join(L::namespace_separator());
         }
         let parameters = self
             .parameters
@@ -161,7 +202,10 @@ impl FullyQualifiedTypeReference {
             .join(", ");
         format!(
             "{}<{}>",
-            self.type_name.join(L::namespace_separator()),
+            self.type_name
+                .iter()
+                .map(|n| n.name())
+                .join(L::namespace_separator()),
             parameters
         )
     }
@@ -211,20 +255,30 @@ impl AbstractDataType {
         }
     }
 
-    pub fn fully_qualified_type_ref<L: Language>(&self) -> Option<FullyQualifiedTypeReference> {
+    pub fn fully_qualified_type_ref<L: Language>(&self) -> FullyQualifiedTypeReference {
         match self {
-            AbstractDataType::WrappedScalar(w) => {
-                Some(w.fully_qualified_type_name().to_owned().into())
-            }
-            AbstractDataType::Scalar(s) => Some(s.base_type.to_owned()),
+            AbstractDataType::WrappedScalar(w) => w.fully_qualified_type_name().to_owned().into(),
+            AbstractDataType::Scalar(s) => s.base_type.to_owned(),
             AbstractDataType::Sequence(seq) => {
-                Some(L::target_type_as_sequence(seq.element_type.to_owned()))
+                L::target_type_as_sequence(seq.element_type.to_owned())
             }
             AbstractDataType::WrappedSequence(seq) => {
-                Some(L::target_type_as_sequence(seq.element_type.to_owned()))
+                L::target_type_as_sequence(seq.element_type.to_owned())
             }
-            AbstractDataType::Structure(structure) => Some(structure.name.to_owned().into()),
-            AbstractDataType::Enum(enum_type) => Some(enum_type.name.to_owned().into()),
+            AbstractDataType::Structure(structure) => structure.name.to_owned().into(),
+            AbstractDataType::Enum(enum_type) => enum_type.name.to_owned().into(),
+        }
+    }
+
+    pub fn fully_qualified_type_name(&self) -> Option<FullyQualifiedTypeName> {
+        // nested types would return None
+        match self {
+            AbstractDataType::WrappedScalar(w) => Some(w.fully_qualified_type_name().to_owned()),
+            AbstractDataType::Scalar(_) => None,
+            AbstractDataType::Sequence(_) => None,
+            AbstractDataType::WrappedSequence(seq) => Some(seq.name.to_owned()),
+            AbstractDataType::Structure(structure) => Some(structure.name.to_owned()),
+            AbstractDataType::Enum(enum_type) => Some(enum_type.name.to_owned()),
         }
     }
 }
@@ -501,7 +555,7 @@ mod model_tests {
     fn scalar_builder_test() {
         let expected_scalar = Scalar {
             base_type: FullyQualifiedTypeReference {
-                type_name: vec!["String".to_string()],
+                type_name: vec![NamespaceNode::Type("String".to_string())],
                 parameters: vec![],
             },
             doc_comment: Some("This is scalar type".to_string()),
@@ -512,7 +566,7 @@ mod model_tests {
 
         // sets all the information about the scalar type
         scalar_builder
-            .base_type(vec!["String".to_string()])
+            .base_type(vec![NamespaceNode::Type("String".to_string())])
             .doc_comment(Some("This is scalar type".to_string()))
             .source(anonymous_type(vec![type_constraint(named_type_ref(
                 "string",
@@ -525,9 +579,9 @@ mod model_tests {
     #[test]
     fn wrapped_scalar_builder_test() {
         let expected_scalar = WrappedScalar {
-            name: vec!["Foo".to_string()],
+            name: vec![NamespaceNode::Type("Foo".to_string())],
             base_type: FullyQualifiedTypeReference {
-                type_name: vec!["String".to_string()],
+                type_name: vec![NamespaceNode::Type("String".to_string())],
                 parameters: vec![],
             },
             doc_comment: Some("This is scalar type".to_string()),
@@ -538,9 +592,9 @@ mod model_tests {
 
         // sets all the information about the scalar type
         scalar_builder
-            .name(vec!["Foo".to_string()])
+            .name(vec![NamespaceNode::Type("Foo".to_string())])
             .base_type(FullyQualifiedTypeReference {
-                type_name: vec!["String".to_string()],
+                type_name: vec![NamespaceNode::Type("String".to_string())],
                 parameters: vec![],
             })
             .doc_comment(Some("This is scalar type".to_string()))
@@ -557,7 +611,7 @@ mod model_tests {
         let expected_seq = Sequence {
             doc_comment: Some("This is sequence type of strings".to_string()),
             element_type: FullyQualifiedTypeReference {
-                type_name: vec!["String".to_string()],
+                type_name: vec![NamespaceNode::Type("String".to_string())],
                 parameters: vec![],
             },
             sequence_type: SequenceType::List,
@@ -583,7 +637,7 @@ mod model_tests {
 
         // sets the `element_type` for the sequence
         seq_builder.element_type(FullyQualifiedTypeReference {
-            type_name: vec!["String".to_string()],
+            type_name: vec![NamespaceNode::Type("String".to_string())],
             parameters: vec![],
         });
 
@@ -594,7 +648,11 @@ mod model_tests {
     #[test]
     fn struct_builder_test() {
         let expected_struct = Structure {
-            name: vec!["org".to_string(), "example".to_string(), "Foo".to_string()],
+            name: vec![
+                NamespaceNode::Package("org".to_string()),
+                NamespaceNode::Package("example".to_string()),
+                NamespaceNode::Type("Foo".to_string()),
+            ],
             doc_comment: Some("This is a structure".to_string()),
             is_closed: false,
             fields: HashMap::from_iter(vec![
@@ -602,7 +660,7 @@ mod model_tests {
                     "foo".to_string(),
                     FieldReference(
                         FullyQualifiedTypeReference {
-                            type_name: vec!["String".to_string()],
+                            type_name: vec![NamespaceNode::Type("String".to_string())],
                             parameters: vec![],
                         },
                         FieldPresence::Required,
@@ -612,7 +670,7 @@ mod model_tests {
                     "bar".to_string(),
                     FieldReference(
                         FullyQualifiedTypeReference {
-                            type_name: vec!["int".to_string()],
+                            type_name: vec![NamespaceNode::Type("int".to_string())],
                             parameters: vec![],
                         },
                         FieldPresence::Required,
@@ -648,9 +706,9 @@ mod model_tests {
         // sets all the information about the structure
         struct_builder
             .name(vec![
-                "org".to_string(),
-                "example".to_string(),
-                "Foo".to_string(),
+                NamespaceNode::Package("org".to_string()),
+                NamespaceNode::Package("example".to_string()),
+                NamespaceNode::Type("Foo".to_string()),
             ])
             .doc_comment(Some("This is a structure".to_string()))
             .is_closed(false)
@@ -659,7 +717,7 @@ mod model_tests {
                     "foo".to_string(),
                     FieldReference(
                         FullyQualifiedTypeReference {
-                            type_name: vec!["String".to_string()],
+                            type_name: vec![NamespaceNode::Type("String".to_string())],
                             parameters: vec![],
                         },
                         FieldPresence::Required,
@@ -669,7 +727,7 @@ mod model_tests {
                     "bar".to_string(),
                     FieldReference(
                         FullyQualifiedTypeReference {
-                            type_name: vec!["int".to_string()],
+                            type_name: vec![NamespaceNode::Type("int".to_string())],
                             parameters: vec![],
                         },
                         FieldPresence::Required,

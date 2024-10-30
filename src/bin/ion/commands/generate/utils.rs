@@ -1,8 +1,9 @@
 use crate::commands::generate::model::{
-    AbstractDataType, DataModelNode, FullyQualifiedTypeReference,
+    AbstractDataType, DataModelNode, FullyQualifiedTypeReference, NamespaceNode,
 };
 use crate::commands::generate::result::{invalid_abstract_data_type_error, CodeGenError};
 use convert_case::{Case, Casing};
+use itertools::Itertools;
 use std::fmt::{Display, Formatter};
 
 pub trait Language {
@@ -69,10 +70,14 @@ pub trait Language {
     ///         ```
     ///     To add `NestedType` into the namespace path, `is_nested_type` helps remove any prior types form the path and add this current type.
     ///     i.e. given namespace path as `foo::Foo`, it will first remove `Foo` and then add the current type as `foo::nested_type::NestedType`.
-    fn add_type_to_namespace(is_nested_type: bool, type_name: &str, namespace: &mut Vec<String>);
+    fn add_type_to_namespace(
+        is_nested_type: bool,
+        type_name: &str,
+        namespace: &mut Vec<NamespaceNode>,
+    );
 
     /// Resets the namespace when code generation is complete for a single ISL type
-    fn reset_namespace(namespace: &mut Vec<String>);
+    fn reset_namespace(namespace: &mut Vec<NamespaceNode>);
 
     /// Returns the `FullyQualifiedReference` that represents the target type as optional in the given programming language
     /// e.g. In Java, it will return "java.util.Optional<T>"
@@ -121,20 +126,20 @@ impl Language for JavaLanguage {
         ) {
             Some(wrapper_name) => FullyQualifiedTypeReference {
                 type_name: vec![
-                    "java".to_string(),
-                    "util".to_string(),
-                    "ArrayList".to_string(),
+                    NamespaceNode::Package("java".to_string()),
+                    NamespaceNode::Package("util".to_string()),
+                    NamespaceNode::Type("ArrayList".to_string()),
                 ],
                 parameters: vec![FullyQualifiedTypeReference {
-                    type_name: vec![wrapper_name],
+                    type_name: vec![NamespaceNode::Type(wrapper_name)],
                     parameters: vec![],
                 }],
             },
             None => FullyQualifiedTypeReference {
                 type_name: vec![
-                    "java".to_string(),
-                    "util".to_string(),
-                    "ArrayList".to_string(),
+                    NamespaceNode::Package("java".to_string()),
+                    NamespaceNode::Package("util".to_string()),
+                    NamespaceNode::Type("ArrayList".to_string()),
                 ],
                 parameters: vec![target_type],
             },
@@ -149,7 +154,7 @@ impl Language for JavaLanguage {
     }
 
     fn fully_qualified_type_ref(name: &FullyQualifiedTypeReference) -> String {
-        name.type_name.join(".")
+        name.type_name.iter().map(|n| n.name()).join(".")
     }
 
     fn template_name(template: &Template) -> String {
@@ -165,11 +170,15 @@ impl Language for JavaLanguage {
         "."
     }
 
-    fn add_type_to_namespace(_is_nested_type: bool, type_name: &str, namespace: &mut Vec<String>) {
-        namespace.push(type_name.to_case(Case::UpperCamel))
+    fn add_type_to_namespace(
+        _is_nested_type: bool,
+        type_name: &str,
+        namespace: &mut Vec<NamespaceNode>,
+    ) {
+        namespace.push(NamespaceNode::Type(type_name.to_case(Case::UpperCamel)))
     }
 
-    fn reset_namespace(namespace: &mut Vec<String>) {
+    fn reset_namespace(namespace: &mut Vec<NamespaceNode>) {
         // resets the namespace by removing current abstract dta type name
         namespace.pop();
     }
@@ -181,7 +190,7 @@ impl Language for JavaLanguage {
             &target_type.string_representation::<JavaLanguage>(),
         ) {
             Some(wrapper_name) => FullyQualifiedTypeReference {
-                type_name: vec![wrapper_name],
+                type_name: vec![NamespaceNode::Type(wrapper_name)],
                 parameters: vec![],
             },
             None => target_type,
@@ -271,7 +280,7 @@ impl Language for RustLanguage {
         target_type: FullyQualifiedTypeReference,
     ) -> FullyQualifiedTypeReference {
         FullyQualifiedTypeReference {
-            type_name: vec!["Vec".to_string()],
+            type_name: vec![NamespaceNode::Type("Vec".to_string())],
             parameters: vec![target_type],
         }
     }
@@ -284,7 +293,7 @@ impl Language for RustLanguage {
     }
 
     fn fully_qualified_type_ref(name: &FullyQualifiedTypeReference) -> String {
-        name.type_name.join("::")
+        name.type_name.iter().map(|n| n.name()).join("::")
     }
 
     fn template_name(template: &Template) -> String {
@@ -304,7 +313,11 @@ impl Language for RustLanguage {
         "::"
     }
 
-    fn add_type_to_namespace(is_nested_type: bool, type_name: &str, namespace: &mut Vec<String>) {
+    fn add_type_to_namespace(
+        is_nested_type: bool,
+        type_name: &str,
+        namespace: &mut Vec<NamespaceNode>,
+    ) {
         // e.g. For example there is a `NestedType` inside `Foo` struct. Rust code generation also generates similar modules for the generated structs.
         // ```rust
         // mod foo {
@@ -319,19 +332,35 @@ impl Language for RustLanguage {
         // }
         // ```
         if is_nested_type {
-            // Assume we have the current namespace as `foo::Foo`
-            // then the following step will remove `Foo` from the path for nested type.
-            // So that the final namespace path for `NestedType` will become `foo::nested_type::NestedType`
-            namespace.pop(); // Remove the parent struct/enum
+            if let Some(last_value) = namespace.last() {
+                // Assume we have the current namespace as `foo::Foo`
+                // then the following step will remove `Foo` from the path for nested type.
+                // So that the final namespace path for `NestedType` will become `foo::nested_type::NestedType`
+                if !matches!(last_value, NamespaceNode::Package(_)) {
+                    // if the last value is not module name then pop the type name from namespace
+                    namespace.pop(); // Remove the parent struct/enum
+                }
+            }
         }
-        namespace.push(type_name.to_case(Case::Snake)); // Add this type's module name to the namespace path
-        namespace.push(type_name.to_case(Case::UpperCamel)) // Add this type itself to the namespace path
+        namespace.push(NamespaceNode::Package(type_name.to_case(Case::Snake))); // Add this type's module name to the namespace path
+        namespace.push(NamespaceNode::Type(type_name.to_case(Case::UpperCamel)))
+        // Add this type itself to the namespace path
     }
 
-    fn reset_namespace(namespace: &mut Vec<String>) {
+    fn reset_namespace(namespace: &mut Vec<NamespaceNode>) {
         // Resets the namespace by removing current abstract data type name and module name
-        namespace.pop();
-        namespace.pop();
+        if let Some(last_value) = namespace.last() {
+            // Check if it is a type then pop the type and module
+            if matches!(last_value, NamespaceNode::Package(_)) {
+                // if this is a module then only pop once for the module
+                namespace.pop();
+            } else if matches!(last_value, NamespaceNode::Type(_)) {
+                namespace.pop();
+                if !namespace.is_empty() {
+                    namespace.pop();
+                }
+            }
+        }
     }
 
     fn target_type_as_optional(

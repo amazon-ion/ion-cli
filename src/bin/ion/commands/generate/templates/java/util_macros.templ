@@ -12,7 +12,7 @@
         while (reader.hasNext()) {
             reader.next();
             {% if field_value_model.code_gen_type["Sequence"].element_type | fully_qualified_type_name | is_built_in_type  == false %}
-                {{ field_name | camel }}List.add({{ field_value_model.code_gen_type["Sequence"].element_type }}.readFrom(reader));
+                {{ field_name | camel }}List.add({{ field_value_model.code_gen_type["Sequence"].element_type | fully_qualified_type_name }}.readFrom(reader));
             {% elif field_value_model.code_gen_type["Sequence"].element_type == "bytes[]" %}
                 {{ field_name | camel }}List.add(reader.newBytes());
             {% else %}
