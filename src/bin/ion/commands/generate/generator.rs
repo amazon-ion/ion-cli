@@ -1,7 +1,7 @@
 use crate::commands::generate::context::{CodeGenContext, SequenceType};
 use crate::commands::generate::model::{
     AbstractDataType, DataModelNode, EnumBuilder, FieldPresence, FieldReference,
-    FullyQualifiedTypeReference, ScalarBuilder, SequenceBuilder, StructureBuilder,
+    FullyQualifiedTypeReference, NamespaceNode, ScalarBuilder, SequenceBuilder, StructureBuilder,
     WrappedScalarBuilder, WrappedSequenceBuilder,
 };
 use crate::commands::generate::result::{
@@ -32,7 +32,7 @@ pub(crate) struct CodeGenerator<'a, L: Language> {
     pub(crate) tera: Tera,
     output: &'a Path,
     // This field is used by Java code generation to get the namespace for generated code.
-    current_type_fully_qualified_name: Vec<String>,
+    current_type_fully_qualified_name: Vec<NamespaceNode>,
     // Represents a counter for naming nested type definitions
     pub(crate) nested_type_counter: usize,
     pub(crate) data_model_store: HashMap<FullyQualifiedTypeReference, DataModelNode>,
@@ -85,7 +85,7 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
 }
 
 impl<'a> CodeGenerator<'a, JavaLanguage> {
-    pub fn new(output: &'a Path, namespace: Vec<String>) -> CodeGenerator<'a, JavaLanguage> {
+    pub fn new(output: &'a Path, namespace: Vec<NamespaceNode>) -> CodeGenerator<'a, JavaLanguage> {
         let mut tera = Tera::default();
         // Add all templates using `java_templates` module constants
         // This allows packaging binary without the need of template resources.
@@ -331,9 +331,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             // unwrap here is safe because all the top-level type definition always has a name
             let isl_type_name = isl_type.name().unwrap().to_string();
             self.generate_abstract_data_type(&isl_type_name, isl_type)?;
-            // Since the fully qualified name of this generator represents the current fully qualified name,
-            // remove it before generating code for the next ISL type.
-            L::reset_namespace(&mut self.current_type_fully_qualified_name);
         }
 
         Ok(())
@@ -353,7 +350,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         let mut code_gen_context = CodeGenContext::new();
         let mut data_model_node = self.convert_isl_type_def_to_data_model_node(
             type_name,
-            field_presence,
             isl_type,
             &mut code_gen_context,
             true,
@@ -364,8 +360,13 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             .nested_types
             .push(data_model_node.to_owned());
 
-        // pop out the nested type name from the fully qualified namespace as it has been already added to the type store and to nested types
-        self.current_type_fully_qualified_name.pop();
+        // since nested sequence does not create a separate class, all its nested types should also be added to parent code gen context
+        if data_model_node.is_sequence() {
+            parent_code_gen_context
+                .nested_types
+                .extend_from_slice(&data_model_node.nested_types);
+        }
+
         match field_presence {
             FieldPresence::Optional => Ok(L::target_type_as_optional(
                 data_model_node.fully_qualified_type_ref::<L>().ok_or(
@@ -392,7 +393,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
 
         let data_model_node = self.convert_isl_type_def_to_data_model_node(
             isl_type_name,
-            FieldPresence::Required, // Sets `field_presence` as `Required`, as the top level type definition can not be `Optional`.
             isl_type,
             &mut code_gen_context,
             false,
@@ -409,7 +409,15 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         );
         context.insert("model", &data_model_node);
 
-        self.render_generated_code(isl_type_name, &mut context, &data_model_node)
+        self.render_generated_code(
+            isl_type_name,
+            &mut context,
+            &data_model_node,
+            data_model_node
+                .fully_qualified_type_name()
+                .unwrap()
+                .as_slice(),
+        )
     }
 
     /// _Note: `field_presence` is only used for variably occurring type references and currently that is only supported with `fields` constraint.
@@ -417,7 +425,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     fn convert_isl_type_def_to_data_model_node(
         &mut self,
         isl_type_name: &String,
-        field_presence: FieldPresence,
         isl_type: &IslType,
         code_gen_context: &mut CodeGenContext,
         is_nested_type: bool,
@@ -482,21 +489,18 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         // TODO: verify the `occurs` value within a field, by default the fields are optional.
         // add current data model node into the data model store
         // verify if the field presence was provided as optional and set the type reference name as optional.
-        let type_name = match field_presence {
-            FieldPresence::Optional => abstract_data_type.fully_qualified_type_ref::<L>().ok_or(
-                invalid_abstract_data_type_raw_error(
-                    "Can not determine fully qualified name for the data model",
-                ),
-            )?,
-            FieldPresence::Required => abstract_data_type.fully_qualified_type_ref::<L>().ok_or(
-                invalid_abstract_data_type_raw_error(
-                    "Can not determine fully qualified name for the data model",
-                ),
-            )?,
-        };
+        let type_name = abstract_data_type.fully_qualified_type_ref::<L>();
 
         self.data_model_store
             .insert(type_name, data_model_node.to_owned());
+
+        // pop out the nested type name from the fully qualified namespace as it has been already added to the type store and to nested types
+        // For sequence type, it would already have popped out the nested type name.
+        if !data_model_node.is_sequence() {
+            // Since the fully qualified name of this generator represents the current fully qualified name,
+            // remove it before generating code for the next ISL type.
+            L::reset_namespace(&mut self.current_type_fully_qualified_name);
+        }
 
         Ok(data_model_node)
     }
@@ -527,12 +531,19 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         type_name: &str,
         context: &mut Context,
         data_model_node: &DataModelNode,
+        fully_qualified_name: &[NamespaceNode],
     ) -> CodeGenResult<()> {
         // Add namespace to tera context
         let mut import_context = Context::new();
-        let namespace_ref = self.current_type_fully_qualified_name.as_slice();
-        context.insert("namespace", &namespace_ref[0..namespace_ref.len() - 1]);
-        import_context.insert("namespace", &namespace_ref[0..namespace_ref.len() - 1]);
+
+        context.insert(
+            "namespace",
+            &fully_qualified_name[0..fully_qualified_name.len() - 1],
+        );
+        import_context.insert(
+            "namespace",
+            &fully_qualified_name[0..fully_qualified_name.len() - 1],
+        );
 
         // Render or generate file for the template with the given context
         let template: &Template = &data_model_node.try_into()?;
@@ -580,7 +591,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 L::target_type(&schema_type)
                     .as_ref()
                     .map(|type_name| FullyQualifiedTypeReference {
-                        type_name: vec![type_name.to_string()],
+                        type_name: vec![NamespaceNode::Type(type_name.to_string())],
                         parameters: vec![],
                     })
                     .map(|t| {
@@ -838,6 +849,12 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         for constraint in constraints {
             match constraint.constraint() {
                 IslConstraintValue::Type(isl_type) => {
+                    // Nested/Anonymous types are not allowed within wrapped scalar models
+                    if matches!(isl_type, IslTypeRef::Anonymous(_, _)) {
+                        return invalid_abstract_data_type_error(
+                            "Nested types are not supported within wrapped scalar types(i.e. within top level ISL type definition's `type` constraint)",
+                        );
+                    }
                     let type_name = self.handle_duplicate_constraint(
                         found_base_type,
                         "type",
@@ -1016,6 +1033,10 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         parent_isl_type: &IslType,
     ) -> CodeGenResult<AbstractDataType> {
         let mut sequence_builder = SequenceBuilder::default();
+        // For nested sequence type remove the anonymous type name from current fully qualified name
+        // Nested sequence does not create a separate class, so the anonymous type name shouldn't be used for the fully qualified type name.
+        L::reset_namespace(&mut self.current_type_fully_qualified_name);
+
         sequence_builder.source(parent_isl_type.to_owned());
         for constraint in constraints {
             match constraint.constraint() {
@@ -1081,25 +1102,25 @@ mod isl_to_model_tests {
         // Initialize code generator for Java
         let mut java_code_generator = CodeGenerator::<JavaLanguage>::new(
             Path::new("./"),
-            vec!["org".to_string(), "example".to_string()],
+            vec![
+                NamespaceNode::Package("org".to_string()),
+                NamespaceNode::Package("example".to_string()),
+            ],
         );
         let data_model_node = java_code_generator.convert_isl_type_def_to_data_model_node(
             &"my_struct".to_string(),
-            FieldPresence::Required,
             &isl_type,
             &mut CodeGenContext::new(),
             false,
         )?;
         let abstract_data_type = data_model_node.code_gen_type.unwrap();
         assert_eq!(
-            abstract_data_type
-                .fully_qualified_type_ref::<JavaLanguage>()
-                .unwrap(),
+            abstract_data_type.fully_qualified_type_ref::<JavaLanguage>(),
             FullyQualifiedTypeReference {
                 type_name: vec![
-                    "org".to_string(),
-                    "example".to_string(),
-                    "MyStruct".to_string()
+                    NamespaceNode::Package("org".to_string()),
+                    NamespaceNode::Package("example".to_string()),
+                    NamespaceNode::Type("MyStruct".to_string())
                 ],
                 parameters: vec![]
             }
@@ -1109,9 +1130,9 @@ mod isl_to_model_tests {
             assert_eq!(
                 structure.name,
                 vec![
-                    "org".to_string(),
-                    "example".to_string(),
-                    "MyStruct".to_string()
+                    NamespaceNode::Package("org".to_string()),
+                    NamespaceNode::Package("example".to_string()),
+                    NamespaceNode::Type("MyStruct".to_string())
                 ]
             );
             assert!(!structure.is_closed);
@@ -1123,7 +1144,7 @@ mod isl_to_model_tests {
                         "foo".to_string(),
                         FieldReference(
                             FullyQualifiedTypeReference {
-                                type_name: vec!["String".to_string()],
+                                type_name: vec![NamespaceNode::Type("String".to_string())],
                                 parameters: vec![]
                             },
                             FieldPresence::Optional
@@ -1133,7 +1154,7 @@ mod isl_to_model_tests {
                         "bar".to_string(),
                         FieldReference(
                             FullyQualifiedTypeReference {
-                                type_name: vec!["Integer".to_string()],
+                                type_name: vec![NamespaceNode::Type("Integer".to_string())],
                                 parameters: vec![]
                             },
                             FieldPresence::Optional
@@ -1170,25 +1191,25 @@ mod isl_to_model_tests {
         // Initialize code generator for Java
         let mut java_code_generator = CodeGenerator::<JavaLanguage>::new(
             Path::new("./"),
-            vec!["org".to_string(), "example".to_string()],
+            vec![
+                NamespaceNode::Package("org".to_string()),
+                NamespaceNode::Package("example".to_string()),
+            ],
         );
         let data_model_node = java_code_generator.convert_isl_type_def_to_data_model_node(
             &"my_nested_struct".to_string(),
-            FieldPresence::Required,
             &isl_type,
             &mut CodeGenContext::new(),
             false,
         )?;
         let abstract_data_type = data_model_node.code_gen_type.unwrap();
         assert_eq!(
-            abstract_data_type
-                .fully_qualified_type_ref::<JavaLanguage>()
-                .unwrap(),
+            abstract_data_type.fully_qualified_type_ref::<JavaLanguage>(),
             FullyQualifiedTypeReference {
                 type_name: vec![
-                    "org".to_string(),
-                    "example".to_string(),
-                    "MyNestedStruct".to_string()
+                    NamespaceNode::Package("org".to_string()),
+                    NamespaceNode::Package("example".to_string()),
+                    NamespaceNode::Type("MyNestedStruct".to_string())
                 ],
                 parameters: vec![]
             }
@@ -1198,9 +1219,9 @@ mod isl_to_model_tests {
             assert_eq!(
                 structure.name,
                 vec![
-                    "org".to_string(),
-                    "example".to_string(),
-                    "MyNestedStruct".to_string()
+                    NamespaceNode::Package("org".to_string()),
+                    NamespaceNode::Package("example".to_string()),
+                    NamespaceNode::Type("MyNestedStruct".to_string())
                 ]
             );
             assert!(!structure.is_closed);
@@ -1213,10 +1234,10 @@ mod isl_to_model_tests {
                         FieldReference(
                             FullyQualifiedTypeReference {
                                 type_name: vec![
-                                    "org".to_string(),
-                                    "example".to_string(),
-                                    "MyNestedStruct".to_string(),
-                                    "NestedType1".to_string()
+                                    NamespaceNode::Package("org".to_string()),
+                                    NamespaceNode::Package("example".to_string()),
+                                    NamespaceNode::Type("MyNestedStruct".to_string()),
+                                    NamespaceNode::Type("NestedType1".to_string())
                                 ],
                                 parameters: vec![]
                             },
@@ -1227,7 +1248,7 @@ mod isl_to_model_tests {
                         "bar".to_string(),
                         FieldReference(
                             FullyQualifiedTypeReference {
-                                type_name: vec!["Integer".to_string()],
+                                type_name: vec![NamespaceNode::Type("Integer".to_string())],
                                 parameters: vec![]
                             },
                             FieldPresence::Optional
@@ -1242,15 +1263,15 @@ mod isl_to_model_tests {
                     .as_ref()
                     .unwrap()
                     .fully_qualified_type_ref::<JavaLanguage>(),
-                Some(FullyQualifiedTypeReference {
+                FullyQualifiedTypeReference {
                     type_name: vec![
-                        "org".to_string(),
-                        "example".to_string(),
-                        "MyNestedStruct".to_string(),
-                        "NestedType1".to_string()
+                        NamespaceNode::Package("org".to_string()),
+                        NamespaceNode::Package("example".to_string()),
+                        NamespaceNode::Type("MyNestedStruct".to_string()),
+                        NamespaceNode::Type("NestedType1".to_string())
                     ],
                     parameters: vec![]
-                })
+                }
             );
         }
         Ok(())

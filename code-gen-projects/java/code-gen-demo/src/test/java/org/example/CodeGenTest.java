@@ -137,6 +137,12 @@ class CodeGenTest {
         runRoundtripBadTest("/bad/enum_type", EnumType::readFrom);
     }
 
+
+    @Test
+    void roundtripBadTestForSequenceWithEnumElement() throws IOException {
+        runRoundtripBadTest("/bad/sequence_with_enum_element", SequenceWithEnumElement::readFrom);
+    }
+
     private <T> void runRoundtripBadTest(String path, ReaderFunction<T> readerFunction) throws IOException {
         File dir = new File(System.getenv("ION_INPUT") + path);
         String[] fileNames = dir.list();
@@ -180,6 +186,11 @@ class CodeGenTest {
     @Test
     void roundtripGoodTestForEnumType() throws IOException {
         runRoundtripGoodTest("/good/enum_type", EnumType::readFrom, (item, writer) -> item.writeTo(writer));
+    }
+
+    @Test
+    void roundtripGoodTestForSequenceWithEnumElement() throws IOException {
+        runRoundtripGoodTest("/good/sequence_with_enum_element", SequenceWithEnumElement::readFrom, (item, writer) -> item.writeTo(writer));
     }
 
     private <T> void runRoundtripGoodTest(String path, ReaderFunction<T> readerFunction, WriterFunction<T> writerFunction) throws IOException {

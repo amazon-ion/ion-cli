@@ -7,6 +7,7 @@ mod utils;
 mod model;
 
 use crate::commands::generate::generator::CodeGenerator;
+use crate::commands::generate::model::NamespaceNode;
 use crate::commands::generate::utils::{JavaLanguage, RustLanguage};
 use crate::commands::IonCliCommand;
 use anyhow::{bail, Result};
@@ -124,7 +125,7 @@ impl IonCliCommand for GenerateCommand {
                 match language {
                     "java" => {
                         Self::print_java_code_gen_warnings();
-                        CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().split('.').map(|s| s.to_string()).collect())
+                        CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().split('.').map(|s| NamespaceNode::Package(s.to_string())).collect())
                             .generate_code_for_authorities(&authorities, &mut schema_system)?
                     },
                     "rust" => {
@@ -143,7 +144,7 @@ impl IonCliCommand for GenerateCommand {
                 match language {
                     "java" =>  {
                         Self::print_java_code_gen_warnings();
-                        CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().split('.').map(|s| s.to_string()).collect()).generate_code_for_schema(&mut schema_system, schema_id)?
+                        CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().split('.').map(|s| NamespaceNode::Package(s.to_string())).collect()).generate_code_for_schema(&mut schema_system, schema_id)?
                     },
                     "rust" => {
                         Self::print_rust_code_gen_warnings();
