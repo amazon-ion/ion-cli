@@ -1,5 +1,5 @@
 use std::fmt::Display;
-use std::io::Write;
+use std::io::{Cursor, ErrorKind, Read, Write};
 use std::str::FromStr;
 
 use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
@@ -10,6 +10,7 @@ use ion_rs::v1_0::{EncodedBinaryValue, RawValueRef};
 use ion_rs::*;
 
 // The `inspect` command uses the `termcolor` crate to colorize its text when STDOUT is a TTY.
+use crate::hex_reader::HexReader;
 use termcolor::{Color, ColorSpec, WriteColor};
 // When writing to a named file instead of STDOUT, `inspect` will use a `FileWriter` instead.
 // `FileWriter` ignores all requests to emit TTY color escape codes.
@@ -31,10 +32,9 @@ impl IonCliCommand for InspectCommand {
     }
 
     fn about(&self) -> &'static str {
-        "Displays hex-encoded binary Ion alongside its equivalent text Ion.
-Its output prioritizes human readability and is likely to change
-between versions. Stable output for programmatic use cases is a
-non-goal."
+        "Displays hex-encoded binary Ion alongside its equivalent text Ion. \
+        Its output prioritizes human readability and is likely to change \
+        between versions. Stable output for programmatic use cases is a non-goal."
     }
 
     fn configure_args(&self, command: Command) -> Command {
@@ -50,12 +50,12 @@ non-goal."
                     .hide_default_value(true)
                     .help("Do not display any user values for the first `n` bytes of Ion data.")
                     .long_help(
-                        "When specified, the inspector will skip ahead `n` bytes before
-beginning to display the contents of the stream. If the requested number
-of bytes falls in the middle of a scalar, the whole value (complete with
-field ID and annotations if applicable) will be displayed. If the value
-is nested in one or more containers, the opening delimiters of those
-containers be displayed.",
+                        "When specified, the inspector will skip ahead `n` bytes before beginning \
+                         to display the contents of the stream. If the requested number of bytes \
+                         falls in the middle of a scalar, the whole value (complete with field ID \
+                         and annotations if applicable) will be displayed. If the value is nested \
+                         in one or more containers, the opening delimiters of those containers be \
+                         displayed.",
                     ),
             )
             .arg(
@@ -67,13 +67,12 @@ containers be displayed.",
                     .hide_default_value(true)
                     .help("Only display the next 'n' bytes of Ion data.")
                     .long_help(
-                        "When specified, the inspector will stop printing values after
-processing `n` bytes of Ion data. If `n` falls within a scalar, the
-complete value will be displayed. If `n` falls within one or more containers,
-the closing delimiters for those containers will be displayed. If this flag
-is used with `--skip-bytes`, `n` is counted from the beginning of the first
-value start after `--skip-bytes`.
-",
+                        "When specified, the inspector will stop printing values after \
+                        processing `n` bytes of Ion data. If `n` falls within a scalar, the \
+                        complete value will be displayed. If `n` falls within one or more \
+                        containers, the closing delimiters for those containers will be displayed. \
+                        If this flag is used with `--skip-bytes`, `n` is counted from the beginning \
+                        of the first value start after `--skip-bytes`.",
                     ),
             )
             .arg(
@@ -84,12 +83,26 @@ value start after `--skip-bytes`.
                     .value_parser(ValueParser::bool())
                     .help("Do not show values produced by macro evaluation.")
                     .long_help(
-                        "When specified, the inspector will display e-expressions
-(that is: data stream macro invocations) but will not show values produced
- by evaluating those e-expressions. If an e-expression produces a 'system'
- value that modifies the encoding context (that is: a symbol table or
- encoding directive), that value will still be displayed.",
+                        "When specified, the inspector will display e-expressions (that is: \
+                        data stream macro invocations) but will not show values produced by \
+                        evaluating those e-expressions. If an e-expression produces a 'system' \
+                        value that modifies the encoding context (that is: a symbol table or \
+                        encoding directive), that value will still be displayed.",
                     ),
+            )
+            .arg(
+                Arg::new("hex-input")
+                    .long("hex")
+                    .num_args(0..=1)
+                    .action(ArgAction::Append)
+                    .require_equals(true)
+                    .help("Specify that the input Ion binary is encoded as hexadecimal pairs.")
+                    .long_help(
+                        "When specified, the inspector will convert the input from hexadecimal \
+                        digits to Ion binary. The input may be STDIN, one or more files, or it may \
+                        be provided inline using '='. If the hex input is provided inline, all \
+                        other inputs will be ignored.",
+                    )
             )
     }
 
@@ -126,17 +139,50 @@ value start after `--skip-bytes`.
 
         let hide_expansion = args.get_flag("hide-expansion");
 
-        CommandIo::new(args).for_each_input(|output, input| {
+        let mut command_io = CommandIo::new(args);
+
+        let mut read_as_hex_string = false;
+        if let Some(hex_args) = args.get_many::<String>("hex-input") {
+            read_as_hex_string = true;
+
+            if hex_args.len() > 0 {
+                let mut byte_string = String::new();
+                hex_args.into_iter().for_each(|s| byte_string.push_str(s));
+                return command_io.write_output(|output| {
+                    inspect_input(
+                        &byte_string,
+                        IonStream::new(HexReader::from(Cursor::new(byte_string.clone()))),
+                        output,
+                        bytes_to_skip,
+                        limit_bytes,
+                        hide_expansion,
+                    )
+                });
+            }
+        }
+
+        command_io.for_each_input(|output, input| {
             let input_name = input.name().to_owned();
             let input = input.into_source();
-            inspect_input(
-                &input_name,
-                input,
-                output,
-                bytes_to_skip,
-                limit_bytes,
-                hide_expansion,
-            )
+            if read_as_hex_string {
+                inspect_input(
+                    &input_name,
+                    IonStream::new(HexReader::from(input)),
+                    output,
+                    bytes_to_skip,
+                    limit_bytes,
+                    hide_expansion,
+                )
+            } else {
+                inspect_input(
+                    &input_name,
+                    input,
+                    output,
+                    bytes_to_skip,
+                    limit_bytes,
+                    hide_expansion,
+                )
+            }
         })
     }
 }

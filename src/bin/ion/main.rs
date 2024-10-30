@@ -2,6 +2,7 @@ mod ansi_codes;
 mod auto_decompress;
 mod commands;
 mod file_writer;
+mod hex_reader;
 mod input;
 mod input_grouping;
 mod output;
