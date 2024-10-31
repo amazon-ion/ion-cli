@@ -69,7 +69,7 @@ class {{ model.name }} {
     public void writeTo(IonWriter writer) throws IOException {
         {# Writes `Value` class with a single field `value` as an Ion value #}
         {% if base_type | is_built_in_type == false  %}
-            this.value.writeTo(writer)?;
+            this.value.writeTo(writer);
         {% else %}
             writer.write{{ base_type | replace(from="double", to="float") | replace(from="boolean", to="bool") | upper_camel }}(this.value);
         {% endif %}
