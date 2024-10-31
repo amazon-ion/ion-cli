@@ -48,8 +48,8 @@ class CodeGenTest {
          e.add(3);
 
          // set all the fields of `NestedStruct`
-         NestedStruct.NestedType1.Builder nb1 = new NestedStruct.NestedType1.Builder();
-         NestedStruct.NestedType1 c = nb1.d(false).e(e).build();
+         NestedStruct.C.Builder nb1 = new NestedStruct.C.Builder();
+         NestedStruct.C c = nb1.d(false).e(e).build();
          NestedStruct n = nb.a("hello").b(12).c(c).build();
 
          // getter tests for `NestedStruct`
@@ -95,6 +95,19 @@ class CodeGenTest {
          // setter tests for `Scalar`
          s.setValue("hi");
          assertEquals("hi", s.getValue(), "s.getValue() should return \"hi\"");
+    }
+
+    @Test void getterAndSetterTestForSequenceWithEnumElement() {
+         ArrayList<SequenceWithEnumElement.Element> a = new ArrayList<SequenceWithEnumElement.Element>();
+         a.add(SequenceWithEnumElement.Element.FOO);
+         a.add(SequenceWithEnumElement.Element.BAR);
+         SequenceWithEnumElement s = new SequenceWithEnumElement();
+
+         // set all the fields of `Sequence`
+         s.setValue(a);
+
+         // getter tests for `Sequence`
+         assertEquals(2, s.getValue().size(), "s.getValue().size() should return ArrayList fo size 3");
     }
 
     @FunctionalInterface
