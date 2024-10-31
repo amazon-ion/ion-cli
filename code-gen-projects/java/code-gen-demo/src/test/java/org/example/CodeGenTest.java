@@ -103,11 +103,11 @@ class CodeGenTest {
          a.add(SequenceWithEnumElement.Element.BAR);
          SequenceWithEnumElement s = new SequenceWithEnumElement();
 
-          // set all the fields of `Sequence`
-          s.setValue(a);
+         // set all the fields of `Sequence`
+         s.setValue(a);
 
-          // getter tests for `Sequence`
-          assertEquals(2, s.getValue().size(), "s.getValue().size() should return ArrayList fo size 3");
+         // getter tests for `Sequence`
+         assertEquals(2, s.getValue().size(), "s.getValue().size() should return ArrayList fo size 3");
     }
 
     @FunctionalInterface
