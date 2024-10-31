@@ -13,7 +13,7 @@ use crate::commands::generate::utils::{JavaLanguage, Language, RustLanguage};
 use convert_case::{Case, Casing};
 use ion_schema::external::ion_rs::element::Value;
 use ion_schema::isl::isl_constraint::{IslConstraint, IslConstraintValue};
-use ion_schema::isl::isl_import::{IslImport, IslImportType};
+use ion_schema::isl::isl_import::IslImport;
 use ion_schema::isl::isl_type::IslType;
 use ion_schema::isl::isl_type_reference::IslTypeRef;
 use ion_schema::isl::util::ValidValue;
@@ -303,7 +303,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 self.generate_code_for_directory(
                     &schema_file_path,
                     Some(
-                        &schema_file_path
+                        schema_file_path
                             .strip_prefix(&directory)
                             .unwrap()
                             .to_str()
