@@ -1,17 +1,35 @@
+use crate::hex_reader::DigitState::ZeroX;
 use ion_rs::{IonInput, IonStream};
-use std::io::{Bytes, Cursor, ErrorKind, Read};
+use std::io::{Bytes, Cursor, Error, ErrorKind, Read};
 
 /// Wraps an existing reader in order to reinterpret the content of that reader as a
 /// hexadecimal-encoded byte stream.
 ///
-/// This will silently ignore all whitespace (to allow spacing/formatting in the input).
+/// This can read hex digit pairs in the form `0xHH` or `HH` where `H` is a case-insensitive
+/// hexadecimal digit. Between pairs, there can be any number of whitespace characters or commas.
+/// These are the only accepted characters.
 ///
-/// If the input contains any characters that are not hex digits or whitespace, the `read` function
-/// will (upon encountering that character) return `Err`. If the input contains an odd number of hex
-/// digits, the final call to `read` will return `Err`.
+/// If the input contains any unacceptable characters or unpaired hex digits, the `read` function
+/// will (upon encountering that character) return `Err`.
 pub struct HexReader<R: Read> {
     inner: Bytes<R>,
-    digit_buffer: String,
+    digit_state: DigitState,
+}
+
+#[derive(Eq, PartialEq, Debug)]
+enum DigitState {
+    /// The reader is ready to encounter a hexadecimal-encoded byte.
+    Empty,
+    /// The reader has encountered a `0`. This is an ambiguous state where we could be looking at a
+    /// `0` that is the first in a pair with another hex digit, or it could be the `0` before an `x`.
+    /// In other words, we're at the start of `0H` or `0xHH`, and we don't yet know which it is.
+    Zero,
+    /// The reader has seen `0x`. The next character must be a hex digit, which is the upper nibble
+    /// of the hex-encoded byte.
+    ZeroX,
+    /// The reader has seen either `0xH` or `H`. The next character must be a hex digit, and will
+    /// form a complete hex-encoded byte.
+    HasUpperNibble(char),
 }
 
 impl<R: Read> IonInput for HexReader<R> {
@@ -26,7 +44,7 @@ impl<R: Read> From<R> for HexReader<R> {
     fn from(value: R) -> Self {
         Self {
             inner: value.bytes(),
-            digit_buffer: String::new(),
+            digit_state: DigitState::Empty,
         }
     }
 }
@@ -41,30 +59,58 @@ impl<R: Read> Read for HexReader<R> {
 
         while let Some(b) = self.inner.next() {
             let c = char::from(b?);
-            if c.is_digit(16) {
-                self.digit_buffer.push(c)
-            } else if c.is_whitespace() {
-                // Ignore these characters
-            } else {
-                return Err(std::io::Error::new(
-                    ErrorKind::InvalidData,
-                    format!("not a valid hexadecimal digit: '{c}'"),
-                ));
-            }
-            if self.digit_buffer.len() == 2 {
-                // Unwrap is guaranteed not to panic because we've been putting only valid hex
-                // digit characters in the `digit_buffer` String.
-                buf[bytes_read] = u8::from_str_radix(self.digit_buffer.as_str(), 16).unwrap();
-                bytes_read += 1;
-                self.digit_buffer.clear();
 
-                if bytes_read == buf.len() {
-                    break;
+            use DigitState::*;
+            match self.digit_state {
+                Empty if c.is_whitespace() || c == ',' => { /* Ignore these characters */ }
+                // We've encountered either the first digit or the `0` of `0x`.
+                Empty if c == '0' => self.digit_state = Zero,
+                // Now we know that this hex-encoded byte is going to be `0xHH` rather than `0H`
+                Zero if c == 'x' => self.digit_state = ZeroX,
+                // Reading the first digit of the hex-encoded byte
+                Empty | ZeroX if c.is_digit(16) => self.digit_state = HasUpperNibble(c),
+                // Reading the second digit of the hex-encoded byte
+                Zero if c.is_digit(16) => {
+                    // Unwrap is guaranteed not to panic because we've been putting only valid hex
+                    // digit characters in the `digit_buffer` String.
+                    let value = c.to_digit(16).unwrap();
+                    // This unwrap is guaranteed not to panic because the max it could be is 0x0F
+                    buf[bytes_read] = u8::try_from(value).unwrap();
+                    bytes_read += 1;
+                    self.digit_state = Empty;
+                }
+                HasUpperNibble(c0) if c.is_digit(16) => {
+                    // The first unwrap is guaranteed not to panic because we already know that both
+                    // chars are valid hex digits.
+                    // The second unwrap is guaranteed not to panic because the max it could be is 0x0F
+                    let high_nibble: u8 = c0.to_digit(16).unwrap().try_into().unwrap();
+                    let low_nibble: u8 = c.to_digit(16).unwrap().try_into().unwrap();
+                    buf[bytes_read] = (high_nibble << 4) + low_nibble;
+                    bytes_read += 1;
+                    self.digit_state = Empty;
+                }
+                // Error cases
+                _ if c.is_whitespace() => {
+                    return Err(Error::new(
+                        ErrorKind::InvalidData,
+                        format!("unexpected whitespace when digit expected: '{c}'"),
+                    ))
+                }
+                _ => {
+                    return Err(Error::new(
+                        ErrorKind::InvalidData,
+                        format!("not a valid hexadecimal digit: '{c}'"),
+                    ))
                 }
             }
+
+            if bytes_read == buf.len() {
+                break;
+            }
         }
-        if bytes_read == 0 && self.digit_buffer.len() > 0 {
-            return Err(std::io::Error::new(
+
+        if bytes_read < buf.len() && self.digit_state != DigitState::Empty {
+            return Err(Error::new(
                 ErrorKind::InvalidData,
                 "found an odd number of hex digits",
             ));
@@ -93,16 +139,20 @@ fn test_read_hex_digits_with_whitespace() {
 }
 
 #[test]
-fn test_hex_reader_correctly_handles_composed_readers() {
-    let hex0 = "00 01 0  ";
-    let hex1 = "      ";
-    let hex2 = " 2 03";
-    let hex = Cursor::new(hex0)
-        .chain(Cursor::new(hex1))
-        .chain(Cursor::new(hex2));
-    let reader = HexReader::from(hex);
+fn test_read_hex_digits_with_leading_0x() {
+    let hex = "0x00 0x01 0x02 0x03 0x04";
+    let reader = HexReader::from(Cursor::new(hex));
     let translated_bytes: std::io::Result<Vec<_>> = reader.bytes().collect();
-    let expected = vec![0u8, 1, 2, 3];
+    let expected = vec![0u8, 1, 2, 3, 4];
+    assert_eq!(expected, translated_bytes.unwrap())
+}
+
+#[test]
+fn test_read_hex_digits_with_commas() {
+    let hex = "00,01,02,03,04";
+    let reader = HexReader::from(Cursor::new(hex));
+    let translated_bytes: std::io::Result<Vec<_>> = reader.bytes().collect();
+    let expected = vec![0u8, 1, 2, 3, 4];
     assert_eq!(expected, translated_bytes.unwrap())
 }
 
