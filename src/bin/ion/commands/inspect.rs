@@ -167,7 +167,7 @@ impl IonCliCommand for InspectCommand {
             if read_as_hex_string {
                 inspect_input(
                     &input_name,
-                    IonStream::new(HexReader::from(input)),
+                    HexReader::from(input),
                     output,
                     bytes_to_skip,
                     limit_bytes,

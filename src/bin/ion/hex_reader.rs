@@ -1,3 +1,4 @@
+use ion_rs::{IonInput, IonStream};
 use std::io::{Bytes, Cursor, ErrorKind, Read};
 
 /// Wraps an existing reader in order to reinterpret the content of that reader as a
@@ -11,6 +12,14 @@ use std::io::{Bytes, Cursor, ErrorKind, Read};
 pub struct HexReader<R: Read> {
     inner: Bytes<R>,
     digit_buffer: String,
+}
+
+impl<R: Read> IonInput for HexReader<R> {
+    type DataSource = IonStream<Self>;
+
+    fn into_data_source(self) -> Self::DataSource {
+        IonStream::new(self)
+    }
 }
 
 impl<R: Read> From<R> for HexReader<R> {
