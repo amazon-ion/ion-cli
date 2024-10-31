@@ -150,10 +150,19 @@ class CodeGenTest {
         runRoundtripBadTest("/bad/enum_type", EnumType::readFrom);
     }
 
-
     @Test
     void roundtripBadTestForSequenceWithEnumElement() throws IOException {
         runRoundtripBadTest("/bad/sequence_with_enum_element", SequenceWithEnumElement::readFrom);
+    }
+
+    @Test
+    void roundtripBadTestForSequenceWithImport() throws IOException {
+        runRoundtripBadTest("/bad/sequence_with_import", SequenceWithImport::readFrom);
+    }
+
+    @Test
+    void roundtripBadTestForStructWithInlineImport() throws IOException {
+        runRoundtripBadTest("/bad/struct_with_inline_import", StructWithInlineImport::readFrom);
     }
 
     private <T> void runRoundtripBadTest(String path, ReaderFunction<T> readerFunction) throws IOException {
@@ -204,6 +213,16 @@ class CodeGenTest {
     @Test
     void roundtripGoodTestForSequenceWithEnumElement() throws IOException {
         runRoundtripGoodTest("/good/sequence_with_enum_element", SequenceWithEnumElement::readFrom, (item, writer) -> item.writeTo(writer));
+    }
+
+    @Test
+    void roundtripGoodTestForSequenceWithImport() throws IOException {
+        runRoundtripGoodTest("/good/sequence_with_import", SequenceWithImport::readFrom, (item, writer) -> item.writeTo(writer));
+    }
+
+    @Test
+    void roundtripGoodTestForStructWithInlineImport() throws IOException {
+        runRoundtripGoodTest("/good/struct_with_inline_import", StructWithInlineImport::readFrom, (item, writer) -> item.writeTo(writer));
     }
 
     private <T> void runRoundtripGoodTest(String path, ReaderFunction<T> readerFunction, WriterFunction<T> writerFunction) throws IOException {
