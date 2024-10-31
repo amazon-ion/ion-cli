@@ -79,7 +79,7 @@ impl IonCliCommand for PrimitiveCommand {
 fn integer_from_text(text: &str) -> Result<i64> {
     if text.starts_with("0x") {
         i64::from_str_radix(text, 16)
-            .with_context(|| format!("{} is not a valid hexidecimal integer value.", text))
+            .with_context(|| format!("{} is not a valid hexadecimal integer value.", text))
     } else if text.starts_with("0b") {
         i64::from_str_radix(text, 2)
             .with_context(|| format!("{} is not a valid binary integer value.", text))

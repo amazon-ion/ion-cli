@@ -289,4 +289,30 @@ impl<'a> CommandIo<'a> {
         output.flush()?;
         Ok(())
     }
+
+    fn write_output(&self, mut f: impl FnMut(&mut CommandOutput) -> Result<()>) -> Result<()> {
+        // These types are provided by the `termcolor` crate. They wrap the normal `io::Stdout` and
+        // `io::StdOutLock` types, making it possible to write colorful text to the output stream when
+        // it's a TTY that understands formatting escape codes. These variables are declared here so
+        // the lifetime will extend through the remainder of the function. Unlike `io::StdoutLock`,
+        // the `StandardStreamLock` does not have a static lifetime.
+        let stdout: StandardStream;
+        let stdout_lock: StandardStreamLock;
+        let mut output = if let Some(output_file) = self.args.get_one::<String>("output") {
+            // If the user has specified an output file, use it.
+            let file = File::create(output_file).with_context(|| {
+                format!(
+                    "could not open file output file '{}' for writing",
+                    output_file
+                )
+            })?;
+            CommandOutput::File(FileWriter::new(file))
+        } else {
+            // Otherwise, write to STDOUT.
+            stdout = StandardStream::stdout(ColorChoice::Always);
+            stdout_lock = stdout.lock();
+            CommandOutput::StdOut(stdout_lock)
+        };
+        f(&mut output)
+    }
 }
