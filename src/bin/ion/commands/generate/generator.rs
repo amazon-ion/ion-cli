@@ -33,14 +33,6 @@ pub(crate) struct CodeGenerator<'a, L: Language> {
     output: &'a Path,
     // This field is used by Java code generation to get the namespace for generated code.
     current_type_fully_qualified_name: Vec<NamespaceNode>,
-    // Represents a name for a nested type based on current model being built.
-    // If the nested type is part of,
-    // 1. A struct then this represents a field name,
-    // 2. A sequence then this represents a predefined name `Element`.
-    // 3. If a nested type is nested within both struct and sequence then the precedence
-    // will be given to field name to avoid any conflict in naming.
-    // 4. For all other cases nested types are not supported and this will be set as `None`.
-    pub(crate) current_nested_type_name: Option<String>,
     pub(crate) data_model_store: HashMap<FullyQualifiedTypeReference, DataModelNode>,
     phantom: PhantomData<L>,
 }
@@ -82,7 +74,6 @@ impl<'a> CodeGenerator<'a, RustLanguage> {
             output,
             // Currently Rust code generation doesn't have a `--namespace` option available on the CLI, hence this is default set as an empty vector.
             current_type_fully_qualified_name: vec![],
-            current_nested_type_name: None,
             tera,
             phantom: PhantomData,
             data_model_store: HashMap::new(),
@@ -107,7 +98,6 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
         Self {
             output,
             current_type_fully_qualified_name: namespace,
-            current_nested_type_name: None,
             tera,
             phantom: PhantomData,
             data_model_store: HashMap::new(),
@@ -466,7 +456,12 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             .any(|it| matches!(it.constraint(), IslConstraintValue::Element(_, _)))
         {
             if is_nested_type {
-                self.build_sequence_from_constraints(constraints, code_gen_context, isl_type)?
+                self.build_sequence_from_constraints(
+                    constraints,
+                    code_gen_context,
+                    isl_type,
+                    Some(isl_type_name),
+                )?
             } else {
                 self.build_wrapped_sequence_from_constraints(
                     constraints,
@@ -583,6 +578,15 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
 
     /// Provides the `FullyQualifiedTypeReference` to be used for the `AbstractDataType` in the data model.
     /// Returns `None` when the given ISL type is `struct`, `list` or `sexp` as open-ended types are not supported currently.
+    ///
+    /// `type_name_suggestion` represents a name for a nested type based on current model being built.
+    /// If the nested type is part of,
+    /// 1. A struct then this represents a field name,
+    /// 2. A sequence then this represents a predefined name `Element`.
+    /// 3. If a nested type is nested within both struct and sequence then the precedence
+    ///    will be given to field name to avoid any conflict in naming.
+    /// 4. For all other cases nested types are not supported and this will be set as `None`.
+    ///
     /// _Note: `field_presence` is only used for variably occurring type references and currently that is only supported with `fields` constraint.
     /// For all other cases `field_presence` will be set as default `FieldPresence::Required`._
     fn fully_qualified_type_ref_name(
@@ -590,6 +594,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         isl_type_ref: &IslTypeRef,
         field_presence: FieldPresence,
         parent_code_gen_context: &mut CodeGenContext,
+        type_name_suggestion: Option<&str>,
     ) -> CodeGenResult<Option<FullyQualifiedTypeReference>> {
         Ok(match isl_type_ref {
             IslTypeRef::Named(name, _) => {
@@ -612,24 +617,21 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 unimplemented!("Imports in schema are not supported yet!");
             }
             IslTypeRef::Anonymous(type_def, _) => {
-                let name = self
-                    .current_nested_type_name
-                    .as_ref()
-                    .map(|t| t.to_string())
-                    .ok_or(invalid_abstract_data_type_raw_error(format!(
+                let name = type_name_suggestion.map(|t| t.to_string()).ok_or(
+                    invalid_abstract_data_type_raw_error(format!(
                         "Nested types are not supported while generating code for {} type.",
                         self.current_type_fully_qualified_name
                             .last()
                             .unwrap()
                             .name()
-                    )))?;
+                    )),
+                )?;
                 let nested_type_name = self.generate_nested_type(
                     &name,
                     type_def,
                     field_presence,
                     parent_code_gen_context,
                 )?;
-                self.current_nested_type_name = Some(name);
                 Some(nested_type_name)
             }
         })
@@ -643,6 +645,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         isl_type: &IslTypeRef,
         field_presence: FieldPresence,
         code_gen_context: &mut CodeGenContext,
+        type_name_suggestion: Option<&str>,
     ) -> CodeGenResult<FullyQualifiedTypeReference> {
         if found_constraint {
             return invalid_abstract_data_type_error(format!(
@@ -650,11 +653,16 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             ));
         }
 
-        self.fully_qualified_type_ref_name(isl_type, field_presence, code_gen_context)?
-            .ok_or(invalid_abstract_data_type_raw_error(format!(
-                "Could not determine `FullQualifiedTypeReference` for type {:?}",
-                isl_type
-            )))
+        self.fully_qualified_type_ref_name(
+            isl_type,
+            field_presence,
+            code_gen_context,
+            type_name_suggestion,
+        )?
+        .ok_or(invalid_abstract_data_type_raw_error(format!(
+            "Could not determine `FullQualifiedTypeReference` for type {:?}",
+            isl_type
+        )))
     }
 
     /// Builds `AbstractDataType::Structure` from the given constraints.
@@ -700,7 +708,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     // TODO: Check for `closed` annotation on fields and based on that return error while reading if there are extra fields.
                     let mut fields = HashMap::new();
                     for (name, value) in struct_fields.iter() {
-                        self.current_nested_type_name = Some(name.to_string());
                         let field_presence = if value.occurs().inclusive_endpoints() == (0, 1) {
                             FieldPresence::Optional
                         } else if value.occurs().inclusive_endpoints() == (1, 1) {
@@ -714,6 +721,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                                 value.type_reference(),
                                 field_presence,
                                 code_gen_context,
+                                Some(name),
                             )?
                             .ok_or(invalid_abstract_data_type_raw_error(
                                 "Given type doesn't have a name",
@@ -722,7 +730,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                             name.to_string(),
                             FieldReference(type_name.to_owned(), field_presence),
                         );
-                        self.current_nested_type_name = None;
                     }
                     // unwrap here is safe as the `current_abstract_data_type_builder` will either be initialized with default implementation
                     // or already initialized with a previous structure related constraint at this point.
@@ -812,6 +819,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                         isl_type_ref,
                         FieldPresence::Required,
                         code_gen_context,
+                        None,
                     )?;
                     found_base_type = true;
                 }
@@ -868,6 +876,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                         isl_type,
                         FieldPresence::Required,
                         code_gen_context,
+                        None,
                     )?;
                     wrapped_scalar_builder.base_type(type_name);
                     found_base_type = true;
@@ -925,6 +934,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                         isl_type,
                         FieldPresence::Required,
                         code_gen_context,
+                        None,
                     )?;
                     scalar_builder.base_type(type_name);
                     found_base_type = true;
@@ -975,18 +985,17 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         for constraint in constraints {
             match constraint.constraint() {
                 IslConstraintValue::Element(isl_type_ref, _) => {
-                    self.current_nested_type_name = Some("Element".to_string());
                     let type_name = self.handle_duplicate_constraint(
                         found_element_constraint,
                         "type",
                         isl_type_ref,
                         FieldPresence::Required,
                         code_gen_context,
+                        Some("Element"),
                     )?;
 
                     wrapped_sequence_builder.element_type(type_name);
                     found_element_constraint = true;
-                    self.current_nested_type_name = None;
                 }
                 IslConstraintValue::Type(isl_type_ref) => {
                     if found_base_type {
@@ -1035,11 +1044,19 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
     ///  }
     /// )
     /// ```
+    /// `type_name_suggestion` represents a name for a nested type based on current model being built.
+    /// If the nested type is part of,
+    /// 1. A struct then this represents a field name,
+    /// 2. A sequence then this represents a predefined name `Element`.
+    /// 3. If a nested type is nested within both struct and sequence then the precedence
+    ///    will be given to field name to avoid any conflict in naming.
+    /// 4. For all other cases nested types are not supported and this will be set as `None`.
     fn build_sequence_from_constraints(
         &mut self,
         constraints: &[IslConstraint],
         code_gen_context: &mut CodeGenContext,
         parent_isl_type: &IslType,
+        type_name_suggestion: Option<&str>,
     ) -> CodeGenResult<AbstractDataType> {
         let mut sequence_builder = SequenceBuilder::default();
         // For nested sequence type remove the anonymous type name from current fully qualified name
@@ -1055,6 +1072,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                             isl_type_ref,
                             FieldPresence::Required,
                             code_gen_context,
+                            type_name_suggestion,
                         )?
                         .ok_or(invalid_abstract_data_type_raw_error(format!(
                             "Could not determine `FullQualifiedTypeReference` for type {:?}",
