@@ -291,10 +291,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         relative_path: Option<&str>,
         schema_system: &mut SchemaSystem,
     ) -> CodeGenResult<()> {
-        // Sort the directory paths to ensure nested type names are always ordered based
-        // on directory path. (nested type name uses a counter in its name to represent that type)
         let mut paths = fs::read_dir(&directory)?.collect::<Result<Vec<_>, _>>()?;
-        paths.sort_by_key(|dir| dir.path());
         for schema_file in paths {
             let schema_file_path = schema_file.path();
 
