@@ -317,8 +317,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                     schema_system
                         .load_isl_schema(schema_file_path.file_name().unwrap().to_str().unwrap())
                 }?;
-                // All the schema files in given authorities will already be used to generate code
-                // No need to generate code for imports as they can only be from within the defined authorities
                 self.generate(schema)?;
             }
         }
