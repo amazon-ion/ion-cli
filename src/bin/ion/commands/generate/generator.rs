@@ -13,7 +13,6 @@ use crate::commands::generate::utils::{JavaLanguage, Language, RustLanguage};
 use convert_case::{Case, Casing};
 use ion_schema::external::ion_rs::element::Value;
 use ion_schema::isl::isl_constraint::{IslConstraint, IslConstraintValue};
-use ion_schema::isl::isl_import::IslImport;
 use ion_schema::isl::isl_type::IslType;
 use ion_schema::isl::isl_type_reference::IslTypeRef;
 use ion_schema::isl::util::ValidValue;
@@ -291,7 +290,7 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         relative_path: Option<&str>,
         schema_system: &mut SchemaSystem,
     ) -> CodeGenResult<()> {
-        let mut paths = fs::read_dir(&directory)?.collect::<Result<Vec<_>, _>>()?;
+        let paths = fs::read_dir(&directory)?.collect::<Result<Vec<_>, _>>()?;
         for schema_file in paths {
             let schema_file_path = schema_file.path();
 
@@ -320,18 +319,14 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 }?;
                 // All the schema files in given authorities will already be used to generate code
                 // No need to generate code for imports as they can only be from within the defined authorities
-                self.generate(schema, schema_system)?;
+                self.generate(schema)?;
             }
         }
 
         Ok(())
     }
 
-    fn generate(
-        &mut self,
-        schema: IslSchema,
-        schema_system: &mut SchemaSystem,
-    ) -> CodeGenResult<()> {
+    fn generate(&mut self, schema: IslSchema) -> CodeGenResult<()> {
         // Register a tera filter that can be used to convert a string based on case
         self.tera.register_filter("upper_camel", Self::upper_camel);
         self.tera.register_filter("snake", Self::snake);
@@ -356,26 +351,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             let isl_type_name = isl_type.name().clone().unwrap();
             self.generate_abstract_data_type(&isl_type_name, isl_type)?;
         }
-        Ok(())
-    }
-
-    fn generate_code_for_import_type(
-        &mut self,
-        schema_system: &mut SchemaSystem,
-        import_type_name: &String,
-        import_type_id: &String,
-    ) -> CodeGenResult<()> {
-        // unwrap here is safe because all the top-level type definition always has a name
-        let imported_schema = schema_system.load_isl_schema(import_type_id)?;
-        let isl_type = imported_schema
-            .types()
-            .iter()
-            .find(|t| t.name().as_ref().is_some() && t.name().as_ref().unwrap() == import_type_name)
-            .ok_or(invalid_abstract_data_type_raw_error(format!(
-                "Could not find import type {}",
-                import_type_name
-            )))?;
-        self.generate_abstract_data_type(import_type_name, isl_type)?;
         Ok(())
     }
 
