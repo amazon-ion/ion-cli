@@ -323,28 +323,16 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 }?;
                 // All the schema files in given authorities will already be used to generate code
                 // No need to generate code for imports as they can only be from within the defined authorities
-                self.generate(schema, false, schema_system)?;
+                self.generate(schema, schema_system)?;
             }
         }
 
         Ok(())
     }
 
-    /// Generates code for given Ion Schema
-    pub fn generate_code_for_schema(
-        &mut self,
-        schema_system: &mut SchemaSystem,
-        schema_id: &str,
-    ) -> CodeGenResult<()> {
-        let schema = schema_system.load_isl_schema(schema_id).unwrap();
-        // For a single schema file, need to generate code for header and inline imports
-        self.generate(schema, true, schema_system)
-    }
-
     fn generate(
         &mut self,
         schema: IslSchema,
-        generate_imports: bool, // if this is set as false, then it skips generation of header imports and inline imports
         schema_system: &mut SchemaSystem,
     ) -> CodeGenResult<()> {
         // Register a tera filter that can be used to convert a string based on case
@@ -370,33 +358,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             // unwrap here is safe because all the top-level type definition always has a name
             let isl_type_name = isl_type.name().clone().unwrap();
             self.generate_abstract_data_type(&isl_type_name, isl_type)?;
-        }
-
-        if generate_imports {
-            // Iterate through the ISL import types, generate an abstract data type for each
-            for isl_import in schema.imports() {
-                match isl_import {
-                    IslImport::Schema(id) => {
-                        // In this case we need to generate abstract data type for each type defined in this schema
-                        self.generate_code_for_schema(schema_system, id)?;
-                    }
-                    IslImport::Type(import_type) | IslImport::TypeAlias(import_type) => {
-                        self.generate_code_for_import_type(
-                            schema_system,
-                            import_type.type_name(),
-                            import_type.id(),
-                        )?;
-                    }
-                }
-            }
-
-            for inline_import in schema.inline_imported_types() {
-                self.generate_code_for_import_type(
-                    schema_system,
-                    inline_import.type_name(),
-                    inline_import.id(),
-                )?;
-            }
         }
         Ok(())
     }
