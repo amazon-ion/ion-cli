@@ -131,7 +131,7 @@ impl IonCliCommand for GenerateCommand {
         }
 
         println!("Code generation complete successfully!");
-        println!("Path to generated code: {}", output.display());
+        println!("All the schema files in authority(s) are generated into a flattened namespace, path to generated code: {}", output.display());
         Ok(())
     }
 }
