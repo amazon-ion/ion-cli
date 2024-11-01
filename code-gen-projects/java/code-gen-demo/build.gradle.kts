@@ -44,7 +44,7 @@ tasks {
                 "-X", "generate",
                 "-l", "java",
                 "-n", "org.example",
-                "-d", ionSchemaSourceCodeDir,
+                "-A", ionSchemaSourceCodeDir,
                 "-o", generatedIonSchemaModelDir,
             )
             .workingDir(rootProject.projectDir)

@@ -11,7 +11,7 @@ use crate::commands::generate::model::NamespaceNode;
 use crate::commands::generate::utils::{JavaLanguage, RustLanguage};
 use crate::commands::IonCliCommand;
 use anyhow::{bail, Result};
-use clap::{Arg, ArgAction, ArgMatches, Command};
+use clap::{Arg, ArgAction, ArgMatches, Command, ValueHint};
 use colored::Colorize;
 use ion_schema::authority::{DocumentAuthority, FileSystemDocumentAuthority};
 use ion_schema::system::SchemaSystem;
@@ -38,6 +38,8 @@ impl IonCliCommand for GenerateCommand {
     }
 
     fn configure_args(&self, command: Command) -> Command {
+        let schema_options_header = "Selecting a schema";
+
         command
             .arg(
                 Arg::new("output")
@@ -62,15 +64,19 @@ impl IonCliCommand for GenerateCommand {
                     .help("Programming language for the generated code"),
             )
             .arg(
-                // Directory(s) that will be used as authority(s) for schema system
-                Arg::new("directory")
-                    .long("directory")
-                    .short('d')
-                    // If this appears more than once, collect all values
+                Arg::new("authority")
+                    .help_heading(schema_options_header)
+                    .long("authority")
+                    .short('A')
+                    .required(false)
                     .action(ArgAction::Append)
-                    .value_name("DIRECTORY")
-                    .required(true)
-                    .help("One or more directories that will be searched for the requested schema"),
+                    .value_name("directory")
+                    .value_hint(ValueHint::DirPath)
+                    .help(
+                        "The root(s) of the file system authority(s). Authorities are only required if your \
+                    schema needs to import a type from another schema or if you are loading a schema using \
+                    the --id option.",
+                    ),
             )
     }
 
@@ -91,16 +97,15 @@ impl IonCliCommand for GenerateCommand {
         let output = binding.as_path();
 
         // Extract the user provided document authorities/ directories
-        let authorities: Vec<&String> = args.get_many("directory").unwrap().collect();
+        let authorities: Vec<&String> = args.get_many("authority").unwrap().collect();
 
         // Set up document authorities vector
         let mut document_authorities: Vec<Box<dyn DocumentAuthority>> = vec![];
-
-        for authority in &authorities {
-            document_authorities.push(Box::new(FileSystemDocumentAuthority::new(Path::new(
-                authority,
-            ))))
-        }
+        args.get_many::<String>("authority")
+            .unwrap_or_default()
+            .map(Path::new)
+            .map(FileSystemDocumentAuthority::new)
+            .for_each(|a| document_authorities.push(Box::new(a)));
 
         // Create a new schema system from given document authorities
         let mut schema_system = SchemaSystem::new(document_authorities);
