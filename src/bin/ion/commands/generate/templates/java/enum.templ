@@ -1,0 +1,57 @@
+{% set full_namespace = namespace | map(attribute="Package") | join(sep=".") %}
+{% if is_nested == false %}
+package {{ full_namespace }};
+import com.amazon.ion.IonReader;
+import com.amazon.ion.IonException;
+import com.amazon.ion.IonWriter;
+import com.amazon.ion.IonType;
+import java.io.IOException;
+{% endif %}
+
+{# Verify that the abstract data type is a enum and store information for this enum #}
+{% set enum_info = model.code_gen_type["Enum"] %}
+
+public {% if is_nested == true %} static {% endif %} enum {{ model.name }} {
+    {% for variant in enum_info["variants"] -%}
+           {{ variant | snake | upper }}("{{variant}}"),
+    {% endfor %};
+
+    private String textValue;
+
+    {{model.name}}(String textValue) {
+        this.textValue = textValue;
+    }
+
+    /**
+     * Writes a {{ model.name }} as Ion from an {@link IonWriter}.
+     *
+     * This method does not close the writer after writing is complete.
+     * The caller is responsible for closing the stream associated with the writer.
+     */
+    public void writeTo(IonWriter writer) throws IOException {
+         writer.writeSymbol(this.textValue);
+    }
+
+    /**
+     * Reads a {{ model.name }} from an {@link IonReader}.
+     *
+     * This method does not advance the reader at the current level.
+     * The caller is responsible for positioning the reader on the value to read.
+     */
+    public static {{ model.name }} readFrom(IonReader reader) {
+        {# Enums are only supported for symbol types #}
+        if (reader.getType() != IonType.SYMBOL) {
+            throw new IonException("Expected symbol, found " + reader.getType() + " while reading {{ model.name }}");
+        }
+        {# Reads given value as a string #}
+        String value = reader.stringValue();
+        switch(value) {
+            {% for variant in enum_info["variants"] %}
+            case "{{ variant }}":
+                return {{ variant | snake | upper }};
+            {% endfor %}
+            default:
+                throw new IonException(value + "is not a valid value for {{ model.name }}");
+        }
+    }
+}

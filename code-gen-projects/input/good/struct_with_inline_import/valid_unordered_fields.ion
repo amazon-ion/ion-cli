@@ -1,0 +1,5 @@
+// struct with unordered fields
+{
+ B: banana,
+ A: "hello",
+}

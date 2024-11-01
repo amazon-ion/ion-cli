@@ -1,81 +1,89 @@
-package {{ namespace }};
-import java.util.ArrayList;
+{% import "nested_type.templ"  as macros %}
+
+{% macro sequence(model) %}
+
+{% if is_nested == false %}
+{% set full_namespace = namespace | map(attribute="Package") | join(sep=".") %}
+
+package {{ full_namespace }};
 import com.amazon.ion.IonReader;
 import com.amazon.ion.IonException;
 import com.amazon.ion.IonWriter;
 import com.amazon.ion.IonType;
 import java.io.IOException;
+{% endif %}
 
-public class {{ target_kind_name }} {
-    private {{ fields[0].value_type }} value;
+{# Verify that the abstract data type is a sequence type and store information for this sequence value #}
+{% set sequence_info = model.code_gen_type["WrappedSequence"] %}
 
-    public {{ target_kind_name }}() {}
+class {{ model.name }} {
+    private java.util.ArrayList<{{ sequence_info["element_type"] | fully_qualified_type_name }}> value;
 
-    public {{ fields[0].value_type }} getValue() {
+    public {{ model.name }}() {}
+
+    public java.util.ArrayList<{{ sequence_info["element_type"] | fully_qualified_type_name }}> getValue() {
         return this.value;
     }
 
-    public void setValue({{ fields[0].value_type }} value) {
+    public void setValue(java.util.ArrayList<{{ sequence_info["element_type"] | fully_qualified_type_name }}> value) {
         this.value = value;
         return;
     }
 
     /**
-     * Reads a {{ target_kind_name }} from an {@link IonReader}.
+     * Reads a {{ model.name }} from an {@link IonReader}.
      *
      * This method does not advance the reader at the current level.
      * The caller is responsible for positioning the reader on the value to read.
      */
-    public static {{ target_kind_name }} readFrom(IonReader reader) {
+    public static {{ model.name }} readFrom(IonReader reader) {
         {# Initializes all the fields of this class #}
-        {{ fields[0].value_type }} value =
-        {% if fields[0].value_type == "boolean" %}
-            false
-        {% elif fields[0].value_type == "int" or fields[0].value_type == "double" %}
-            0
-        {% else %}
-            null
-        {% endif %};
+        java.util.ArrayList<{{ sequence_info["element_type"] | fully_qualified_type_name }}> value = new java.util.ArrayList<{{ sequence_info["element_type"] | fully_qualified_type_name }}>();
         {# Reads `Sequence` class with a single field `value` that is an `ArrayList` #}
-         if(reader.getType() != IonType.{{ abstract_data_type["Sequence"].sequence_type | upper }}) {
-            throw new IonException("Expected {{ abstract_data_type["Sequence"].sequence_type }}, found " + reader.getType() + " while reading {{ fields[0].name | camel }}.");
+         if(reader.getType() != IonType.{{ sequence_info["sequence_type"] | upper }}) {
+            throw new IonException("Expected {{ sequence_info["sequence_type"] }}, found " + reader.getType() + " while reading value.");
          }
         reader.stepIn();
-        value = new {{ fields[0].value_type }}();
-        {# Iterate through the `ArrayList` and read each element in it based on the data type provided in `abstract_data_type[Sequence]` #}
+        {# Iterate through the `ArrayList` and read each element in it based on the data type provided in `sequence_info["sequence_type"]` #}
         while (reader.hasNext()) {
             reader.next();
-            {% if abstract_data_type["Sequence"].element_type | is_built_in_type == false %}
-                value.add({{ abstract_data_type["Sequence"].element_type }}.readFrom(reader));
-            {% elif abstract_data_type["Sequence"].element_type == "bytes[]" %}
+            {% if sequence_info["element_type"] |fully_qualified_type_name | is_built_in_type == false %}
+                value.add({{ sequence_info["element_type"] | fully_qualified_type_name }}.readFrom(reader));
+            {% elif sequence_info["element_type"] | fully_qualified_type_name == "bytes[]" %}
                 value.add(reader.newBytes());
             {% else %}
-                value.add(reader.{{ abstract_data_type["Sequence"].element_type | camel }}Value());
+                value.add(reader.{{ sequence_info["element_type"] | fully_qualified_type_name | camel }}Value());
             {% endif %}
         }
         reader.stepOut();
-        {{ target_kind_name }} {{ target_kind_name | camel }} = new {{ target_kind_name }}();
-        {{ target_kind_name | camel }}.value = value;
+        {{ model.name }} {{ model.name | camel }} = new {{ model.name }}();
+        {{ model.name | camel }}.value = value;
 
-        return  {{ target_kind_name | camel }};
+        return  {{ model.name | camel }};
     }
 
     /**
-     * Writes a {{ target_kind_name }} as Ion from an {@link IonWriter}.
+     * Writes a {{ model.name }} as Ion from an {@link IonWriter}.
      *
      * This method does not close the writer after writing is complete.
      * The caller is responsible for closing the stream associated with the writer.
      */
     public void writeTo(IonWriter writer) throws IOException {
         {# Writes `Sequence` class with a single field `value` that is an `ArrayList` as an Ion sequence #}
-        writer.stepIn(IonType.{{ abstract_data_type["Sequence"].sequence_type | upper }});
-        for ({{ abstract_data_type["Sequence"].element_type }} value: this.value) {
-             {% if abstract_data_type["Sequence"].element_type | is_built_in_type  == false %}
+        writer.stepIn(IonType.{{ sequence_info["sequence_type"] | upper }});
+        for ({{ sequence_info["element_type"] | fully_qualified_type_name }} value: this.value) {
+             {% if sequence_info["element_type"] | fully_qualified_type_name | is_built_in_type  == false %}
                 value.writeTo(writer);
              {% else %}
-                writer.write{{ abstract_data_type["Sequence"].element_type | upper_camel }}(value);
+                writer.write{{ sequence_info["element_type"] | fully_qualified_type_name | replace(from="double", to="float") | replace(from="boolean", to="bool") | upper_camel }}(value);
              {% endif %}
         }
         writer.stepOut();
     }
+
+    {% for inline_type in model.nested_types -%}
+        {{ macros::nested_type(model=inline_type, is_nested=true) }}
+    {% endfor -%}
 }
+{% endmacro %}
+{{ self::sequence(model=model) }}

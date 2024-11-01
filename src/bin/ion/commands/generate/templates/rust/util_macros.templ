@@ -1,20 +1,22 @@
 {# following macro defines statements to read a class field as sequence #}
-{% macro read_as_sequence(field) %}
-    if reader.ion_type() != Some(IonType::{{ field.abstract_data_type["Sequence"].sequence_type }}) {
+{% macro read_as_sequence(field_name, field_value, type_store) %}
+    {% set field_value_model = type_store[field_value] %}
+
+    if reader.ion_type() != Some(IonType::{{ field_value_model.code_gen_type["Sequence"].sequence_type }}) {
        return validation_error(format!(
-           "Expected {{ field.abstract_data_type["Sequence"].sequence_type }}, found {} while reading {{ target_kind_name }}.", reader.ion_type().unwrap()
+           "Expected {{ field_value_model.code_gen_type["Sequence"].sequence_type }}, found {} while reading {{ field_name }}.", reader.ion_type().unwrap()
        ));
     }
     reader.step_in()?;
 
-    abstract_data_type.{{ field.name | snake }} = {
+    abstract_data_type.{{ field_name | snake }} = {
      let mut values = vec![];
 
      while reader.next()? != StreamItem::Nothing {
-        {% if field.abstract_data_type["Sequence"].element_type | is_built_in_type  == false %}
-                values.push({{ field.abstract_data_type["Sequence"].element_type }}::read_from(reader)?);
+        {% if field_value_model.code_gen_type["Sequence"].element_type | fully_qualified_type_name | is_built_in_type  == false %}
+                values.push({{ field_value_model.code_gen_type["Sequence"].element_type | fully_qualified_type_name }}::read_from(reader)?);
         {% else %}
-            values.push(reader.read_{% if field.isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ field.abstract_data_type["Sequence"].element_type | lower | replace(from="string", to ="str") }}()?{% endif %}{% if field.abstract_data_type["Sequence"].element_type | lower== "string" %} .to_string() {% endif %});
+            values.push(reader.read_{% if field.source is defined and field.source == "symbol" %}symbol()?.text().unwrap(){% else %}{{ field_value_model.code_gen_type["Sequence"].element_type | fully_qualified_type_name | lower | replace(from="string", to ="str") }}()?{% endif %}{% if field_value_model.code_gen_type["Sequence"].element_type | fully_qualified_type_name | lower== "string" %} .to_string() {% endif %});
         {% endif %}
     }
     values
@@ -22,13 +24,14 @@
     reader.step_out()?;
 {% endmacro %}
 {# following macro defines statements to write a class field as sequence #}
-{% macro write_as_sequence(field) %}
-    writer.step_in(IonType::{{ field.abstract_data_type["Sequence"].sequence_type }});
-    for value in &self.{{ field.name | snake }} {
-        {% if field.abstract_data_type["Sequence"].element_type | is_built_in_type  == false %}
+{% macro write_as_sequence(field_name, field_value, type_store) %}
+    {% set field_value_model = type_store[field_value] %}
+    writer.step_in(IonType::{{ field_value_model.code_gen_type["Sequence"].sequence_type }});
+    for value in &self.{{ field_name | snake }} {
+        {% if field_value_model.code_gen_type["Sequence"].element_type | fully_qualified_type_name | is_built_in_type  == false %}
                 value.write_to(writer)?;
         {% else %}
-           writer.write_{% if field.isl_type_name == "symbol" %}symbol{% else %}{{ field.abstract_data_type["Sequence"].element_type | lower }}{% endif %}(value.to_owned())?;
+           writer.write_{% if field.source is defined and field.source == "symbol" %}symbol{% else %}{{ field_value_model.code_gen_type["Sequence"].element_type | fully_qualified_type_name | lower }}{% endif %}(value.to_owned())?;
         {% endif %}
     }
     writer.step_out()?;

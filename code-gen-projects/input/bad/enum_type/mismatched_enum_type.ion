@@ -1,0 +1,1 @@
+"foo" // expected a symbol value foo for enum, found string "foo"

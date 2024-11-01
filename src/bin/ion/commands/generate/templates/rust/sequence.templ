@@ -1,31 +1,37 @@
-use {{ target_kind_name | snake }}::{{ target_kind_name }};
-pub mod  {{ target_kind_name | snake }} {
+{% import "nested_type.templ"  as macros %}
+
+{% set sequence_info = model.code_gen_type["WrappedSequence"] %}
+
+
+use {{ model.name | snake }}::{{ model.name }};
+
+pub mod  {{ model.name | snake }} {
     use super::*;
 
     #[derive(Debug, Clone, Default)]
-    pub struct {{ target_kind_name }} {
-        value: {{ fields[0].value_type }},
+    pub struct {{ model.name }} {
+        value: Vec<{{ sequence_info["element_type"] | fully_qualified_type_name }}>,
     }
 
-    impl {{ target_kind_name }} {
-        pub fn new(value: {{ fields[0].value_type }}) -> Self {
+    impl {{ model.name }} {
+        pub fn new(value: Vec<{{ sequence_info["element_type"] | fully_qualified_type_name }}>) -> Self {
             Self {
                 value,
             }
         }
 
 
-        pub fn value(&self) -> &{{ fields[0].value_type }} {
+        pub fn value(&self) -> &Vec<{{ sequence_info["element_type"] | fully_qualified_type_name }}> {
             &self.value
         }
 
 
         pub fn read_from(reader: &mut Reader) -> SerdeResult<Self> {
-            let mut abstract_data_type = {{ target_kind_name }}::default();
+            let mut abstract_data_type = {{ model.name }}::default();
 
-            if reader.ion_type() != Some(IonType::{{ abstract_data_type["Sequence"].sequence_type }}) {
+            if reader.ion_type() != Some(IonType::{{ sequence_info["sequence_type"] }}) {
                return validation_error(format!(
-                   "Expected {{ abstract_data_type["Sequence"].sequence_type }}, found {} while reading {{ target_kind_name }}.", reader.ion_type().unwrap()
+                   "Expected {{ sequence_info["sequence_type"] }}, found {} while reading {{ model.name }}.", reader.ion_type().unwrap()
                ));
             }
 
@@ -35,10 +41,10 @@ pub mod  {{ target_kind_name | snake }} {
                  let mut values = vec![];
 
                  while reader.next()? != StreamItem::Nothing {
-                    {% if abstract_data_type["Sequence"].element_type | is_built_in_type == false %}
-                        values.push({{ abstract_data_type["Sequence"].element_type }}::read_from(reader)?);
+                    {% if sequence_info["element_type"] | fully_qualified_type_name | is_built_in_type == false %}
+                        values.push({{ sequence_info["element_type"] | fully_qualified_type_name }}::read_from(reader)?);
                     {% else %}
-                        values.push(reader.read_{% if fields[0].isl_type_name == "symbol" %}symbol()?.text().unwrap(){% else %}{{ abstract_data_type["Sequence"].element_type | lower | replace(from="string", to ="str") }}()?{% endif %}{% if abstract_data_type["Sequence"].element_type | lower== "string" %} .to_string() {% endif %});
+                        values.push(reader.read_{% if field.source is defined and field.source == "symbol" %}symbol()?.text().unwrap(){% else %}{{ sequence_info["element_type"] | fully_qualified_type_name | lower | replace(from="string", to ="str") }}()?{% endif %}{% if sequence_info["element_type"] | fully_qualified_type_name | lower== "string" %} .to_string() {% endif %});
                     {% endif %}
                 }
                 values
@@ -48,16 +54,21 @@ pub mod  {{ target_kind_name | snake }} {
         }
 
         pub fn write_to<W: IonWriter>(&self, writer: &mut W) -> SerdeResult<()> {
-            writer.step_in(IonType::{{ abstract_data_type["Sequence"].sequence_type  }})?;
+            writer.step_in(IonType::{{ sequence_info["sequence_type"] }})?;
             for value in &self.value {
-                {% if abstract_data_type["Sequence"].element_type | is_built_in_type  == false %}
+                {% if sequence_info["element_type"] | fully_qualified_type_name | is_built_in_type  == false %}
                     value.write_to(writer)?;
                 {% else %}
-                   writer.write_{% if fields[0].isl_type_name == "symbol" %}symbol{% else %}{{ abstract_data_type["Sequence"].element_type | lower }}{% endif %}(value.to_owned())?;
+                   writer.write_{% if field.source is defined and field.source == "symbol" %}symbol{% else %}{{ sequence_info["element_type"] | fully_qualified_type_name | lower }}{% endif %}(value.to_owned())?;
                 {% endif %}
             }
             writer.step_out()?;
             Ok(())
         }
     }
+
+
+    {% for inline_type in model.nested_types -%}
+            {{ macros::nested_type(model=inline_type, is_nested=true) }}
+    {% endfor -%}
 }

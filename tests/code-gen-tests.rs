@@ -96,6 +96,8 @@ fn roundtrip_tests_for_generated_code_cargo() -> Result<()> {
     Ok(())
 }
 
+//TODO: Add cargo roundtrip tests once the rust templates are modified based on new code generation model
+
 #[rstest]
 #[case::any_element_list(
 r#"
@@ -128,7 +130,7 @@ fn test_unsupported_schema_types_failures(#[case] test_schema: &str) -> Result<(
     let temp_dir = TempDir::new()?;
     let input_schema_path = temp_dir.path().join("test_schema.isl");
     let mut input_schema_file = File::create(input_schema_path)?;
-    input_schema_file.write(test_schema.as_bytes())?;
+    input_schema_file.write_all(test_schema.as_bytes())?;
     input_schema_file.flush()?;
     cmd.args([
         "-X",

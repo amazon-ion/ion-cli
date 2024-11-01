@@ -1,48 +1,10 @@
-use crate::commands::generate::context::AbstractDataType;
+use crate::commands::generate::model::{
+    AbstractDataType, DataModelNode, FullyQualifiedTypeReference, NamespaceNode,
+};
 use crate::commands::generate::result::{invalid_abstract_data_type_error, CodeGenError};
 use convert_case::{Case, Casing};
-use serde::Serialize;
+use itertools::Itertools;
 use std::fmt::{Display, Formatter};
-
-/// Represents a field that will be added to generated data model.
-/// This will be used by the template engine to fill properties of a struct/class.
-#[derive(Serialize)]
-pub struct Field {
-    pub(crate) name: String,
-    // The value_type represents the AbstractDatType for given field. When given ISL has constraints, that lead to open ended types,
-    // this will be ste to None, Otherwise set to Some(ABSTRACT_DATA_TYPE_NAME).
-    // e.g For below ISL type:
-    // ```
-    // type::{
-    //   name: list_type,
-    //   type: list // since this doesn't have `element` constraint defined it will be set `value_type` to None
-    // }
-    // ```
-    // Following will be the `Field` value for this ISL type:
-    // Field {
-    //     name: value,
-    //     value_type: None,
-    //     isl_type_name: "list"
-    //     abstract_data_type: None
-    // }
-    // Code generation process results into an Error when `value_type` is set to `None`
-    pub(crate) value_type: Option<String>,
-    pub(crate) isl_type_name: String,
-    // `abstract_data_type` is only used for sequence type fields. This value provides `element_type`
-    // and `sequence_type` information for this sequence type field.
-    pub(crate) abstract_data_type: Option<AbstractDataType>,
-}
-
-/// Represents an nested type that can be a part of another type definition.
-/// This will be used by the template engine to add these intermediate data models for nested types
-/// in to the parent type definition's module/namespace.
-#[derive(Serialize)]
-pub struct NestedType {
-    pub(crate) target_kind_name: String,
-    pub(crate) fields: Vec<Field>,
-    pub(crate) abstract_data_type: AbstractDataType,
-    pub(crate) nested_types: Vec<NestedType>,
-}
 
 pub trait Language {
     /// Provides a file extension based on programming language
@@ -58,22 +20,71 @@ pub trait Language {
     fn file_name_for_type(name: &str) -> String;
 
     /// Maps the given ISL type to a target type name
+    /// Returns None when the given ISL type is `struct`, `list` or `sexp` as open-ended types are not supported currently.
     fn target_type(ion_schema_type: &IonSchemaType) -> Option<String>;
 
     /// Provides given target type as sequence
     /// e.g.
-    ///     target_type = "Foo" returns "ArrayList<Foo>"
+    ///     target_type = "Foo" returns "java.util.ArrayList<Foo>"
     ///     target_type = "Foo" returns "Vec<Foo>"
-    fn target_type_as_sequence(target_type: &Option<String>) -> Option<String>;
+    #[allow(dead_code)]
+    fn target_type_as_sequence(
+        target_type: FullyQualifiedTypeReference,
+    ) -> FullyQualifiedTypeReference;
 
-    /// Returns true if the type name specified is provided by the target language implementation
-    fn is_built_in_type(name: &str) -> bool;
+    /// Returns true if the type `String` specified is provided by the target language implementation
+    fn is_built_in_type(type_name: String) -> bool;
+
+    /// Returns a fully qualified type reference name as per the programming language
+    /// e.g. For a fully qualified type reference as below:
+    ///   FullyQualifiedTypeReference {
+    ///     type_name: vec!["org", "example", "Foo"],
+    ///     parameters: vec![] // type ref with no parameters
+    ///   }
+    ///   In Java, `org.example.Foo`
+    ///   In Rust, `org::example::Foo`
+    #[allow(dead_code)]
+    fn fully_qualified_type_ref(name: &FullyQualifiedTypeReference) -> String;
 
     /// Returns the template as string based on programming language
     /// e.g.
     ///     In Rust, Template::Struct -> "struct"
     ///     In Java, Template::Struct -> "class"
     fn template_name(template: &Template) -> String;
+
+    /// Returns the namespace separator for programming language
+    /// e.g. In Java, it returns "::"
+    ///      In Rust, it returns "."
+    fn namespace_separator() -> &'static str;
+
+    /// Modifies the given namespace to add the given type to the namespace path.
+    /// _Note:_ For Rust, it uses the `is_nested_type` field to only get modules in the path name until the leaf type is reached.
+    ///    e.g. given a module as below:
+    ///         ```
+    ///         mod foo {
+    ///             struct Foo { ... }
+    ///             mod nested_type {
+    ///                 struct NestedType { ... }
+    ///             }
+    ///         }
+    ///         ```
+    ///     To add `NestedType` into the namespace path, `is_nested_type` helps remove any prior types form the path and add this current type.
+    ///     i.e. given namespace path as `foo::Foo`, it will first remove `Foo` and then add the current type as `foo::nested_type::NestedType`.
+    fn add_type_to_namespace(
+        is_nested_type: bool,
+        type_name: &str,
+        namespace: &mut Vec<NamespaceNode>,
+    );
+
+    /// Resets the namespace when code generation is complete for a single ISL type
+    fn reset_namespace(namespace: &mut Vec<NamespaceNode>);
+
+    /// Returns the `FullyQualifiedReference` that represents the target type as optional in the given programming language
+    /// e.g. In Java, it will return "java.util.Optional<T>"
+    ///     In Rust, it will return "Option<T>"
+    fn target_type_as_optional(
+        target_type: FullyQualifiedTypeReference,
+    ) -> FullyQualifiedTypeReference;
 }
 
 pub struct JavaLanguage;
@@ -107,17 +118,43 @@ impl Language for JavaLanguage {
         )
     }
 
-    fn target_type_as_sequence(target_type: &Option<String>) -> Option<String> {
-        target_type.as_ref().map(|target_type_name| {
-            match JavaLanguage::wrapper_class(target_type_name) {
-                Some(wrapper_name) => format!("ArrayList<{}>", wrapper_name),
-                None => format!("ArrayList<{}>", target_type_name),
-            }
-        })
+    fn target_type_as_sequence(
+        target_type: FullyQualifiedTypeReference,
+    ) -> FullyQualifiedTypeReference {
+        match JavaLanguage::wrapper_class_or_none(
+            &target_type.string_representation::<JavaLanguage>(),
+        ) {
+            Some(wrapper_name) => FullyQualifiedTypeReference {
+                type_name: vec![
+                    NamespaceNode::Package("java".to_string()),
+                    NamespaceNode::Package("util".to_string()),
+                    NamespaceNode::Type("ArrayList".to_string()),
+                ],
+                parameters: vec![FullyQualifiedTypeReference {
+                    type_name: vec![NamespaceNode::Type(wrapper_name)],
+                    parameters: vec![],
+                }],
+            },
+            None => FullyQualifiedTypeReference {
+                type_name: vec![
+                    NamespaceNode::Package("java".to_string()),
+                    NamespaceNode::Package("util".to_string()),
+                    NamespaceNode::Type("ArrayList".to_string()),
+                ],
+                parameters: vec![target_type],
+            },
+        }
     }
 
-    fn is_built_in_type(name: &str) -> bool {
-        matches!(name, "int" | "String" | "boolean" | "byte[]" | "double")
+    fn is_built_in_type(type_name: String) -> bool {
+        matches!(
+            type_name.as_str(),
+            "int" | "String" | "boolean" | "byte[]" | "double"
+        )
+    }
+
+    fn fully_qualified_type_ref(name: &FullyQualifiedTypeReference) -> String {
+        name.type_name.iter().map(|n| n.name()).join(".")
     }
 
     fn template_name(template: &Template) -> String {
@@ -125,21 +162,79 @@ impl Language for JavaLanguage {
             Template::Struct => "class".to_string(),
             Template::Scalar => "scalar".to_string(),
             Template::Sequence => "sequence".to_string(),
+            Template::Enum => "enum".to_string(),
+        }
+    }
+
+    fn namespace_separator() -> &'static str {
+        "."
+    }
+
+    fn add_type_to_namespace(
+        _is_nested_type: bool,
+        type_name: &str,
+        namespace: &mut Vec<NamespaceNode>,
+    ) {
+        namespace.push(NamespaceNode::Type(type_name.to_case(Case::UpperCamel)))
+    }
+
+    fn reset_namespace(namespace: &mut Vec<NamespaceNode>) {
+        // resets the namespace by removing current abstract dta type name
+        namespace.pop();
+    }
+
+    fn target_type_as_optional(
+        target_type: FullyQualifiedTypeReference,
+    ) -> FullyQualifiedTypeReference {
+        match JavaLanguage::wrapper_class_or_none(
+            &target_type.string_representation::<JavaLanguage>(),
+        ) {
+            Some(wrapper_name) => FullyQualifiedTypeReference {
+                type_name: vec![NamespaceNode::Type(wrapper_name)],
+                parameters: vec![],
+            },
+            None => target_type,
         }
     }
 }
 
 impl JavaLanguage {
-    fn wrapper_class(primitive_data_type: &str) -> Option<String> {
+    /// Returns the wrapper class for the given primitive data type, otherwise returns None.
+    fn wrapper_class_or_none(primitive_data_type: &str) -> Option<String> {
         match primitive_data_type {
             "int" => Some("Integer".to_string()),
-            "bool" => Some("Boolean".to_string()),
+            "boolean" => Some("Boolean".to_string()),
             "double" => Some("Double".to_string()),
             "long" => Some("Long".to_string()),
             _ => {
                 // for any other non-primitive types return None
                 None
             }
+        }
+    }
+
+    /// Returns the wrapper class for the given primitive data type
+    /// If `data_type` is a primitive, returns the boxed equivalent, otherwise returns `data_type`.
+    pub fn wrapper_class(primitive_data_type: &str) -> String {
+        match Self::wrapper_class_or_none(primitive_data_type) {
+            None => primitive_data_type.to_string(),
+            Some(wrapper_class) => wrapper_class,
+        }
+    }
+
+    /// Returns the primitive data type for the given wrapper class, or `wrapper_class`
+    /// if it does not have an equivalent primitive type.
+    pub fn primitive_data_type(wrapper_class: &str) -> &str {
+        match wrapper_class {
+            "Integer" => "int",
+            "Boolean" => "boolean",
+            "Double" => "double",
+            "Long" => "long",
+            "Short" => "short",
+            "Byte" => "byte",
+            "Float" => "float",
+            "Character" => "char",
+            _ => wrapper_class,
         }
     }
 }
@@ -181,14 +276,24 @@ impl Language for RustLanguage {
         )
     }
 
-    fn target_type_as_sequence(target_type: &Option<String>) -> Option<String> {
-        target_type
-            .as_ref()
-            .map(|target_type_name| format!("Vec<{}>", target_type_name))
+    fn target_type_as_sequence(
+        target_type: FullyQualifiedTypeReference,
+    ) -> FullyQualifiedTypeReference {
+        FullyQualifiedTypeReference {
+            type_name: vec![NamespaceNode::Type("Vec".to_string())],
+            parameters: vec![target_type],
+        }
     }
 
-    fn is_built_in_type(name: &str) -> bool {
-        matches!(name, "i64" | "String" | "bool" | "Vec<u8>" | "f64")
+    fn is_built_in_type(type_name: String) -> bool {
+        matches!(
+            type_name.as_str(),
+            "i64" | "String" | "bool" | "Vec<u8>" | "f64"
+        )
+    }
+
+    fn fully_qualified_type_ref(name: &FullyQualifiedTypeReference) -> String {
+        name.type_name.iter().map(|n| n.name()).join("::")
     }
 
     fn template_name(template: &Template) -> String {
@@ -196,7 +301,77 @@ impl Language for RustLanguage {
             Template::Struct => "struct".to_string(),
             Template::Scalar => "scalar".to_string(),
             Template::Sequence => "sequence".to_string(),
+            Template::Enum => {
+                //TODO: Rust enums are not supported yet
+                // The template `enum.templ` is just a placeholder
+                "enum".to_string()
+            }
         }
+    }
+
+    fn namespace_separator() -> &'static str {
+        "::"
+    }
+
+    fn add_type_to_namespace(
+        is_nested_type: bool,
+        type_name: &str,
+        namespace: &mut Vec<NamespaceNode>,
+    ) {
+        // e.g. For example there is a `NestedType` inside `Foo` struct. Rust code generation also generates similar modules for the generated structs.
+        // ```rust
+        // mod foo {
+        //   struct Foo {
+        //     ...
+        //   }
+        //   mod nested_type {
+        //      struct NestedType {
+        //        ...
+        //      }
+        //   }
+        // }
+        // ```
+        if is_nested_type {
+            if let Some(last_value) = namespace.last() {
+                // Assume we have the current namespace as `foo::Foo`
+                // then the following step will remove `Foo` from the path for nested type.
+                // So that the final namespace path for `NestedType` will become `foo::nested_type::NestedType`
+                if !matches!(last_value, NamespaceNode::Package(_)) {
+                    // if the last value is not module name then pop the type name from namespace
+                    namespace.pop(); // Remove the parent struct/enum
+                }
+            }
+        }
+        namespace.push(NamespaceNode::Package(type_name.to_case(Case::Snake))); // Add this type's module name to the namespace path
+        namespace.push(NamespaceNode::Type(type_name.to_case(Case::UpperCamel)))
+        // Add this type itself to the namespace path
+    }
+
+    fn reset_namespace(namespace: &mut Vec<NamespaceNode>) {
+        // Resets the namespace by removing current abstract data type name and module name
+        if let Some(last_value) = namespace.last() {
+            // Check if it is a type then pop the type and module
+            if matches!(last_value, NamespaceNode::Package(_)) {
+                // if this is a module then only pop once for the module
+                namespace.pop();
+            } else if matches!(last_value, NamespaceNode::Type(_)) {
+                namespace.pop();
+                if !namespace.is_empty() {
+                    namespace.pop();
+                }
+            }
+        }
+    }
+
+    fn target_type_as_optional(
+        target_type: FullyQualifiedTypeReference,
+    ) -> FullyQualifiedTypeReference {
+        // TODO: un-comment following block for optional support in Rust, once the templates are changes accordingly
+        // FullyQualifiedTypeReference {
+        //     type_name: vec!["Option".to_string()],
+        //     parameters: vec![target_type],
+        // }
+        target_type
     }
 }
 
@@ -216,21 +391,28 @@ pub enum Template {
     Struct,   // Represents a template for a Rust struct or Java class with Ion struct value
     Sequence, // Represents a template for a Rust struct or Java class with Ion sequence value
     Scalar,   // Represents a template for a Rust struct or Java class with Ion scalar value
+    Enum,     // Represents a template for a Rust or Java enum
 }
 
-impl TryFrom<Option<&AbstractDataType>> for Template {
+impl TryFrom<&DataModelNode> for Template {
     type Error = CodeGenError;
 
-    fn try_from(value: Option<&AbstractDataType>) -> Result<Self, Self::Error> {
-        match value {
-            Some(abstract_data_type) => match abstract_data_type {
-                AbstractDataType::Value => Ok(Template::Scalar),
-                AbstractDataType::Sequence { .. } => Ok(Template::Sequence),
+    fn try_from(value: &DataModelNode) -> Result<Self, Self::Error> {
+        if let Some(abstract_data_type) = &value.code_gen_type {
+            match abstract_data_type {
+                AbstractDataType::Scalar(_) | AbstractDataType::WrappedScalar(_) => {
+                    Ok(Template::Scalar)
+                }
+                AbstractDataType::Sequence(_) | AbstractDataType::WrappedSequence(_) => {
+                    Ok(Template::Sequence)
+                }
                 AbstractDataType::Structure(_) => Ok(Template::Struct),
-            },
-            None => invalid_abstract_data_type_error(
+                AbstractDataType::Enum(_) => Ok(Template::Enum),
+            }
+        } else {
+            invalid_abstract_data_type_error(
                 "Can not get a template without determining data model first.",
-            ),
+            )
         }
     }
 }

@@ -1,4 +1,3 @@
-
 // struct with unordered fields
 {
  C: ("foo" "bar" "baz"),
