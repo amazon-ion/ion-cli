@@ -277,30 +277,51 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         schema_system: &mut SchemaSystem,
     ) -> CodeGenResult<()> {
         for authority in authorities {
-            // Sort the directory paths to ensure nested type names are always ordered based
-            // on directory path. (nested type name uses a counter in its name to represent that type)
-            let mut paths = fs::read_dir(authority)?.collect::<Result<Vec<_>, _>>()?;
-            paths.sort_by_key(|dir| dir.path());
-            for schema_file in paths {
-                let schema_file_path = schema_file.path();
-                let schema_id = schema_file_path.file_name().unwrap().to_str().unwrap();
-
-                let schema = schema_system.load_isl_schema(schema_id).unwrap();
-
-                self.generate(schema)?;
-            }
+            self.generate_code_for_directory(authority, None, schema_system)?;
         }
         Ok(())
     }
 
-    /// Generates code for given Ion Schema
-    pub fn generate_code_for_schema(
+    /// Helper method to generate code for all schema files in a directory
+    /// `relative_path` is used to provide a relative path to the authority for a nested directory
+    pub fn generate_code_for_directory<P: AsRef<Path>>(
         &mut self,
+        directory: P,
+        relative_path: Option<&str>,
         schema_system: &mut SchemaSystem,
-        schema_id: &str,
     ) -> CodeGenResult<()> {
-        let schema = schema_system.load_isl_schema(schema_id).unwrap();
-        self.generate(schema)
+        let paths = fs::read_dir(&directory)?.collect::<Result<Vec<_>, _>>()?;
+        for schema_file in paths {
+            let schema_file_path = schema_file.path();
+
+            // if this is a nested directory then load schema files from it
+            if schema_file_path.is_dir() {
+                self.generate_code_for_directory(
+                    &schema_file_path,
+                    Some(
+                        schema_file_path
+                            .strip_prefix(&directory)
+                            .unwrap()
+                            .to_str()
+                            .unwrap(),
+                    ),
+                    schema_system,
+                )?;
+            } else {
+                let schema = if let Some(path) = relative_path {
+                    let relative_path_with_schema_id = Path::new(path)
+                        .join(schema_file_path.file_name().unwrap().to_str().unwrap());
+                    schema_system
+                        .load_isl_schema(relative_path_with_schema_id.as_path().to_str().unwrap())
+                } else {
+                    schema_system
+                        .load_isl_schema(schema_file_path.file_name().unwrap().to_str().unwrap())
+                }?;
+                self.generate(schema)?;
+            }
+        }
+
+        Ok(())
     }
 
     fn generate(&mut self, schema: IslSchema) -> CodeGenResult<()> {
@@ -328,7 +349,6 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
             let isl_type_name = isl_type.name().unwrap().to_string();
             self.generate_abstract_data_type(&isl_type_name, isl_type)?;
         }
-
         Ok(())
     }
 
@@ -597,24 +617,10 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
         type_name_suggestion: Option<&str>,
     ) -> CodeGenResult<Option<FullyQualifiedTypeReference>> {
         Ok(match isl_type_ref {
-            IslTypeRef::Named(name, _) => {
-                let schema_type: IonSchemaType = name.into();
-                L::target_type(&schema_type)
-                    .as_ref()
-                    .map(|type_name| FullyQualifiedTypeReference {
-                        type_name: vec![NamespaceNode::Type(type_name.to_string())],
-                        parameters: vec![],
-                    })
-                    .map(|t| {
-                        if field_presence == FieldPresence::Optional {
-                            L::target_type_as_optional(t)
-                        } else {
-                            t
-                        }
-                    })
-            }
-            IslTypeRef::TypeImport(_, _) => {
-                unimplemented!("Imports in schema are not supported yet!");
+            IslTypeRef::Named(name, _) => Self::target_type_for(field_presence, name),
+            IslTypeRef::TypeImport(isl_import_type, _) => {
+                let name = isl_import_type.type_name();
+                Self::target_type_for(field_presence, name)
             }
             IslTypeRef::Anonymous(type_def, _) => {
                 let name = type_name_suggestion.map(|t| t.to_string()).ok_or(
@@ -635,6 +641,27 @@ impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
                 Some(nested_type_name)
             }
         })
+    }
+
+    /// Returns the target type based on given ISL type name and field presence
+    fn target_type_for(
+        field_presence: FieldPresence,
+        name: &String,
+    ) -> Option<FullyQualifiedTypeReference> {
+        let schema_type: IonSchemaType = name.into();
+        L::target_type(&schema_type)
+            .as_ref()
+            .map(|type_name| FullyQualifiedTypeReference {
+                type_name: vec![NamespaceNode::Type(type_name.to_string())],
+                parameters: vec![],
+            })
+            .map(|t| {
+                if field_presence == FieldPresence::Optional {
+                    L::target_type_as_optional(t)
+                } else {
+                    t
+                }
+            })
     }
 
     /// Returns error if duplicate constraints are present based `found_constraint` flag

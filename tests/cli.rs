@@ -266,8 +266,6 @@ mod code_gen_tests {
         cmd.args([
             "-X",
             "generate",
-            "--schema",
-            "test_schema.isl",
             "--output",
             temp_dir.path().to_str().unwrap(),
             "--language",

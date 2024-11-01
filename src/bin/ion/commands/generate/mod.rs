@@ -45,12 +45,6 @@ impl IonCliCommand for GenerateCommand {
                     .short('o')
                     .help("Output directory [default: current directory]"),
             )
-            .arg(
-                Arg::new("schema")
-                    .long("schema")
-                    .short('s')
-                    .help("Schema file name or schema id"),
-            )
             // `--namespace` is required when Java language is specified for code generation
             .arg(
                 Arg::new("namespace")
@@ -118,49 +112,26 @@ impl IonCliCommand for GenerateCommand {
 
         println!("Started generating code...");
 
-        // Extract schema file provided by user
-        match args.get_one::<String>("schema") {
-            None => {
-                // generate code based on schema and programming language
-                match language {
-                    "java" => {
-                        Self::print_java_code_gen_warnings();
-                        CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().split('.').map(|s| NamespaceNode::Package(s.to_string())).collect())
-                            .generate_code_for_authorities(&authorities, &mut schema_system)?
-                    },
-                    "rust" => {
-                        Self::print_rust_code_gen_warnings();
-                        CodeGenerator::<RustLanguage>::new(output)
-                            .generate_code_for_authorities(&authorities, &mut schema_system)?
-                    }
-                    _ => bail!(
-                        "Programming language '{}' is not yet supported. Currently supported targets: 'java', 'rust'",
-                        language
-                    )
-                }
+        // generate code based on schema and programming language
+        match language {
+            "java" => {
+                Self::print_java_code_gen_warnings();
+                CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().split('.').map(|s| NamespaceNode::Package(s.to_string())).collect())
+                    .generate_code_for_authorities(&authorities, &mut schema_system)?
+            },
+            "rust" => {
+                Self::print_rust_code_gen_warnings();
+                CodeGenerator::<RustLanguage>::new(output)
+                    .generate_code_for_authorities(&authorities, &mut schema_system)?
             }
-            Some(schema_id) => {
-                // generate code based on schema and programming language
-                match language {
-                    "java" =>  {
-                        Self::print_java_code_gen_warnings();
-                        CodeGenerator::<JavaLanguage>::new(output, namespace.unwrap().split('.').map(|s| NamespaceNode::Package(s.to_string())).collect()).generate_code_for_schema(&mut schema_system, schema_id)?
-                    },
-                    "rust" => {
-                        Self::print_rust_code_gen_warnings();
-                        CodeGenerator::<RustLanguage>::new(output)
-                            .generate_code_for_authorities(&authorities, &mut schema_system)?
-                    }
-                    _ => bail!(
-                        "Programming language '{}' is not yet supported. Currently supported targets: 'java', 'rust'",
-                        language
-                    )
-                }
-            }
+            _ => bail!(
+                "Programming language '{}' is not yet supported. Currently supported targets: 'java', 'rust'",
+                language
+            )
         }
 
         println!("Code generation complete successfully!");
-        println!("Path to generated code: {}", output.display());
+        println!("All the schema files in authority(s) are generated into a flattened namespace, path to generated code: {}", output.display());
         Ok(())
     }
 }
