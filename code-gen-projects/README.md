@@ -83,9 +83,6 @@ tasks {
 }
 ```
 
-_Note: Code generation subcommand `generate` is under a feature flag. It is available
-through `brew install ion-cli --HEAD` or `cargo install ion-cli --all-features`._
-
 ### Tests
 
 The tests for the generated code are defined in `CodeGenTests.java`. It has the following tests:
@@ -101,12 +98,13 @@ The tests for the generated code are defined in `CodeGenTests.java`. It has the 
 
 Here are the steps to follow for running tests:
 
-1. Install ion-cli with either `brew install ion-cli --HEAD` or `cargo install ion-cli --all-features`.
+1. Install ion-cli with either `brew install ion-cli` or `cargo install ion-cli`.
     1. If you installed with brew then your executable is there in `ion` and you don't need to set up `ION_CLI`
        environment variable.
     2. If you installed with `cargo` then your executable would be in `$HOME/.cargo/bin` and you need to setup the
        environment variable `ION_CLI` to point to the executable's path. If you need latest commits from cargo which are
-       not released yet, then do `cargo install ion-cli --all-features --git https://github.com/amazon-ion/ion-cli.git`.
+       not released yet, then do `cargo install ion-cli --git https://github.com/amazon-ion/ion-cli.git` or
+       `brew install ion-cli --HEAD`.
 2. All the tests uses an environment variable `ION_INPUT` which has the path to input Ion files. So if you want to
    test out this project locally set the environment variable `ION_INPUT` to point to `code-gen-projects/input.`_
 3. `cd code-gen-projects/java/code-gen-demo`
@@ -177,9 +175,6 @@ fn main() {
 }
 ```
 
-_Note: Code generation subcommand `generate` is under a feature flag. It is available
-through `brew install ion-cli --HEAD` or `cargo install ion-cli --all-features`._
-
 ### Tests
 
 The tests for the generated code are defined in `tests` module in `lib.rs`. It has the following tests:
@@ -194,12 +189,12 @@ The tests for the generated code are defined in `tests` module in `lib.rs`. It h
 
 Here are the steps to follow for running tests:
 
-1. Install ion-cli with either `brew install ion-cli --HEAD` or `cargo install ion-cli --all-features`.
+1. Install ion-cli with either `brew install ion-cli` or `cargo install ion-cli`.
     1. If you installed with brew then your executable is there in `ion` and you need to setup the
        environment variable `ION_CLI` to point to the executable's path.
     2. If you installed with `cargo` then your executable would be in `$HOME/.cargo/bin` and you need to setup the
        environment variable `ION_CLI` to point to the executable's path. If you need latest commits from cargo which are
-       not released yet, then do `cargo install ion-cli --all-features --git https://github.com/amazon-ion/ion-cli.git`.
+       not released yet, then do `cargo install ion-cli --git https://github.com/amazon-ion/ion-cli.git`.
 2. `cd code-gen-projects/rust/code-gen-demo`
 3. Finally, to run the tests, just do:
 

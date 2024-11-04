@@ -16,7 +16,7 @@ fn main() {
         .arg("generate")
         .arg("-l")
         .arg("rust")
-        .arg("-d")
+        .arg("-A")
         .arg(format!("{}/../../schema", crate_dir))
         .arg("-o")
         .arg(&out_dir);

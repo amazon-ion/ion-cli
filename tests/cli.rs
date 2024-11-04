@@ -272,7 +272,7 @@ mod code_gen_tests {
             "java",
             "--namespace",
             "org.example",
-            "--directory",
+            "--authority",
             temp_dir.path().to_str().unwrap(),
         ]);
         let command_assert = cmd.assert();

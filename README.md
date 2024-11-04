@@ -1,4 +1,5 @@
 # `ion-cli`
+
 [![Crate](https://img.shields.io/crates/v/ion-cli.svg)](https://crates.io/crates/ion-cli)
 [![License](https://img.shields.io/hexpm/l/plug.svg)](https://github.com/amazon-ion/ion-cli/blob/main/LICENSE)
 [![CI Build](https://github.com/amazon-ion/ion-cli/workflows/CI%20Build/badge.svg)](https://github.com/amazon-ion/ion-cli/actions?query=workflow%3A%22CI+Build%22)
@@ -11,7 +12,8 @@ for working with [the Ion data format](https://amzn.github.io/ion-docs/docs/spec
 * [Examples](#examples)
     * [Viewing the contents of an Ion file](#viewing-the-contents-of-an-ion-file)
     * [Converting between Ion formats](#converting-between-ion-formats)
-    * [Converting between Ion and other formats with `to` and `from`](#converting-between-ion-and-other-formats-with-to-and-from)
+    * [Converting between Ion and other formats with `to` and
+      `from`](#converting-between-ion-and-other-formats-with-to-and-from)
     * [Analyzing binary Ion file encodings with `inspect`](#analyzing-binary-ion-file-encodings-with-inspect)
 * [Installation](#installation)
     * [via `brew`](#via-brew)
@@ -183,12 +185,6 @@ subcommand) of `ion-cli`, run:
 
 ```bash
 brew install ion-cli --HEAD
-```
-
-If you are looking into accessing all features with `cargo` (including `experimental` features) of `ion-cli`, run:
-
-```shell
-cargo install ion-cli --all-features
 ```
 
 Then make sure that `~/.cargo/bin` is on your `$PATH`. You can confirm that it
