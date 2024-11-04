@@ -103,7 +103,8 @@ Here are the steps to follow for running tests:
        environment variable.
     2. If you installed with `cargo` then your executable would be in `$HOME/.cargo/bin` and you need to setup the
        environment variable `ION_CLI` to point to the executable's path. If you need latest commits from cargo which are
-       not released yet, then do `cargo install ion-cli --git https://github.com/amazon-ion/ion-cli.git`.
+       not released yet, then do `cargo install ion-cli --git https://github.com/amazon-ion/ion-cli.git` or
+       `brew install ion-cli --HEAD`.
 2. All the tests uses an environment variable `ION_INPUT` which has the path to input Ion files. So if you want to
    test out this project locally set the environment variable `ION_INPUT` to point to `code-gen-projects/input.`_
 3. `cd code-gen-projects/java/code-gen-demo`
@@ -173,9 +174,6 @@ fn main() {
     println!("cargo:rerun-if-changed=schema/");
 }
 ```
-
-_Note: Code generation subcommand `generate` is under a feature flag. It is available
-through `brew install ion-cli` or `cargo install ion-cli`._
 
 ### Tests
 

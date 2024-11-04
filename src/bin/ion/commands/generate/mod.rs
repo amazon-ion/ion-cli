@@ -38,8 +38,6 @@ impl IonCliCommand for GenerateCommand {
     }
 
     fn configure_args(&self, command: Command) -> Command {
-        let schema_options_header = "Selecting a schema";
-
         command
             .arg(
                 Arg::new("output")
@@ -65,10 +63,9 @@ impl IonCliCommand for GenerateCommand {
             )
             .arg(
                 Arg::new("authority")
-                    .help_heading(schema_options_header)
                     .long("authority")
                     .short('A')
-                    .required(false)
+                    .required(true)
                     .action(ArgAction::Append)
                     .value_name("directory")
                     .value_hint(ValueHint::DirPath)
