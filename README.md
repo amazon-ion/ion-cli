@@ -14,11 +14,11 @@ for working with [the Ion data format](https://amzn.github.io/ion-docs/docs/spec
     * [Converting between Ion formats](#converting-between-ion-formats)
     * [Converting between Ion and other formats with `to` and
       `from`](#converting-between-ion-and-other-formats-with-to-and-from)
+    * [Ion code generation](#ion-code-generation)
     * [Analyzing binary Ion file encodings with `inspect`](#analyzing-binary-ion-file-encodings-with-inspect)
 * [Installation](#installation)
     * [via `brew`](#via-brew)
     * [via `cargo`](#via-cargo)
-    * [Installing experimental subcommand](#installing-experimental-subcommand)
 * [Build Instructions](#build-instructions)
     * [From source](#from-source)
     * [Using Docker](#using-docker)
@@ -171,6 +171,11 @@ brew tap amazon-ion/ion-cli
 brew install ion-cli
 ```
 
+To install the (potentially unstable) latest changes from the tip of `main` rather than the latest release, use:
+```bash
+brew install ion-cli --HEAD
+```
+
 ### via `cargo`
 
 The `ion-cli` can also be installed by using Rust's package manager, `cargo`.
@@ -181,21 +186,6 @@ To install `ion-cli`, run the following command:
 
 ```shell
 cargo install ion-cli
-```
-
-### Installing experimental subcommand
-
-If you are looking into accessing HEAD implementation of `ion-cli`, run:
-
-```bash
-brew install ion-cli --HEAD
-```
-
-Then make sure that `~/.cargo/bin` is on your `$PATH`. You can confirm that it
-has been installed successfully by running:
-
-```shell
-ion help
 ```
 
 ## Build instructions
