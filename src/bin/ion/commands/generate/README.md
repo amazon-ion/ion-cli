@@ -343,10 +343,10 @@ types defined within the outer types.
 Generated type has a `readFrom` method which can be used to read Ion data using `Reader` and initialize the generated
 type with the given Ion data. *(Generated code here depends on `ion-rs` version `1.0.0-rc.2`)*
 
-```rust
-let mut reader: Reader = ReaderBuilder::new().build(ION_DATA) ?;
-reader.next() ?;
-let foo: Foo = Foo::read_from( & mut reader) ?;
+```
+let mut reader: Reader = ReaderBuilder::new().build(ION_DATA)?;
+reader.next()?;
+let foo: Foo = Foo::read_from(&mut reader)?;
 ```
 
 ### Write a generated type to an `Writer`
@@ -354,10 +354,10 @@ let foo: Foo = Foo::read_from( & mut reader) ?;
 Generated type has a `writeTo` method which can be used to write the type as Ion using `Writer` . *(Generated code here
 depends on `ion-rs` version `1.0.0-rc.2`)*
 
-```rust
-let mut text_writer = TextWriterBuilder::default ().build( & mut buffer) ?;
-foo.write_to( & mut text_writer) ?;
-text_writer.flush() ?;
+```
+let mut text_writer = TextWriterBuilder::default().build(&mut buffer)?;
+foo.write_to(&mut text_writer)?;
+text_writer.flush()?;
 ```
 
 ## Appendix A – Built-in ISL types and corresponding generated types
