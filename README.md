@@ -14,11 +14,11 @@ for working with [the Ion data format](https://amzn.github.io/ion-docs/docs/spec
     * [Converting between Ion formats](#converting-between-ion-formats)
     * [Converting between Ion and other formats with `to` and
       `from`](#converting-between-ion-and-other-formats-with-to-and-from)
+    * [Ion code generation](#ion-code-generation)
     * [Analyzing binary Ion file encodings with `inspect`](#analyzing-binary-ion-file-encodings-with-inspect)
 * [Installation](#installation)
     * [via `brew`](#via-brew)
     * [via `cargo`](#via-cargo)
-    * [Installing experimental subcommand for code generation](#installing-experimental-subcommand-for-code-generation)
 * [Build Instructions](#build-instructions)
     * [From source](#from-source)
     * [Using Docker](#using-docker)
@@ -83,6 +83,12 @@ Convert JSON to Ion:
 ```shell
 ion from -X json my_file.json
 ```
+
+### Ion Code generation
+
+Code generation is supported with `generate` subcommand on the CLI.
+For more information on how to use code generator,
+see [Ion code generator user guide](https://github.com/amazon-ion/ion-cli/tree/main/src/bin/ion/commands/generate/README.md).
 
 ### Analyzing binary Ion file encodings with `inspect`
 
