@@ -18,7 +18,7 @@ for working with [the Ion data format](https://amzn.github.io/ion-docs/docs/spec
 * [Installation](#installation)
     * [via `brew`](#via-brew)
     * [via `cargo`](#via-cargo)
-    * [Installing experimental subcommand for code generation](#installing-experimental-subcommand-for-code-generation)
+    * [Installing experimental subcommand](#installing-experimental-subcommand)
 * [Build Instructions](#build-instructions)
     * [From source](#from-source)
     * [Using Docker](#using-docker)
@@ -83,6 +83,12 @@ Convert JSON to Ion:
 ```shell
 ion from -X json my_file.json
 ```
+
+### Ion Code generation
+
+Code generation is supported with `generate` subcommand on the CLI.
+For more information on how to use code generator,
+see [Ion code generator user guide](https://github.com/amazon-ion/ion-cli/tree/main/src/bin/ion/commands/generate/README.md).
 
 ### Analyzing binary Ion file encodings with `inspect`
 
@@ -177,11 +183,9 @@ To install `ion-cli`, run the following command:
 cargo install ion-cli
 ```
 
-### Installing experimental subcommand for code generation
+### Installing experimental subcommand
 
-If you are looking into accessing all features with `brew` (including `experimental` features, currently only
-includes `generate`
-subcommand) of `ion-cli`, run:
+If you are looking into accessing HEAD implementation of `ion-cli`, run:
 
 ```bash
 brew install ion-cli --HEAD
@@ -192,35 +196,6 @@ has been installed successfully by running:
 
 ```shell
 ion help
-```
-
-You should see output that resembles the following:
-
-```
-A collection of tools for working with Ion data.
-
-Usage: ion [OPTIONS] <COMMAND>
-
-Commands:
-  cat        Prints all Ion input files to the specified output in the requested format.
-  count      (UNSTABLE) Prints the number of top-level values found in the input stream.
-  from       'from' is a namespace for commands that convert other data formats to Ion.
-  generate   (UNSTABLE) Generates code using given schema file.
-  head       Prints the specified number of top-level values in the input stream.
-  inspect    Displays hex-encoded binary Ion alongside its equivalent text Ion.
-                 Its output prioritizes human readability and is likely to change
-                 between versions. Stable output for programmatic use cases is a
-                 non-goal.
-  primitive  (UNSTABLE) Prints the binary representation of an Ion encoding primitive.
-  schema     The 'schema' command is a namespace for commands that are related to Ion Schema.
-  symtab     'symtab' is a namespace for commands that operate on symbol tables
-  to         'to' is a namespace for commands that convert Ion to another data format.
-  help       Print this message or the help of the given subcommand(s)
-
-Options:
-  -h, --help      Print help
-  -V, --version   Print version
-  -X, --unstable  Opt in to using an unstable feature of Ion CLI.
 ```
 
 ## Build instructions
