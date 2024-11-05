@@ -22,7 +22,7 @@ This guide covers
 The easiest way to install the `ion-cli` is via [Homebrew](https://brew.sh/).
 Once the `brew` command is available, run:
 
-```
+```sh
 brew tap amazon-ion/ion-cli
 brew install ion-cli
 ```
@@ -33,7 +33,7 @@ The `ion-cli` can also be installed by using Rust's package manager, `cargo`. If
 install it by visiting [rustup.rs](https://rustup.rs/).
 To install `ion-cli`, run the following command:
 
-```
+```sh
 cargo install ion-cli
 ```
 
@@ -125,7 +125,7 @@ Inline types in Ion Schema do not have a corresponding name for it. Here’s how
 For more information on inline types in Ion Schema,
 see [Type Definitions](https://amazon-ion.github.io/ion-schema/docs/isl-2-0/spec#type-definitions).
 
-Since these inline types do not have name attached to it, code generator interprets the name of this inline type based
+Since an inline type does not have a name attached to it, code generator interprets the name of this inline type based
 on where its placed in the schema. Below are few cases on how code generator interprets the name for the generated data
 model for an inline type in ISL:
 
@@ -167,16 +167,14 @@ type::{
 
 Use the `generate` subcommand with the following syntax:
 
-```
+```sh
 ion -X generate [OPTIONS] --language <language> --authority <directory>
 ```
 
 Required options:
 
 * `--language` or `-l`: Specify the target programming language (java or rust)
-* `-A`, `—authority`: The root(s) of the file system authority(s). Authorities are only required if your schema needs to
-  import a type from another schema or if you are loading a schema using the —id option. (For more information what is
-  an authority,
+* `-A`, `—authority`: The root(s) of the file system authority(s). (For more information what is an authority,
   see [Ion Schema Specification](https://amazon-ion.github.io/ion-schema/docs/isl-1-0/spec#schema-authorities))
 * `--namespace` or `-n`: Provide a namespace for generated Java code (e.g., `org.example`)
 
@@ -186,7 +184,7 @@ Additional options:
 
 Example:
 
-```
+```sh
 ion -X generate -l java -n org.example -A ./schema -o ./generated/java
 ```
 
@@ -194,14 +192,12 @@ If you are looking to run the code generator at build time, follow this guide on
 to [build process in Java](#adding-to-the-build-process)
 and [build process in Rust](#adding-to-the-build-process-1).
 
-This repository also contains an [example](https://github.com/amazon-ion/ion-cli/tree/main/code-gen-projects) Gradle and
-Rust project to showcase how to use cod generator at build time.
+This repository also contains [examples](https://github.com/amazon-ion/ion-cli/tree/main/code-gen-projects) of how to
+use the code generator in Java and Rust projects.
 
 ## Using the generated code in a Java project
 
 ### Adding to the build process
-
-##### **Using Gradle**
 
 To generate code as part of the build process of a project, define a Gradle build task inside `build.gradle.kts` or
 `build.gradle` .
@@ -209,7 +205,7 @@ The generated code requires a dependency to `ion-java` version `1.11.9` .
 Following is a sample build task defined in `build.gradle.kts` that you can add in an existing Gradle project to
 generate code for your schemas:
 
-```
+```kotlin
 val ionSchemaSourceCodeDir = "YOUR_SOURCE_SCHEMA_DIRECTORY"
 val generatedIonSchemaModelDir = "${layout.buildDirectory.get()}/generated/java"
 
@@ -267,7 +263,7 @@ applicable) a public, single-argument constructor.
 Generated type has a `readFrom` method which can be used to read Ion data using an `IonReader` and initialize the
 generated type with the given Ion data. *(Generated code here depends on `ion-java` version `1.11.9`)*
 
-```
+```java
 // asssume that the generated type is `Foo`
 IonReaderBuilder readerBuilder = IonReaderBuilder.standard();
 try (IonReader reader = readerBuilder.build(bufferedStream)) {
@@ -281,7 +277,7 @@ try (IonReader reader = readerBuilder.build(bufferedStream)) {
 Generated type has a `writeTo` method which can be used to write the type as Ion using an `IonWriter` . *(Generated code
 here depends on `ion-java` version `1.11.9`)*
 
-```
+```java
 // asssume that the generated type is initialized as `foo`
 IonWriter writer = b.build(out);
 foo.writeTo(writer);
@@ -296,7 +292,7 @@ To generate code as part of the build process of a Cargo project, define a cargo
 The generated code requires a dependency to `ion-rs` version `1.0.0-rc.2` .
 Following is sample build script you can add in your existing Cargo project to generate code using `ion-cli`:
 
-```
+```rust
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
@@ -347,10 +343,10 @@ types defined within the outer types.
 Generated type has a `readFrom` method which can be used to read Ion data using `Reader` and initialize the generated
 type with the given Ion data. *(Generated code here depends on `ion-rs` version `1.0.0-rc.2`)*
 
-```
-let mut reader: Reader = ReaderBuilder::new().build(ION_DATA)?;
-reader.next()?;
-let foo: Foo = Foo::read_from(&mut reader)?;
+```rust
+let mut reader: Reader = ReaderBuilder::new().build(ION_DATA) ?;
+reader.next() ?;
+let foo: Foo = Foo::read_from( & mut reader) ?;
 ```
 
 ### Write a generated type to an `Writer`
@@ -358,10 +354,10 @@ let foo: Foo = Foo::read_from(&mut reader)?;
 Generated type has a `writeTo` method which can be used to write the type as Ion using `Writer` . *(Generated code here
 depends on `ion-rs` version `1.0.0-rc.2`)*
 
-```
-let mut text_writer = TextWriterBuilder::default().build(&mut buffer)?;
-foo.write_to(&mut text_writer)?;
-text_writer.flush()?;
+```rust
+let mut text_writer = TextWriterBuilder::default ().build( & mut buffer) ?;
+foo.write_to( & mut text_writer) ?;
+text_writer.flush() ?;
 ```
 
 ## Appendix A – Built-in ISL types and corresponding generated types
@@ -400,9 +396,7 @@ Here are some examples on generated code for ISL type definitions:
 
 *Note: generated code here was trimmed to represent only the portion of code necessary for this example. Each generated
 data model will have its builder, getters, setters, readFrom(which read Ion data to the model) and writeTo(which writes
-the model as Ion data) are defined.
-
-*
+the model as Ion data) are defined.*
 
 #### Generating classes
 
@@ -425,7 +419,7 @@ type::{
 
 **Generated Code in Java:**
 
-```
+```java
 class Person {
     private Integer age;
     private String lastName;
@@ -515,7 +509,7 @@ type::{
 
 **Generated code in Java:**
 
-```
+```java
  class Customer {
     private org.example.Customer.Address address;
     private String name;
@@ -547,7 +541,7 @@ type::{
 
 **Generated code in Java:**
 
-```
+```java
 public  enum Fruits {
     APPLE("apple"),
     BANANA("banana"),
@@ -584,4 +578,3 @@ Limitations:
 * Built-in Ion Schema types `timestamp`, `decimal`, `text`, `lob`, `number`, and `document` are not yet
   supported ([ion-cli#173](https://github.com/amazon-ion/ion-cli/issues/173)
 
-* * *
