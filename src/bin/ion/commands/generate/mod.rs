@@ -69,11 +69,7 @@ impl IonCliCommand for GenerateCommand {
                     .action(ArgAction::Append)
                     .value_name("directory")
                     .value_hint(ValueHint::DirPath)
-                    .help(
-                        "The root(s) of the file system authority(s). Authorities are only required if your \
-                    schema needs to import a type from another schema or if you are loading a schema using \
-                    the --id option.",
-                    ),
+                    .help("The root(s) of the file system authority(s)"),
             )
     }
 
