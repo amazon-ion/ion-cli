@@ -789,6 +789,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                 match raw_annotation? {
                     RawSymbolRef::SymbolId(sid) => write!(out, "${sid}"),
                     RawSymbolRef::Text(_) => write!(out, "<text>"),
+                    RawSymbolRef::SystemSymbol_1_1(_) => write!(out, "<system-symbol>"),
                 }?;
             }
             Ok(())
@@ -984,6 +985,9 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                 }
                 RawSymbolRef::Text(_) => {
                     write!(out, " // <text>")
+                }
+                RawSymbolRef::SystemSymbol_1_1(_) => {
+                    write!(out, " // <system-symbol>")
                 }
             }?;
             Ok(())

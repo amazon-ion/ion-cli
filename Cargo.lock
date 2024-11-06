@@ -914,7 +914,7 @@ dependencies = [
 
 [[package]]
 name = "ion-cli"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -946,9 +946,9 @@ dependencies = [
 
 [[package]]
 name = "ion-rs"
-version = "1.0.0-rc.8"
+version = "1.0.0-rc.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66a15daf373b7ab9e11b66340c4cd09dc2847d1ef2a6372cbe0ed74a0c0d9b85"
+checksum = "e3870f0125bfc40c9d8a738ac265dbc291d39c0b11882b238e4045d671f40f9c"
 dependencies = [
  "arrayvec",
  "base64 0.12.3",
@@ -960,6 +960,7 @@ dependencies = [
  "nom",
  "num-integer",
  "num-traits",
+ "phf",
  "rustc-hash",
  "serde",
  "serde_with",
@@ -1266,6 +1267,7 @@ version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ade2d8b8f33c7333b51bcf0428d37e217e9f32192ae4772156f65063b8ce03dc"
 dependencies = [
+ "phf_macros",
  "phf_shared",
 ]
 
@@ -1287,6 +1289,19 @@ checksum = "48e4cc64c2ad9ebe670cb8fd69dd50ae301650392e81c05f9bfcb2d5bdbc24b0"
 dependencies = [
  "phf_shared",
  "rand",
+]
+
+[[package]]
+name = "phf_macros"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3444646e286606587e49f3bcf1679b8cef1dc2c5ecc29ddacaffc305180d464b"
+dependencies = [
+ "phf_generator",
+ "phf_shared",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.79",
 ]
 
 [[package]]
