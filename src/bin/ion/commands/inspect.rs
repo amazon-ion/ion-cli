@@ -472,7 +472,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             &mut formatter,
         )?;
         self.with_style(eexp_style(), |out| {
-            write!(out, "(:{}", eexp.invoked_macro().id_text())?;
+            write!(out, "(:{}", eexp.invoked_macro().id())?;
             Ok(())
         })?;
         for (param, arg_result) in eexp
@@ -591,9 +591,6 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             Template(_, _element) => {
                 self.inspect_ephemeral_sequence(depth, "(", "", ")", delimiter, sexp, no_comment())
             }
-            Constructed(_, _) => {
-                todo!()
-            }
         }
     }
 
@@ -667,6 +664,12 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             ExpandedStructSource::Template(_, _, _) => {
                 self.inspect_ephemeral_struct(depth, delimiter, struct_)
             }
+            ion_rs::ExpandedStructSource::MakeStruct(_, _) => {
+                todo!("Support Ion 1.1 make_struct");
+            }
+            ion_rs::ExpandedStructSource::MakeField(_) => {
+                todo!("Support Ion 1.1 make_field");
+            }
         }
     }
 
@@ -679,6 +682,8 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         let raw_struct = match struct_.expanded().source() {
             ExpandedStructSource::ValueLiteral(raw_struct) => raw_struct,
             ExpandedStructSource::Template(_, _, _) => todo!("Ion 1.1 template symbol table"),
+            ion_rs::ExpandedStructSource::MakeStruct(_, _) => todo!("Support Ion 1.1 make_struct"),
+            ion_rs::ExpandedStructSource::MakeField(_) => todo!("Support Ion 1.1 make_field")
         };
 
         use LazyRawValueKind::*;
