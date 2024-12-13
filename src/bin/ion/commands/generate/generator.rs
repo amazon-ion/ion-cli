@@ -39,7 +39,7 @@ pub(crate) struct CodeGenerator<'a, L: Language> {
 
 impl<'a> CodeGenerator<'a, RustLanguage> {
     #[allow(dead_code)]
-    pub fn new(output: &'a Path) -> CodeGenerator<RustLanguage> {
+    pub fn new(output: &'a Path) -> CodeGenerator<'a, RustLanguage> {
         let mut tera = Tera::default();
         // Add all templates using `rust_templates` module constants
         // This allows packaging binary without the need of template resources.

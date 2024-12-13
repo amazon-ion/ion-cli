@@ -131,6 +131,9 @@ impl IonSchemaCommandInput {
         })
     }
 
+    // If this ever gets used, the `expect` will cause a compiler error so the developer will
+    // know to come remove this.
+    #[expect(dead_code)]
     fn get_schema_system(&self) -> &SchemaSystem {
         &self.schema_system
     }

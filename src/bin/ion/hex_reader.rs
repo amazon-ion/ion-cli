@@ -1,6 +1,5 @@
-use crate::hex_reader::DigitState::ZeroX;
 use ion_rs::{IonInput, IonStream};
-use std::io::{Bytes, Cursor, Error, ErrorKind, Read};
+use std::io::{Bytes, Error, ErrorKind, Read};
 
 /// Wraps an existing reader in order to reinterpret the content of that reader as a
 /// hexadecimal-encoded byte stream.
@@ -120,54 +119,60 @@ impl<R: Read> Read for HexReader<R> {
     }
 }
 
-#[test]
-fn test_read_hex_digits() {
-    let hex = "00010203";
-    let reader = HexReader::from(Cursor::new(hex));
-    let translated_bytes: std::io::Result<Vec<_>> = reader.bytes().collect();
-    let expected = vec![0u8, 1, 2, 3];
-    assert_eq!(expected, translated_bytes.unwrap())
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
 
-#[test]
-fn test_read_hex_digits_with_whitespace() {
-    let hex = "00   01\n  02 \t \t\t  03 \r\n04";
-    let reader = HexReader::from(Cursor::new(hex));
-    let translated_bytes: std::io::Result<Vec<_>> = reader.bytes().collect();
-    let expected = vec![0u8, 1, 2, 3, 4];
-    assert_eq!(expected, translated_bytes.unwrap())
-}
+    #[test]
+    fn test_read_hex_digits() {
+        let hex = "00010203";
+        let reader = HexReader::from(Cursor::new(hex));
+        let translated_bytes: std::io::Result<Vec<_>> = reader.bytes().collect();
+        let expected = vec![0u8, 1, 2, 3];
+        assert_eq!(expected, translated_bytes.unwrap())
+    }
 
-#[test]
-fn test_read_hex_digits_with_leading_0x() {
-    let hex = "0x00 0x01 0x02 0x03 0x04";
-    let reader = HexReader::from(Cursor::new(hex));
-    let translated_bytes: std::io::Result<Vec<_>> = reader.bytes().collect();
-    let expected = vec![0u8, 1, 2, 3, 4];
-    assert_eq!(expected, translated_bytes.unwrap())
-}
+    #[test]
+    fn test_read_hex_digits_with_whitespace() {
+        let hex = "00   01\n  02 \t \t\t  03 \r\n04";
+        let reader = HexReader::from(Cursor::new(hex));
+        let translated_bytes: std::io::Result<Vec<_>> = reader.bytes().collect();
+        let expected = vec![0u8, 1, 2, 3, 4];
+        assert_eq!(expected, translated_bytes.unwrap())
+    }
 
-#[test]
-fn test_read_hex_digits_with_commas() {
-    let hex = "00,01,02,03,04";
-    let reader = HexReader::from(Cursor::new(hex));
-    let translated_bytes: std::io::Result<Vec<_>> = reader.bytes().collect();
-    let expected = vec![0u8, 1, 2, 3, 4];
-    assert_eq!(expected, translated_bytes.unwrap())
-}
+    #[test]
+    fn test_read_hex_digits_with_leading_0x() {
+        let hex = "0x00 0x01 0x02 0x03 0x04";
+        let reader = HexReader::from(Cursor::new(hex));
+        let translated_bytes: std::io::Result<Vec<_>> = reader.bytes().collect();
+        let expected = vec![0u8, 1, 2, 3, 4];
+        assert_eq!(expected, translated_bytes.unwrap())
+    }
 
-#[test]
-fn test_read_odd_number_of_hex_digits() {
-    let hex = "000102030";
-    let reader = HexReader::from(Cursor::new(hex));
-    let translated_bytes: std::io::Result<Vec<_>> = reader.bytes().collect();
-    assert!(translated_bytes.is_err())
-}
+    #[test]
+    fn test_read_hex_digits_with_commas() {
+        let hex = "00,01,02,03,04";
+        let reader = HexReader::from(Cursor::new(hex));
+        let translated_bytes: std::io::Result<Vec<_>> = reader.bytes().collect();
+        let expected = vec![0u8, 1, 2, 3, 4];
+        assert_eq!(expected, translated_bytes.unwrap())
+    }
 
-#[test]
-fn test_read_hex_digits_with_invalid_char() {
-    let hex = "000102030Q";
-    let reader = HexReader::from(Cursor::new(hex));
-    let translated_bytes: std::io::Result<Vec<_>> = reader.bytes().collect();
-    assert!(translated_bytes.is_err())
+    #[test]
+    fn test_read_odd_number_of_hex_digits() {
+        let hex = "000102030";
+        let reader = HexReader::from(Cursor::new(hex));
+        let translated_bytes: std::io::Result<Vec<_>> = reader.bytes().collect();
+        assert!(translated_bytes.is_err())
+    }
+
+    #[test]
+    fn test_read_hex_digits_with_invalid_char() {
+        let hex = "000102030Q";
+        let reader = HexReader::from(Cursor::new(hex));
+        let translated_bytes: std::io::Result<Vec<_>> = reader.bytes().collect();
+        assert!(translated_bytes.is_err())
+    }
 }

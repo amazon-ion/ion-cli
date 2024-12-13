@@ -15,23 +15,21 @@ keywords = ["format", "parse", "encode"]
 anyhow = "1.0"
 clap = { version = "4.5.8", features = ["cargo", "env", "wrap_help"] }
 colored = "2.0.0"
-digest = "0.9"
 sha2 = "0.9"
 sha3 = "0.9"
 flate2 = "1.0"
 infer = "0.15.0"
 # ion-rs version must be pinned because we are using experimental features
 # See https://github.com/amazon-ion/ion-cli/issues/155
-ion-rs = { version = "=1.0.0-rc.9", features = ["experimental", "experimental-ion-hash"] }
+ion-rs = { version = "1.0.0-rc.10", features = ["experimental", "experimental-ion-hash"] }
 tempfile = "3.2.0"
-ion-schema = "0.14.1"
+ion-schema = "0.15.0"
 lowcharts = "0.5.8"
 serde = { version = "1.0.163", features = ["derive"] }
 serde_json = { version = "1.0.81", features = ["arbitrary_precision", "preserve_order"] }
 base64 = "0.21.1"
 tera = { version = "1.18.1" }
 convert_case = { version = "0.6.0" }
-matches = "0.1.10"
 thiserror = "1.0.50"
 zstd = "0.13.0"
 termcolor = "1.4.1"
