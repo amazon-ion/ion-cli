@@ -1,20 +1,19 @@
 use std::fmt::Display;
-use std::io::{Cursor, ErrorKind, Read, Write};
+use std::io::{Cursor, Write};
 use std::str::FromStr;
 
 use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
+// The `inspect` command uses the `termcolor` crate to colorize its text when STDOUT is a TTY.
+use crate::hex_reader::HexReader;
+// When writing to a named file instead of STDOUT, `inspect` will use a `FileWriter` instead.
+// `FileWriter` ignores all requests to emit TTY color escape codes.
+use crate::output::CommandOutput;
 use anyhow::{bail, Context, Result};
 use clap::builder::ValueParser;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_rs::v1_0::{EncodedBinaryValue, RawValueRef};
 use ion_rs::*;
-
-// The `inspect` command uses the `termcolor` crate to colorize its text when STDOUT is a TTY.
-use crate::hex_reader::HexReader;
 use termcolor::{Color, ColorSpec, WriteColor};
-// When writing to a named file instead of STDOUT, `inspect` will use a `FileWriter` instead.
-// `FileWriter` ignores all requests to emit TTY color escape codes.
-use crate::output::CommandOutput;
 
 pub struct InspectCommand;
 
@@ -456,12 +455,25 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     }
 
     fn inspect_eexp(&mut self, depth: usize, eexp: EExpression<AnyEncoding>) -> Result<()> {
+        let LazyRawAnyEExpressionKind::Binary_1_1(raw_eexp) = eexp.raw_invocation().kind() else {
+            unreachable!("text e-expression")
+        };
+
         let mut formatter = BytesFormatter::new(
             BYTES_PER_ROW,
             vec![
-                // TODO: Add methods to EExpression that allow nuanced access to its encoded spans
-                // TODO: Length-prefixed and multibyte e-expression addresses
-                IonBytes::new(BytesKind::MacroId, &eexp.span().bytes()[0..1]),
+                IonBytes::new(
+                    BytesKind::MacroOpcodeAndAddress,
+                    raw_eexp.opcode_and_address_span().bytes(),
+                ),
+                IonBytes::new(
+                    BytesKind::TrailingLength,
+                    raw_eexp.length_prefix_span().bytes(),
+                ),
+                IonBytes::new(
+                    BytesKind::ArgumentEncodingBitmap,
+                    raw_eexp.bitmap_span().bytes(),
+                ),
             ],
         );
         self.newline()?;
@@ -472,7 +484,12 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             &mut formatter,
         )?;
         self.with_style(eexp_style(), |out| {
-            write!(out, "(:{}", eexp.invoked_macro().id_text())?;
+            if let Some(macro_name) = eexp.invoked_macro().name() {
+                write!(out, "(:{macro_name}")?;
+            } else {
+                write!(out, "(:{}", eexp.invoked_macro().id())?;
+            }
+
             Ok(())
         })?;
         for (param, arg_result) in eexp
@@ -494,9 +511,66 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                     use MacroExprKind::*;
                     match invocation.kind() {
                         EExp(eexp_arg) => self.inspect_eexp(depth + 1, eexp_arg)?,
-                        EExpArgGroup(_) => todo!("e-exp arg groups"),
+                        EExpArgGroup(arg_group) => {
+                            self.inspect_eexp_arg_group(depth + 1, arg_group)?
+                        }
                         TemplateMacro(_) | TemplateArgGroup(_) => {
-                            unreachable!("e-exp args by definition cannot be template invocations")
+                            unreachable!("e-exp args by definition cannot be TDL macro invocations")
+                        }
+                    }
+                }
+            }
+        }
+        self.write_text_only_line(depth, eexp_style(), ")")?;
+        Ok(())
+    }
+
+    fn inspect_eexp_arg_group(
+        &mut self,
+        depth: usize,
+        arg_group: EExpArgGroup<AnyEncoding>,
+    ) -> Result<()> {
+        self.newline()?;
+
+        let AnyEExpArgGroupKind::Binary_1_1(raw_arg_group) = arg_group.raw_arg_group().kind()
+        else {
+            unreachable!("text e-expression arg group")
+        };
+
+        let mut formatter = BytesFormatter::new(
+            BYTES_PER_ROW,
+            vec![IonBytes::new(
+                BytesKind::TrailingLength,
+                raw_arg_group.header_span().bytes(),
+            )],
+        );
+
+        self.write_offset_length_and_bytes(
+            depth,
+            raw_arg_group.range().start,
+            raw_arg_group.span().len(),
+            &mut formatter,
+        )?;
+
+        self.write_with_style(eexp_style(), "(::")?;
+        self.write_with_style(comment_style(), " // arg group")?;
+
+        // TODO: This impl will not evaluate nested e-expressions.
+        let nested_exprs = MacroExprArgsIterator::from_eexp_arg_group(arg_group.expressions());
+        for expr in nested_exprs {
+            match expr? {
+                ValueExpr::ValueLiteral(value) => {
+                    self.inspect_value(depth + 1, "", LazyValue::from(value), no_comment())?
+                }
+                ValueExpr::MacroInvocation(invocation) => {
+                    use MacroExprKind::*;
+                    match invocation.kind() {
+                        EExp(eexp_arg) => self.inspect_eexp(depth + 1, eexp_arg)?,
+                        EExpArgGroup(_arg_group) => {
+                            unreachable!("e-exp arg groups cannot contain e-exp arg groups")
+                        }
+                        TemplateMacro(_) | TemplateArgGroup(_) => {
+                            unreachable!("e-exp args by definition cannot be TDL macro invocations")
                         }
                     }
                 }
@@ -509,7 +583,6 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     fn write_text_only_line(&mut self, depth: usize, style: ColorSpec, text: &str) -> Result<()> {
         self.newline()?;
         self.write_blank_offset_length_and_bytes(depth)?;
-        self.write_indentation(depth)?;
         self.write_with_style(style, text)
     }
 
@@ -591,9 +664,6 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             Template(_, _element) => {
                 self.inspect_ephemeral_sequence(depth, "(", "", ")", delimiter, sexp, no_comment())
             }
-            Constructed(_, _) => {
-                todo!()
-            }
         }
     }
 
@@ -655,8 +725,9 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         delimiter: &str,
         struct_: LazyStruct<'_, AnyEncoding>,
     ) -> Result<()> {
+        use ExpandedStructSource::*;
         match struct_.expanded().source() {
-            ExpandedStructSource::ValueLiteral(raw_struct) => {
+            ValueLiteral(raw_struct) => {
                 use LazyRawValueKind::*;
                 match raw_struct.as_value().kind() {
                     Binary_1_0(v) => self.inspect_literal_struct(depth, delimiter, struct_, v),
@@ -664,7 +735,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                     Text_1_0(_) | Text_1_1(_) => unreachable!("text value"),
                 }
             }
-            ExpandedStructSource::Template(_, _, _) => {
+            Template(..) | MakeStruct(..) | MakeField(..) => {
                 self.inspect_ephemeral_struct(depth, delimiter, struct_)
             }
         }
@@ -676,9 +747,10 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             self.newline()?;
             self.inspect_annotations(0, value)?;
         }
+        use ExpandedStructSource::*;
         let raw_struct = match struct_.expanded().source() {
-            ExpandedStructSource::ValueLiteral(raw_struct) => raw_struct,
-            ExpandedStructSource::Template(_, _, _) => todo!("Ion 1.1 template symbol table"),
+            ValueLiteral(raw_struct) => raw_struct,
+            Template(..) | MakeStruct(..) | MakeField(..) => todo!("Ion 1.1 template symbol table"),
         };
 
         use LazyRawValueKind::*;
@@ -906,9 +978,9 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         let mut has_printed_skip_message = false;
         for value_res in nested_values {
             let nested_value = value_res?;
+
             // If this value is a literal in the stream, see if it is in the bounds of byte
             // ranges we care about.
-
             match self.select_action(
                 depth,
                 &mut has_printed_skip_message,
@@ -1261,6 +1333,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             self.write_offset_length_and_bytes_comment(depth, "", "", variable.name())?;
             ephemeral_value_style().set_underline(true).clone()
         } else {
+            self.write_offset_length_and_bytes_comment(depth, "", "", "")?;
             ephemeral_value_style().clone()
         };
 
@@ -1491,7 +1564,8 @@ fn ephemeral_annotations_style() -> ColorSpec {
 /// Kinds of encoding primitives found in a binary Ion stream.
 #[derive(Copy, Clone, Debug)]
 enum BytesKind {
-    MacroId,
+    MacroOpcodeAndAddress,
+    ArgumentEncodingBitmap,
     FieldId,
     Opcode,
     TrailingLength,
@@ -1513,10 +1587,16 @@ impl BytesKind {
                 .set_bold(true)
                 .set_fg(Some(Color::Rgb(0, 0, 0)))
                 .set_bg(Some(Color::Rgb(255, 255, 255))),
-            MacroId => color
+            MacroOpcodeAndAddress => color
                 .set_bold(true)
                 .set_fg(Some(Color::Rgb(0, 0, 0)))
                 .set_bg(Some(Color::Green))
+                .set_bold(true)
+                .set_intense(true),
+            ArgumentEncodingBitmap => color
+                .set_bold(true)
+                .set_bg(Some(Color::Rgb(0, 0, 0)))
+                .set_fg(Some(Color::Green))
                 .set_bold(true)
                 .set_intense(true),
             TrailingLength => color
