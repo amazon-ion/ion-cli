@@ -21,9 +21,11 @@ flate2 = "1.0"
 infer = "0.15.0"
 # ion-rs version must be pinned because we are using experimental features
 # See https://github.com/amazon-ion/ion-cli/issues/155
-ion-rs = { version = "1.0.0-rc.10", features = ["experimental", "experimental-ion-hash"] }
+#ion-rs = { version = "1.0.0-rc.10", features = ["experimental", "experimental-ion-hash"] }
+ion-rs = { path = "../ion-rust", features = ["experimental", "experimental-ion-hash"] }
 tempfile = "3.2.0"
-ion-schema = "0.15.0"
+#ion-schema = "0.15.0"
+ion-schema = { path = "../ion-schema-rust/ion-schema" }
 lowcharts = "0.5.8"
 serde = { version = "1.0.163", features = ["derive"] }
 serde_json = { version = "1.0.81", features = ["arbitrary_precision", "preserve_order"] }
