@@ -24,6 +24,9 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+        # Dump the toolchain versions to make it easier to spot when there's
+        # a mismatch with the version you have installed locally.
+      - run: cargo --version && cargo clippy --version && cargo fmt --version
       - name: Cargo Build
         uses: actions-rs/cargo@v1
         with:

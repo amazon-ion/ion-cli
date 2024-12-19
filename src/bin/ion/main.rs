@@ -10,6 +10,7 @@ mod transcribe;
 
 use crate::commands::cat::CatCommand;
 use crate::commands::complaint::SucksCommand;
+use crate::commands::eq::EqCommand;
 use crate::commands::from::FromNamespace;
 use crate::commands::generate::GenerateCommand;
 use crate::commands::hash::HashCommand;
@@ -23,7 +24,8 @@ use crate::commands::to::ToNamespace;
 use anyhow::Result;
 use commands::{IonCliCommand, IonCliNamespace};
 use ion_rs::IonError;
-use std::io::ErrorKind;
+use std::io;
+use std::process::exit;
 
 fn main() -> Result<()> {
     let root_command = RootCommand;
@@ -36,11 +38,14 @@ fn main() -> Result<()> {
         match e.downcast_ref::<IonError>() {
             // If `ion-cli` is being invoked as part of a pipeline we want to allow the pipeline
             // to shut off without printing an error to STDERR.
-            Some(IonError::Io(error)) if error.source().kind() == ErrorKind::BrokenPipe => {
+            Some(IonError::Io(error)) if error.source().kind() == io::ErrorKind::BrokenPipe => {
                 return Ok(());
             }
-            _ => return Err(e),
-        }
+            _ => {
+                eprintln!("{e}");
+                exit(3)
+            }
+        };
     };
 
     Ok(())
@@ -61,6 +66,7 @@ impl IonCliNamespace for RootCommand {
         vec![
             Box::new(CatCommand),
             Box::new(FromNamespace),
+            Box::new(EqCommand),
             Box::new(GenerateCommand),
             Box::new(HashCommand),
             Box::new(HeadCommand),

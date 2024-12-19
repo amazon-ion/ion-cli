@@ -12,6 +12,7 @@ use termcolor::{ColorChoice, StandardStream, StandardStreamLock};
 pub mod cat;
 mod command_namespace;
 pub mod complaint;
+pub mod eq;
 pub mod from;
 pub mod generate;
 pub mod hash;
