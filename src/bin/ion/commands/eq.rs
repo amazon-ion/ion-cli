@@ -50,7 +50,7 @@ impl IonCliCommand for EqCommand {
     }
 
     fn about(&self) -> &'static str {
-        "Compares two Ion streams"
+        "Compares two Ion streams and reports whether they are data-model equivalent"
     }
 
     fn is_stable(&self) -> bool {
