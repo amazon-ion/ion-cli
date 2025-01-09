@@ -1645,7 +1645,6 @@ fn annotations_style() -> ColorSpec {
 }
 
 fn ephemeral_annotations_style() -> ColorSpec {
-    // annotations_style().set_dimmed(true).clone()
     comment_style()
 }
 
