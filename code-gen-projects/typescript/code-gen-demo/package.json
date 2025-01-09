@@ -1,0 +1,53 @@
+{
+  "name": "ion-cli-typescript-demo",
+  "version": "1.0.0",
+  "description": "TypeScript code generation demo for ion-cli",
+  "scripts": {
+    "pregenerate": "rimraf src/generated/*",
+    "generate": "ion-cli generate -l typescript -d ../../schema -o ./src/generated",
+    "prebuild": "npm run generate",
+    "build": "tsc --noEmit && tsc",
+    "lint": "eslint . --ext .ts",
+    "pretest": "npm run build",
+    "test": "jest --coverage",
+    "clean": "rimraf dist src/generated/* coverage"
+  },
+  "dependencies": {
+    "ion-js": "^4.3.0",
+    "decimal.js": "^10.4.3"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^18.15.11",
+    "@typescript-eslint/eslint-plugin": "^6.4.0",
+    "@typescript-eslint/parser": "^6.4.0",
+    "eslint": "^8.47.0",
+    "jest": "^29.5.0",
+    "rimraf": "^5.0.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.3"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/src",
+      "<rootDir>/tests"
+    ],
+    "moduleNameMapper": {
+      "@generated/(.*)": "<rootDir>/src/generated/$1"
+    },
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/generated/**/*.ts"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 80,
+        "functions": 80,
+        "lines": 80,
+        "statements": 80
+      }
+    }
+  }
+} 

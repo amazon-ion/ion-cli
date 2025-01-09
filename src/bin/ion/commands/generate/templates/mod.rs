@@ -33,3 +33,14 @@ pub(crate) mod rust {
     pub(crate) const NESTED_TYPE: &str = include_template!("rust/nested_type.templ");
     pub(crate) const IMPORT: &str = include_template!("rust/import.templ");
 }
+
+/// Represents typescript template constants
+pub(crate) mod typescript {
+    pub(crate) const INTERFACE: &str = include_template!("typescript/interface.templ");
+    pub(crate) const SCALAR: &str = include_template!("typescript/scalar.templ");
+    pub(crate) const SEQUENCE: &str = include_template!("typescript/sequence.templ");
+    pub(crate) const ENUM: &str = include_template!("typescript/enum.templ");
+    pub(crate) const UTIL_MACROS: &str = include_template!("typescript/util_macros.templ");
+    pub(crate) const NESTED_TYPE: &str = include_template!("typescript/nested_type.templ");
+    pub(crate) const IMPORT: &str = include_template!("typescript/import.templ");
+}

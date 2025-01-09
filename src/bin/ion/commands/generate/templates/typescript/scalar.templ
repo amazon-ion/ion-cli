@@ -1,0 +1,135 @@
+{% import "util_macros.templ" as macros %}
+
+import * as ion from 'ion-js';
+import { IonSerializable, IonDecimal, IonTimestamp, IonSymbol } from './ion_generated_code';
+
+{% if model.code_gen_type and model.code_gen_type.doc_comment %}
+/**
+ * {{ model.code_gen_type.doc_comment }}
+ */
+{% endif %}
+{% if model.annotations %}
+{%- for annotation in model.annotations %}
+@{{ annotation }}
+{%- endfor %}
+{% endif %}
+/**
+ * Represents a scalar value of type {{ model.code_gen_type.Scalar | ion_type_to_ts }}
+ */
+export type {{ model.name }} = {{ model.code_gen_type.Scalar | ion_type_to_ts }};
+
+/**
+ * Type guard for {{ model.name }}
+ * @param value - Value to check
+ * @returns True if value is {{ model.name }}
+ */
+export function is{{ model.name }}(value: any): value is {{ model.name }} {
+    {% if model.code_gen_type.Scalar.type == "bool" %}
+    return typeof value === 'boolean';
+    {% elif model.code_gen_type.Scalar.type == "int" %}
+    return typeof value === 'number' || typeof value === 'bigint';
+    {% elif model.code_gen_type.Scalar.type == "float" %}
+    return typeof value === 'number' && !Number.isNaN(value);
+    {% elif model.code_gen_type.Scalar.type == "decimal" %}
+    return typeof value === 'object' && value !== null && 
+           'value' in value && 'coefficient' in value && 'exponent' in value;
+    {% elif model.code_gen_type.Scalar.type == "timestamp" %}
+    return value instanceof Date || (typeof value === 'object' && value !== null && 'value' in value);
+    {% elif model.code_gen_type.Scalar.type == "string" %}
+    return typeof value === 'string';
+    {% elif model.code_gen_type.Scalar.type == "symbol" %}
+    return typeof value === 'object' && value !== null && 'text' in value;
+    {% elif model.code_gen_type.Scalar.type == "blob" %}
+    return value instanceof Uint8Array;
+    {% elif model.code_gen_type.Scalar.type == "clob" %}
+    return typeof value === 'string';
+    {% else %}
+    return true;
+    {% endif %}
+}
+
+/**
+ * Serializer implementation for {{ model.name }}
+ */
+export class {{ model.name }}Serializer implements IonSerializable {
+    private readonly value: {{ model.name }};
+
+    /**
+     * Creates a new serializer instance
+     * @param value - The scalar value to serialize
+     */
+    constructor(value: {{ model.name }}) {
+        this.value = value;
+    }
+
+    /**
+     * Serialize to Ion format
+     * @returns Serialized bytes
+     */
+    public toIon(): any {
+        const writer = ion.makeTextWriter();
+        {% if model.code_gen_type.Scalar.type == "bool" %}
+        writer.writeBoolean(this.value);
+        {% elif model.code_gen_type.Scalar.type == "int" %}
+        writer.writeInt(BigInt(this.value));
+        {% elif model.code_gen_type.Scalar.type == "float" %}
+        writer.writeFloat(this.value);
+        {% elif model.code_gen_type.Scalar.type == "decimal" %}
+        writer.writeDecimal(this.value.value);
+        {% elif model.code_gen_type.Scalar.type == "timestamp" %}
+        writer.writeTimestamp(this.value instanceof Date ? this.value : this.value.value);
+        {% elif model.code_gen_type.Scalar.type == "string" %}
+        writer.writeString(this.value);
+        {% elif model.code_gen_type.Scalar.type == "symbol" %}
+        writer.writeSymbol(this.value.text);
+        {% elif model.code_gen_type.Scalar.type == "blob" %}
+        writer.writeBlob(this.value);
+        {% elif model.code_gen_type.Scalar.type == "clob" %}
+        writer.writeClob(this.value);
+        {% else %}
+        writer.writeAny(this.value);
+        {% endif %}
+        return writer.getBytes();
+    }
+
+    /**
+     * Deserialize from Ion format
+     * @param reader - Ion reader
+     * @returns Deserialized {{ model.name }}
+     * @throws Error if value cannot be deserialized
+     */
+    public static fromIon(reader: ion.Reader): {{ model.name }} {
+        {% if model.code_gen_type.Scalar.type == "bool" %}
+        return reader.booleanValue();
+        {% elif model.code_gen_type.Scalar.type == "int" %}
+        const value = reader.bigIntValue();
+        return typeof value === 'bigint' ? value : BigInt(value);
+        {% elif model.code_gen_type.Scalar.type == "float" %}
+        return reader.numberValue();
+        {% elif model.code_gen_type.Scalar.type == "decimal" %}
+        const decimalValue = reader.decimalValue();
+        return {
+            value: decimalValue.toString(),
+            coefficient: BigInt(decimalValue.coefficient),
+            exponent: decimalValue.exponent
+        };
+        {% elif model.code_gen_type.Scalar.type == "timestamp" %}
+        return reader.timestampValue();
+        {% elif model.code_gen_type.Scalar.type == "string" %}
+        return reader.stringValue();
+        {% elif model.code_gen_type.Scalar.type == "symbol" %}
+        const symbolValue = reader.symbolValue();
+        return {
+            text: symbolValue.text,
+            sid: symbolValue.sid,
+            local_sid: symbolValue.local_sid
+        };
+        {% elif model.code_gen_type.Scalar.type == "blob" %}
+        return reader.uInt8ArrayValue();
+        {% elif model.code_gen_type.Scalar.type == "clob" %}
+        return reader.stringValue();
+        {% else %}
+        return reader.value() as {{ model.name }};
+        {% endif %}
+    }
+} 

@@ -1,0 +1,162 @@
+{% import "util_macros.templ" as macros %}
+
+import * as ion from 'ion-js';
+import { IonSerializable, StructType } from './ion_generated_code';
+
+{% if model.code_gen_type and model.code_gen_type.doc_comment %}
+/**
+ * {{ model.code_gen_type.doc_comment }}
+ */
+{% endif %}
+{% if model.annotations %}
+{%- for annotation in model.annotations %}
+@{{ annotation }}
+{%- endfor %}
+{% endif %}
+export interface {{ model.name }} extends IonSerializable {
+    {%- if model.code_gen_type and model.code_gen_type.fields -%}
+    {%- for field_name, field_ref in model.code_gen_type.fields %}
+    {%- if field_ref.annotations %}
+    {%- for annotation in field_ref.annotations %}
+    @{{ annotation }}
+    {%- endfor %}
+    {%- endif %}
+    {{ field_name }}: {{ field_ref | nullable_type }};
+    {%- endfor -%}
+    {%- endif %}
+}
+
+/**
+ * Type guard for {{ model.name }}
+ * @param value - Value to check
+ * @returns True if value is {{ model.name }}
+ */
+export function is{{ model.name }}(value: any): value is {{ model.name }} {
+    if (typeof value !== 'object' || value === null) return false;
+    {%- if model.code_gen_type and model.code_gen_type.fields %}
+    {%- for field_name, field_ref in model.code_gen_type.fields %}
+    if (!('{{ field_name }}' in value)) return false;
+    {%- endfor %}
+    {%- endif %}
+    return true;
+}
+
+/**
+ * Implementation class for {{ model.name }}
+ */
+export class {{ model.name }}Impl implements {{ model.name }} {
+    {%- if model.code_gen_type and model.code_gen_type.fields %}
+    {%- for field_name, field_ref in model.code_gen_type.fields %}
+    private _{{ field_name }}: {{ field_ref | nullable_type }};
+    {%- endfor %}
+    {%- endif %}
+
+    constructor(
+        {%- if model.code_gen_type and model.code_gen_type.fields -%}
+        {%- for field_name, field_ref in model.code_gen_type.fields -%}
+        {% if not loop.first %}, {% endif %}{{ field_name }}: {{ field_ref | nullable_type }}
+        {%- endfor -%}
+        {%- endif -%}
+    ) {
+        {%- if model.code_gen_type and model.code_gen_type.fields %}
+        {%- for field_name, field_ref in model.code_gen_type.fields %}
+        this._{{ field_name }} = {{ field_name }};
+        {%- endfor %}
+        {%- endif %}
+    }
+
+    {%- if model.code_gen_type and model.code_gen_type.fields %}
+    {%- for field_name, field_ref in model.code_gen_type.fields %}
+    /** Get {{ field_name }} value */
+    get {{ field_name }}(): {{ field_ref | nullable_type }} {
+        return this._{{ field_name }};
+    }
+
+    /** Set {{ field_name }} value */
+    set {{ field_name }}(value: {{ field_ref | nullable_type }}) {
+        this._{{ field_name }} = value;
+    }
+    {%- endfor %}
+    {%- endif %}
+
+    /**
+     * Serialize to Ion format
+     * @returns Serialized bytes
+     */
+    public toIon(): any {
+        const writer = ion.makeTextWriter();
+        writer.stepIn(StructType);
+        {%- if model.code_gen_type and model.code_gen_type.fields %}
+        {%- for field_name, field_ref in model.code_gen_type.fields %}
+        if (this._{{ field_name }} !== null) {
+            writer.setFieldName("{{ field_name }}");
+            {%- if field_ref.type == "struct" %}
+            writer.writeStruct(this._{{ field_name }}.toIon());
+            {%- elif field_ref.type == "list" %}
+            writer.stepIn(ListType);
+            for (const item of this._{{ field_name }}) {
+                {%- if field_ref.element_type == "struct" %}
+                writer.writeStruct(item.toIon());
+                {%- else %}
+                writer.write{{ field_ref.element_type | title }}(item);
+                {%- endif %}
+            }
+            writer.stepOut();
+            {%- else %}
+            writer.write{{ field_ref.type | title }}(this._{{ field_name }});
+            {%- endif %}
+        }
+        {%- endfor %}
+        {%- endif %}
+        writer.stepOut();
+        return writer.getBytes();
+    }
+
+    /**
+     * Deserialize from Ion format
+     * @param reader - Ion reader
+     * @returns Deserialized {{ model.name }}
+     */
+    public static fromIon(reader: ion.Reader): {{ model.name }} {
+        const result = new {{ model.name }}Impl(
+            {%- if model.code_gen_type and model.code_gen_type.fields -%}
+            {%- for field_name, field_ref in model.code_gen_type.fields -%}
+            {% if not loop.first %}, {% endif %}null
+            {%- endfor -%}
+            {%- endif -%}
+        );
+        reader.stepIn();
+        while (reader.next() !== null) {
+            const fieldName = reader.fieldName();
+            switch (fieldName) {
+                {%- if model.code_gen_type and model.code_gen_type.fields %}
+                {%- for field_name, field_ref in model.code_gen_type.fields %}
+                case "{{ field_name }}":
+                    {%- if field_ref.type == "struct" %}
+                    result._{{ field_name }} = {{ field_ref.type }}Impl.fromIon(reader);
+                    {%- elif field_ref.type == "list" %}
+                    const items: any[] = [];
+                    reader.stepIn();
+                    while (reader.next() !== null) {
+                        {%- if field_ref.element_type == "struct" %}
+                        items.push({{ field_ref.element_type }}Impl.fromIon(reader));
+                        {%- else %}
+                        items.push(reader.value());
+                        {%- endif %}
+                    }
+                    reader.stepOut();
+                    result._{{ field_name }} = items;
+                    {%- else %}
+                    result._{{ field_name }} = reader.value();
+                    {%- endif %}
+                    break;
+                {%- endfor %}
+                {%- endif %}
+                default:
+                    throw new Error(`Unknown field: ${fieldName}`);
+            }
+        }
+        reader.stepOut();
+        return result;
+    }
+} 

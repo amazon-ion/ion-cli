@@ -16,6 +16,8 @@ use crate::commands::generate::utils::Language;
 use serde::ser::Error;
 use serde::{Serialize, Serializer};
 use serde_json::Value;
+use std::fmt::{Display, Formatter};
+use std::path::PathBuf;
 
 /// Represent a node in the data model tree of the generated code.
 /// Each node in this tree could either be a module/package or a concrete data structure(class, struct, enum etc.).
@@ -109,6 +111,15 @@ impl NamespaceNode {
     }
 }
 
+impl Display for NamespaceNode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NamespaceNode::Package(name) => write!(f, "{}", name),
+            NamespaceNode::Type(name) => write!(f, "{}", name),
+        }
+    }
+}
+
 /// Represents a fully qualified type name for a type reference
 #[derive(Debug, Clone, PartialEq, Serialize, Hash, Eq)]
 pub struct FullyQualifiedTypeReference {
@@ -176,6 +187,32 @@ impl TryFrom<&Value> for FullyQualifiedTypeReference {
             type_name,
             parameters,
         })
+    }
+}
+
+impl Display for FullyQualifiedTypeReference {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.type_name
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<_>>()
+                .join("/")
+        )?;
+        if !self.parameters.is_empty() {
+            write!(
+                f,
+                "<{}>",
+                self.parameters
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
+        }
+        Ok(())
     }
 }
 
@@ -332,6 +369,12 @@ pub struct Scalar {
     source: IslType,
 }
 
+impl Scalar {
+    pub fn base_type(&self) -> &FullyQualifiedTypeReference {
+        &self.base_type
+    }
+}
+
 /// Represents a scalar type which also has a name attached to it and is nominally distinct from its base type.
 /// e.g. Given below ISL,
 /// ```
@@ -377,6 +420,10 @@ impl WrappedScalar {
     pub fn fully_qualified_type_name(&self) -> &FullyQualifiedTypeName {
         &self.name
     }
+
+    pub fn base_type(&self) -> &FullyQualifiedTypeReference {
+        &self.base_type
+    }
 }
 
 /// Represents series of zero or more values whose type is described by the nested `element_type`
@@ -417,6 +464,16 @@ pub struct WrappedSequence {
     source: IslType,
 }
 
+impl WrappedSequence {
+    pub fn element_type(&self) -> &FullyQualifiedTypeReference {
+        &self.element_type
+    }
+
+    pub fn sequence_type(&self) -> &SequenceType {
+        &self.sequence_type
+    }
+}
+
 /// Represents series of zero or more values whose type is described by the nested `element_type`
 /// and sequence type is described by nested `sequence_type` (e.g. List or SExp).
 /// e.g. Given below ISL,
@@ -450,6 +507,16 @@ pub struct Sequence {
     #[serde(skip_serializing_if = "is_anonymous")]
     #[serde(serialize_with = "serialize_type_name")]
     pub(crate) source: IslType,
+}
+
+impl Sequence {
+    pub fn element_type(&self) -> &FullyQualifiedTypeReference {
+        &self.element_type
+    }
+
+    pub fn sequence_type(&self) -> &SequenceType {
+        &self.sequence_type
+    }
 }
 
 /// Represents a collection of field name/value pairs (e.g. a map)
@@ -491,6 +558,16 @@ pub struct Structure {
     #[serde(skip_serializing_if = "is_anonymous")]
     #[serde(serialize_with = "serialize_type_name")]
     pub(crate) source: IslType,
+}
+
+impl Structure {
+    pub fn fields(&self) -> &HashMap<String, FieldReference> {
+        &self.fields
+    }
+
+    pub fn is_closed(&self) -> &bool {
+        &self.is_closed
+    }
 }
 
 /// Represents whether the field is required or not
@@ -541,6 +618,12 @@ pub struct Enum {
     #[serde(skip_serializing_if = "is_anonymous")]
     #[serde(serialize_with = "serialize_type_name")]
     source: IslType,
+}
+
+impl Enum {
+    pub fn variants(&self) -> &BTreeSet<String> {
+        &self.variants
+    }
 }
 
 #[cfg(test)]

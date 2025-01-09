@@ -1,0 +1,66 @@
+{% import "util_macros.templ" as macros %}
+
+import * as ion from 'ion-js';
+import { IonSerializable } from './ion_generated_code';
+
+{% if model.code_gen_type and model.code_gen_type.doc_comment %}
+/**
+ * {{ model.code_gen_type.doc_comment }}
+ */
+{% endif %}
+{% if model.annotations %}
+{%- for annotation in model.annotations %}
+@{{ annotation }}
+{%- endfor %}
+{% endif %}
+export enum {{ model.name }} {
+    {%- set enum_info = model.code_gen_type["Enum"] -%}
+    {%- for variant in enum_info["variants"] -%}
+    {%- if not loop.first %}, {% endif -%}
+    {{ variant | snake | upper }} = "{{ variant }}"
+    {%- endfor %}
+}
+
+/**
+ * Type guard for {{ model.name }}
+ * @param value - Value to check
+ * @returns True if value is {{ model.name }}
+ */
+export function is{{ model.name }}(value: any): value is {{ model.name }} {
+    return Object.values({{ model.name }}).includes(value);
+}
+
+/**
+ * Implementation class for {{ model.name }} serialization
+ */
+export class {{ model.name }}Impl implements IonSerializable {
+    private value: {{ model.name }};
+
+    constructor(value: {{ model.name }}) {
+        this.value = value;
+    }
+
+    /**
+     * Serialize to Ion format
+     * @returns Serialized bytes
+     */
+    public toIon(): any {
+        const writer = ion.makeTextWriter();
+        writer.writeSymbol(this.value);
+        return writer.getBytes();
+    }
+
+    /**
+     * Deserialize from Ion format
+     * @param reader - Ion reader
+     * @returns Deserialized {{ model.name }}
+     * @throws Error if value is invalid
+     */
+    public static fromIon(reader: ion.Reader): {{ model.name }} {
+        const value = reader.stringValue();
+        if (!value || !is{{ model.name }}(value)) {
+            throw new Error(`Invalid enum value for {{ model.name }}: ${value}`);
+        }
+        return value as {{ model.name }};
+    }
+} 

@@ -1,0 +1,69 @@
+{% macro type_annotation(model) %}
+{%- if model.annotations -%}
+{%- for annotation in model.annotations %}{% if not loop.first %} {% endif %}@{{ annotation }}{% endfor -%}
+{%- endif -%}
+{% endmacro %}
+
+{% macro nullable_type(field) %}
+{%- if field.1.presence == "Optional" -%}
+({{ field.1.0 | fully_qualified_type_name }} | null)
+{%- else -%}
+{{ field.1.0 | fully_qualified_type_name }}
+{%- endif -%}
+{% endmacro %}
+
+{% macro ion_type_to_ts(type) %}
+{%- if type.type == "bool" -%}
+boolean
+{%- elif type.type == "int" -%}
+number | bigint
+{%- elif type.type == "float" -%}
+number
+{%- elif type.type == "decimal" -%}
+IonDecimal
+{%- elif type.type == "timestamp" -%}
+IonTimestamp
+{%- elif type.type == "string" -%}
+string
+{%- elif type.type == "symbol" -%}
+IonSymbol
+{%- elif type.type == "blob" -%}
+Uint8Array
+{%- elif type.type == "clob" -%}
+string
+{%- elif type.type == "struct" -%}
+{{ type.name }}
+{%- elif type.type == "list" -%}
+{%- if type.element_type -%}
+Array<{{ type.element_type | fully_qualified_type_name }}>
+{%- else -%}
+Array<unknown>
+{%- endif -%}
+{%- elif type.type == "sexp" -%}
+{%- if type.element_type -%}
+Array<{{ type.element_type | fully_qualified_type_name }}>
+{%- else -%}
+Array<unknown>
+{%- endif -%}
+{%- else -%}
+unknown
+{%- endif -%}
+{% endmacro %}
+
+{% macro type_guard(model) %}
+export function is{{ model.name }}(value: any): value is {{ model.name }} {
+    if (typeof value !== 'object' || value === null) return false;
+    {% if model.code_gen_type %}
+    {% if model.code_gen_type.fields %}
+    {% for field_name, field_ref in model.code_gen_type.fields %}
+    if (!('{{ field_name }}' in value)) return false;
+    {% endfor %}
+    {% endif %}
+    {% endif %}
+    return true;
+}
+{% endmacro %}
+
+{% macro serializer(model) %}
+// No need to redefine interfaces as they are imported from the shared types
+{% endmacro %} 
