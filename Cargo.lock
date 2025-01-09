@@ -967,7 +967,9 @@ dependencies = [
 
 [[package]]
 name = "ion-rs"
-version = "1.0.0-rc.10"
+version = "1.0.0-rc.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1635de5984b66df8c9061125d02235c7e04c575d45cd93dbd85e14e307c06695"
 dependencies = [
  "arrayvec",
  "base64 0.12.3",
@@ -991,6 +993,8 @@ dependencies = [
 [[package]]
 name = "ion-schema"
 version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73d3f6caeca9720ae78eb68516353f6a1e2f8f589170284a03bdc355fbf5309a"
 dependencies = [
  "half",
  "ion-rs",
