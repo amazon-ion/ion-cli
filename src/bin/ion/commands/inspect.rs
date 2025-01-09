@@ -1033,6 +1033,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn inspect_literal_sequence<'x, D: Decoder>(
         &mut self,
         depth: usize,
@@ -1059,6 +1060,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn inspect_ephemeral_sequence<'x>(
         &mut self,
         depth: usize,
@@ -1253,7 +1255,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         self.inspect_literal_container_footer(depth, encoded_value, "}", trailing_delimiter)
     }
 
-    fn inspect_ephemeral_struct<'x>(
+    fn inspect_ephemeral_struct(
         &mut self,
         depth: usize,
         delimiter: &str,
@@ -1276,7 +1278,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         })
     }
 
-    fn inspect_struct_body<'x>(
+    fn inspect_struct_body(
         &mut self,
         depth: usize,
         struct_: LazyStruct<AnyEncoding>,

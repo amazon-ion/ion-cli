@@ -213,7 +213,7 @@ pub struct CommandIo<'a> {
     args: &'a ArgMatches,
 }
 
-impl<'a> CommandIo<'a> {
+impl CommandIo<'_> {
     fn new(args: &ArgMatches) -> CommandIo {
         CommandIo { args }
     }

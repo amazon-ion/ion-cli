@@ -85,7 +85,7 @@ pub fn filter_out_user_data(
         // or
         //     $ion_symbol_table::{}$ion_1_0$ion_symbol_table::{}
         if reader.detected_encoding().is_text() {
-            output.write_all(&[b'\n']).unwrap()
+            output.write_all(b"\n").unwrap()
         }
     }
 }

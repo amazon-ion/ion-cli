@@ -9,7 +9,7 @@ pub enum CommandOutput<'a> {
     File(FileWriter),
 }
 
-impl<'a> Write for CommandOutput<'a> {
+impl Write for CommandOutput<'_> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         use CommandOutput::*;
         match self {
@@ -27,7 +27,7 @@ impl<'a> Write for CommandOutput<'a> {
     }
 }
 
-impl<'a> WriteColor for CommandOutput<'a> {
+impl WriteColor for CommandOutput<'_> {
     fn supports_color(&self) -> bool {
         use CommandOutput::*;
         match self {
