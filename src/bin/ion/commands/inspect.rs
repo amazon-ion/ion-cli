@@ -224,6 +224,7 @@ struct IonInspector<'a, 'b> {
     limit_bytes: usize,
     hide_expansion: bool,
     ephemeral_depth: usize,
+    line_has_comment: bool,
     // Text Ion writer for formatting scalar values
     text_writer: v1_0::RawTextWriter<Vec<u8>>,
 }
@@ -237,10 +238,10 @@ const BYTES_PER_ROW: usize = 8;
 /// Friendly trait alias (by way of an empty extension) for a closure that takes an output reference
 /// and a value and writes a comment for that value. Returns `true` if it wrote a comment, `false`
 /// otherwise.
-trait CommentFn<'x>: FnMut(&mut CommandOutput, LazyValue<'x, AnyEncoding>) -> Result<bool> {}
+trait CommentFn<'x>: FnMut(&mut CommandOutput, ValueExpr<'x, AnyEncoding>) -> Result<bool> {}
 
 impl<'x, F> CommentFn<'x> for F where
-    F: FnMut(&mut CommandOutput, LazyValue<'x, AnyEncoding>) -> Result<bool>
+    F: FnMut(&mut CommandOutput, ValueExpr<'x, AnyEncoding>) -> Result<bool>
 {
 }
 
@@ -271,6 +272,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             hide_expansion,
             skip_complete: bytes_to_skip == 0,
             limit_bytes,
+            line_has_comment: false,
             text_writer,
             ephemeral_depth: 0,
         };
@@ -312,8 +314,6 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                 self.confirm_encoding_is_supported(raw_item.encoding())?;
             }
 
-            let is_last_item = matches!(expr, EndOfStream(_));
-
             match self.select_action(
                 TOP_LEVEL_DEPTH,
                 &mut has_printed_skip_message,
@@ -329,14 +329,14 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                 InspectorAction::LimitReached => break,
             }
 
-            if !is_first_item && !is_last_item && !expr.is_ephemeral() {
+            if !is_first_item && !expr.is_ephemeral() {
                 // If this item is neither the first nor last in the stream, print a row separator.
                 write!(self.output, "{ROW_SEPARATOR}")?;
             }
 
             match expr {
                 EExp(eexp) => {
-                    self.inspect_eexp(0, eexp)?;
+                    self.inspect_eexp(0, "", eexp)?;
                 }
                 SymbolTable(lazy_struct) => {
                     self.inspect_symbol_table(lazy_struct)?;
@@ -399,22 +399,22 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     fn with_style(
         &mut self,
         mut style: ColorSpec,
-        write_fn: impl FnOnce(&mut CommandOutput) -> Result<()>,
+        write_fn: impl FnOnce(&mut Self) -> Result<()>,
     ) -> Result<()> {
         if self.is_inside_ephemeral() {
             style = comment_style();
         }
         self.output.set_color(&style)?;
-        write_fn(self.output)?;
+        write_fn(self)?;
         self.output.reset()?;
         Ok(())
     }
 
     /// Convenience method to set the output stream to the specified color/style, write `text`,
     /// and then reset the output stream's style again.
-    fn write_with_style(&mut self, style: ColorSpec, text: &str) -> Result<()> {
-        self.with_style(style, |out| {
-            out.write_all(text.as_bytes())?;
+    fn write_with_style(&mut self, style: ColorSpec, text: impl AsRef<str>) -> Result<()> {
+        self.with_style(style, |this| {
+            this.output.write_all(text.as_ref().as_bytes())?;
             Ok(())
         })
     }
@@ -435,7 +435,25 @@ impl<'a, 'b> IonInspector<'a, 'b> {
 
     /// Convenience method to move output to the next line.
     fn newline(&mut self) -> Result<()> {
+        self.line_has_comment = false;
         Ok(self.output.write_all(b"\n")?)
+    }
+
+    fn begin_comment(&mut self) -> Result<()> {
+        if !self.line_has_comment {
+            self.line_has_comment = true;
+            self.write_with_style(comment_style(), " // ")?;
+        } else {
+            // This line already has a comment, add a space before what follows
+            self.write_with_style(comment_style(), " ")?;
+        }
+        Ok(())
+    }
+
+    fn write_comment(&mut self, text: impl AsRef<str>) -> Result<()> {
+        self.begin_comment()?;
+        self.write_with_style(comment_style(), text.as_ref())?;
+        Ok(())
     }
 
     /// Inspects an Ion Version Marker.
@@ -455,17 +473,13 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             BINARY_IVM_LENGTH,
             &mut formatter,
         )?;
-        self.with_style(BytesKind::VersionMarker.style(), |out| {
+        self.with_style(BytesKind::VersionMarker.style(), |this| {
             let (major, minor) = marker.major_minor();
-            write!(out, "$ion_{major}_{minor}")?;
+            write!(this.output, "$ion_{major}_{minor}")?;
             Ok(())
         })?;
 
-        self.with_style(comment_style(), |out| {
-            write!(out, " // Version marker")?;
-            Ok(())
-        })?;
-        self.output.reset()?;
+        self.write_comment("Version marker")?;
         Ok(())
     }
 
@@ -473,18 +487,21 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         let mut empty_bytes = BytesFormatter::new(BYTES_PER_ROW, vec![]);
         self.newline()?;
         self.write_offset_length_and_bytes(0, position, "", &mut empty_bytes)?;
-        self.write_with_style(comment_style(), "// End of stream")
+        self.write_comment("End of stream")
     }
 
-    fn inspect_macro_invocation(
+    fn inspect_macro_invocation<'x>(
         &mut self,
         depth: usize,
+        trailing_delimiter: &str,
         invocation: MacroExpr<AnyEncoding>,
     ) -> Result<()> {
         use MacroExprKind::*;
         match invocation.kind() {
-            EExp(eexp_arg) => self.inspect_eexp(depth, eexp_arg)?,
-            EExpArgGroup(arg_group) => self.inspect_eexp_arg_group(depth, arg_group)?,
+            EExp(eexp_arg) => self.inspect_eexp(depth, trailing_delimiter, eexp_arg)?,
+            EExpArgGroup(arg_group) => {
+                self.inspect_eexp_arg_group(depth, arg_group, trailing_delimiter)?
+            }
             TemplateMacro(_invocation) => {
                 // No-op;
             }
@@ -495,7 +512,12 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         Ok(())
     }
 
-    fn inspect_eexp(&mut self, depth: usize, eexp: EExpression<AnyEncoding>) -> Result<()> {
+    fn inspect_eexp<'x>(
+        &mut self,
+        depth: usize,
+        trailing_delimiter: &str,
+        eexp: EExpression<AnyEncoding>,
+    ) -> Result<()> {
         let LazyRawAnyEExpressionKind::Binary_1_1(raw_eexp) = eexp.raw_invocation().kind() else {
             unreachable!("text e-expression")
         };
@@ -530,15 +552,17 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             &mut formatter,
         )?;
 
-        self.with_style(eexp_style(), |out| {
-            if let Some(macro_name) = eexp.invoked_macro().name() {
-                write!(out, "(:{macro_name}")?;
-            } else {
-                write!(out, "(:{}", eexp.invoked_macro().id())?;
-            }
+        if let Some(macro_name) = eexp.invoked_macro().name() {
+            self.write_with_style(eexp_style(), format!("(:{macro_name}"))?;
+        } else {
+            self.write_with_style(eexp_style(), format!("(:{}", eexp.invoked_macro().id()))?;
+        }
 
-            Ok(())
-        })?;
+        // If this is a macro that doesn't take any parameters, close the e-expression on the same
+        // line of output and early return.
+        if eexp.invoked_macro().signature().parameters().is_empty() {
+            return self.write_with_style(eexp_style(), format!("){trailing_delimiter}"));
+        }
 
         for (param, arg_result) in eexp
             .invoked_macro()
@@ -550,24 +574,24 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             let arg = arg_result?;
             match arg {
                 ValueExpr::ValueLiteral(value) => {
-                    self.inspect_value(depth + 1, "", LazyValue::from(value), |out, _value| {
-                        write!(out, " // {}", param.name())?;
-                        Ok(true)
-                    })?;
+                    self.inspect_value(depth + 1, "", LazyValue::from(value), no_comment())?;
                 }
                 ValueExpr::MacroInvocation(invocation) => {
-                    self.inspect_macro_invocation(depth + 1, invocation)?;
+                    self.inspect_macro_invocation(depth + 1, "", invocation)?;
                 }
             }
+            self.write_comment(param.name())?;
         }
         self.write_text_only_line(depth, eexp_style(), ")")?;
+        self.write_with_style(comment_style(), trailing_delimiter)?;
         Ok(())
     }
 
-    fn inspect_eexp_arg_group(
+    fn inspect_eexp_arg_group<'x>(
         &mut self,
         depth: usize,
         arg_group: EExpArgGroup<AnyEncoding>,
+        trailing_delimiter: &str,
     ) -> Result<()> {
         if self.is_inside_ephemeral() {
             return Ok(());
@@ -579,6 +603,12 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         else {
             unreachable!("text e-expression arg group")
         };
+
+        if arg_group.span().is_empty() {
+            // This arg group is set to the empty stream in the Arg encoding bitmap. It has no backing bytes.
+            self.write_blank_offset_length_and_bytes(depth)?;
+            return self.write_with_style(comment_style(), format!("(::){trailing_delimiter}"));
+        }
 
         let mut formatter = BytesFormatter::new(
             BYTES_PER_ROW,
@@ -594,12 +624,16 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             &mut formatter,
         )?;
 
+        // If it has backing bytes but it's still empty, write it on one line but use color.
         if arg_group.expressions().is_exhausted() {
-            return self.write_with_style(eexp_style(), "(::)");
+            self.write_with_style(eexp_style(), format!("(::){trailing_delimiter}"))?;
+
+            // There are no arguments, so we're done.
+            return Ok(());
         }
 
+        // Otherwise, it has bytes and it's populated.
         self.write_with_style(eexp_style(), "(::")?;
-        self.write_with_style(comment_style(), " // arg group")?;
 
         // TODO: This impl will not evaluate nested e-expressions.
         let nested_exprs = MacroExprArgsIterator::from_eexp_arg_group(arg_group.expressions());
@@ -611,7 +645,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                 ValueExpr::MacroInvocation(invocation) => {
                     use MacroExprKind::*;
                     match invocation.kind() {
-                        EExp(eexp_arg) => self.inspect_eexp(depth + 1, eexp_arg)?,
+                        EExp(eexp_arg) => self.inspect_eexp(depth + 1, "", eexp_arg)?,
                         EExpArgGroup(_arg_group) => {
                             unreachable!("e-exp arg groups cannot contain e-exp arg groups")
                         }
@@ -644,15 +678,15 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             ValueExpr::ValueLiteral(value) => {
                 let lazy_value = LazyValue::from(value);
                 self.inspect_value(depth, trailing_delimiter, lazy_value, no_comment())?;
-                self.with_style(comment_style(), |out| {
-                    comment_fn(out, lazy_value)?;
-                    Ok(())
-                })?;
             }
             ValueExpr::MacroInvocation(invocation) => {
-                self.inspect_macro_invocation(depth, invocation)?;
+                self.inspect_macro_invocation(depth, trailing_delimiter, invocation)?;
             }
         }
+        self.with_style(comment_style(), |this| {
+            comment_fn(this.output, value_expr)?;
+            Ok(())
+        })?;
         Ok(())
     }
 
@@ -664,7 +698,9 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         value: LazyValue<'x, AnyEncoding>,
         comment_fn: impl CommentFn<'x>,
     ) -> Result<()> {
+        // If this value is ephemeral and the user has requested that ephemeral values not be shown...
         if value.expanded().is_ephemeral() && self.hide_expansion {
+            // ...then this is a no-op.
             return Ok(());
         }
         self.newline()?;
@@ -920,12 +956,12 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         annotations: impl Iterator<Item = IonResult<SymbolRef<'x>>>,
     ) -> Result<()> {
         self.write_blank_offset_length_and_bytes(depth)?;
-        self.with_style(ephemeral_annotations_style(), |out| {
+        self.with_style(ephemeral_annotations_style(), |this| {
             for annotation in annotations {
-                IoValueFormatter::new(&mut *out)
+                IoValueFormatter::new(&mut *this.output)
                     .value_formatter()
                     .format_symbol(annotation?)?;
-                write!(out, "::")?;
+                write!(this.output, "::")?;
             }
             Ok(())
         })?;
@@ -941,16 +977,16 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     ) -> Result<()> {
         let formatted_annotations = self.format_annotations(annotations)?;
         self.write_with_style(annotations_style(), formatted_annotations.as_str())?;
-        self.with_style(comment_style(), |out| {
-            write!(out, " // ")?;
+        self.write_comment("")?;
+        self.with_style(comment_style(), |this| {
             for (index, raw_annotation) in raw_annotations.enumerate() {
                 if index > 0 {
-                    write!(out, ", ")?;
+                    write!(this.output, ", ")?;
                 }
                 match raw_annotation? {
-                    RawSymbolRef::SymbolId(sid) => write!(out, "${sid}"),
-                    RawSymbolRef::Text(_) => write!(out, "<text>"),
-                    RawSymbolRef::SystemSymbol_1_1(_) => write!(out, "<system-symbol>"),
+                    RawSymbolRef::SymbolId(sid) => write!(this.output, "${sid}"),
+                    RawSymbolRef::Text(_) => write!(this.output, "<text>"),
+                    RawSymbolRef::SystemSymbol_1_1(_) => write!(this.output, "<system symbol>"),
                 }?;
             }
             Ok(())
@@ -1008,8 +1044,8 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                 &mut formatter,
             )?;
         }
-        self.with_style(text_ion_style(), |out| {
-            write!(out, "{closing_delimiter}{trailing_delimiter}")?;
+        self.with_style(text_ion_style(), |this| {
+            write!(this.output, "{closing_delimiter}{trailing_delimiter}")?;
             Ok(())
         })
     }
@@ -1046,10 +1082,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         value_comment_fn: impl CommentFn<'x>,
     ) -> Result<()> {
         self.inspect_literal_container_header(depth, encoded_value)?;
-        self.with_style(text_ion_style(), |out| {
-            write!(out, "{opening_delimiter}")?;
-            Ok(())
-        })?;
+        self.write_with_style(text_ion_style(), opening_delimiter)?;
 
         self.inspect_sequence_body(depth + 1, value_delimiter, nested_values, value_comment_fn)?;
         self.inspect_literal_container_footer(
@@ -1083,10 +1116,8 @@ impl<'a, 'b> IonInspector<'a, 'b> {
 
             inspector.newline()?;
             inspector.write_blank_offset_length_and_bytes(depth)?;
-            inspector.with_style(ephemeral_value_style(), |out| {
-                write!(out, "{closing_delimiter}{trailing_delimiter}")?;
-                Ok(())
-            })
+            inspector.write_with_style(ephemeral_value_style(), closing_delimiter)?;
+            inspector.write_with_style(ephemeral_value_style(), trailing_delimiter)
         })
     }
 
@@ -1171,11 +1202,11 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     ) -> Result<()> {
         self.newline()?;
         self.write_blank_offset_length_and_bytes(depth)?;
-        self.with_style(ephemeral_field_id_style(), |out| {
-            IoValueFormatter::new(&mut *out)
+        self.with_style(ephemeral_field_id_style(), |this| {
+            IoValueFormatter::new(&mut *this.output)
                 .value_formatter()
                 .format_symbol(name.read()?)?;
-            write!(out, ": ")?;
+            write!(this.output, ": ")?;
             Ok(())
         })
     }
@@ -1196,28 +1227,20 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             vec![IonBytes::new(BytesKind::FieldId, raw_name_bytes)],
         );
         self.write_offset_length_and_bytes(depth, offset, length, &mut formatter)?;
-        self.with_style(field_id_style(), |out| {
-            IoValueFormatter::new(out)
+        self.with_style(field_id_style(), |this| {
+            IoValueFormatter::new(&mut *this.output)
                 .value_formatter()
                 .format_symbol(name)?;
             Ok(())
         })?;
         write!(self.output, ": ")?;
+
         // Print a text Ion comment showing how the field name was encoded, ($SID or text)
-        self.with_style(comment_style(), |out| {
-            match raw_name.read()? {
-                RawSymbolRef::SymbolId(sid) => {
-                    write!(out, " // ${sid}")
-                }
-                RawSymbolRef::Text(_) => {
-                    write!(out, " // <text>")
-                }
-                RawSymbolRef::SystemSymbol_1_1(_) => {
-                    write!(out, " // <system-symbol>")
-                }
-            }?;
-            Ok(())
-        })
+        match raw_name.read()? {
+            RawSymbolRef::SymbolId(sid) => self.write_comment(format!("<${sid}>")),
+            RawSymbolRef::Text(_) => self.write_comment("<text>"),
+            RawSymbolRef::SystemSymbol_1_1(_) => self.write_comment("<system symbol>"),
+        }
     }
 
     /// Inspects all values (however deeply nested) starting at the current field.
@@ -1234,10 +1257,10 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                     Ok(())
                 } else {
                     self.inspect_field_name(depth, name)?;
-                    self.inspect_macro_invocation(depth, invocation)
+                    self.inspect_macro_invocation(depth, ",", invocation)
                 }
             }
-            EExp(eexp) => self.inspect_eexp(depth, eexp),
+            EExp(eexp) => self.inspect_eexp(depth, ",", eexp),
         }
     }
 
@@ -1264,17 +1287,11 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     ) -> Result<()> {
         self.step_into_ephemeral(|this| {
             this.write_blank_offset_length_and_bytes(depth)?;
-            this.with_style(ephemeral_value_style(), |out| {
-                write!(out, "{{")?;
-                Ok(())
-            })?;
+            this.write_with_style(ephemeral_value_style(), "{")?;
             this.inspect_struct_body(depth, struct_, kind)?;
             this.newline()?;
             this.write_blank_offset_length_and_bytes(depth)?;
-            this.with_style(ephemeral_value_style(), |out| {
-                write!(out, "}}{delimiter}")?;
-                Ok(())
-            })
+            this.write_with_style(ephemeral_value_style(), format!("}}{delimiter}"))
         })
     }
 
@@ -1328,7 +1345,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         // Anything else will be quietly ignored.
         let ValueRef::List(symbols_list) = value.read_resolved()? else {
             return self.inspect_value(SYMBOL_LIST_DEPTH, ",", value.into(), |out, _value| {
-                out.write_all(b" // Invalid, ignored")?;
+                out.write_all(b"Invalid, ignored")?;
                 Ok(true)
             });
         };
@@ -1350,10 +1367,10 @@ impl<'a, 'b> IonInspector<'a, 'b> {
 
         // This closure will be called after each of the list's values has been inspected.
         // It will render a comment indicating which symbol address that value will be assigned.
-        let new_symbol_comment_fn = |out: &mut CommandOutput, value: LazyValue<AnyEncoding>| {
-            match value.read()? {
-                ValueRef::String(_s) => write!(out, " // -> ${next_symbol_id}"),
-                _other => write!(out, " // -> ${next_symbol_id} (no text)"),
+        let new_symbol_comment_fn = |out: &mut CommandOutput, expr: ValueExpr<AnyEncoding>| {
+            match expr.expect_value_literal()?.ion_type() {
+                IonType::String => write!(out, "-> ID ${next_symbol_id}"),
+                _other => write!(out, "-> ${next_symbol_id} (no text)"),
             }?;
             next_symbol_id += 1;
             Ok(true)
@@ -1384,21 +1401,12 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         self.write_offset_length_and_bytes(depth, range.start, range.len(), &mut formatter)?;
 
         let formatted_value = self.format_scalar_body(value)?;
-        self.with_style(text_ion_style(), |out| {
-            write!(out, "{formatted_value}{delimiter}")?;
-            Ok(())
-        })?;
-        self.with_style(comment_style(), |out| {
-            let wrote_comment = comment_fn(out, value)?;
-            if let RawValueRef::Symbol(RawSymbolRef::SymbolId(symbol_id)) = encoded_value.read()? {
-                match wrote_comment {
-                    true => write!(out, " (${symbol_id})"),
-                    false => write!(out, " // ${symbol_id}"),
-                }?;
-            }
-            Ok(())
-        })?;
-
+        self.write_with_style(text_ion_style(), formatted_value)?;
+        self.write_with_style(text_ion_style(), delimiter)?;
+        let _wrote_comment = comment_fn(self.output, ValueExpr::ValueLiteral(value.expanded()))?;
+        if let RawValueRef::Symbol(RawSymbolRef::SymbolId(symbol_id)) = encoded_value.read()? {
+            self.write_comment(format!("<${symbol_id}>"))?;
+        }
         while !formatter.is_empty() {
             self.newline()?;
             self.write_offset_length_and_bytes(depth, "", "", &mut formatter)?;
@@ -1424,13 +1432,10 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             ephemeral_value_style().clone()
         };
 
-        self.with_style(style.clone(), |out| {
-            write!(out, "{formatted_value}")?;
-            Ok(())
-        })?;
+        self.write_with_style(style.clone(), format!("{formatted_value}"))?;
         self.write_with_style(style.clone().set_underline(false).clone(), delimiter)?;
-        self.with_style(comment_style(), |out| {
-            comment_fn(out, value)?;
+        self.with_style(comment_style(), |this| {
+            comment_fn(this.output, ValueExpr::ValueLiteral(value.expanded()))?;
             Ok(())
         })?;
         Ok(())
@@ -1495,9 +1500,9 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             .set_intense(true)
             .set_bold(true)
             .set_fg(Some(Color::Rgb(100, 100, 100)));
-        self.with_style(color_spec, |out| {
+        self.with_style(color_spec, |this| {
             for _ in 0..depth {
-                out.write_all(INDENTATION_WITH_GUIDE.as_bytes())?;
+                this.output.write_all(INDENTATION_WITH_GUIDE.as_bytes())?;
             }
             Ok(())
         })
@@ -1517,10 +1522,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             self.output,
             "{VERTICAL_LINE} {offset:12} {VERTICAL_LINE} {length:12} {VERTICAL_LINE} "
         )?;
-        self.with_style(ephemeral_bytes_style(), |out| {
-            write!(out, "{bytes:>23}")?;
-            Ok(())
-        })?;
+        self.write_with_style(ephemeral_bytes_style(), format!("{bytes:>23}"))?;
         write!(self.output, " {VERTICAL_LINE} ")?;
         self.write_indentation(depth)?;
         Ok(())
@@ -1558,10 +1560,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     fn write_skipping_message(&mut self, depth: usize, name_of_skipped_item: &str) -> Result<()> {
         write!(self.output, "\n{VERTICAL_LINE} {:>12} {VERTICAL_LINE} {:>12} {VERTICAL_LINE} {:23} {VERTICAL_LINE} ", "...", "...", "...")?;
         self.write_indentation(depth)?;
-        self.with_style(comment_style(), |out| {
-            write!(out, "// ...skipping {name_of_skipped_item}...")?;
-            Ok(())
-        })
+        self.write_comment(format!("...skipping {name_of_skipped_item}..."))
     }
 
     /// Prints a row with an ellipsis (`...`) in the first three columns, and a text Ion comment in
@@ -1571,10 +1570,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         write!(self.output, "\n{VERTICAL_LINE} {:>12} {VERTICAL_LINE} {:>12} {VERTICAL_LINE} {:23} {VERTICAL_LINE} ", "...", "...", "...")?;
         self.write_indentation(depth)?;
         let limit_bytes = self.limit_bytes;
-        self.with_style(comment_style(), |out| {
-            write!(out, "// --limit-bytes {} reached, {action}.", limit_bytes)?;
-            Ok(())
-        })
+        self.write_comment(format!("// --limit-bytes {limit_bytes} reached, {action}."))
     }
 }
 
