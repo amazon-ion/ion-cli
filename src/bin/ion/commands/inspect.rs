@@ -604,12 +604,15 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             unreachable!("text e-expression arg group")
         };
 
+        // If the arg group's span is empty...
         if arg_group.span().is_empty() {
-            // This arg group is set to the empty stream in the Arg encoding bitmap. It has no backing bytes.
+            // ...then it was set to the empty stream in the arg encoding bitmap.
+            // It has no backing bytes.
             self.write_blank_offset_length_and_bytes(depth)?;
             return self.write_with_style(comment_style(), format!("(::){trailing_delimiter}"));
         }
 
+        // Otherwise, it has backing bytes.
         let mut formatter = BytesFormatter::new(
             BYTES_PER_ROW,
             vec![IonBytes::new(
@@ -623,29 +626,37 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             raw_arg_group.span().len(),
             &mut formatter,
         )?;
-
-        // If it has backing bytes but it's still empty, write it on one line but use color.
-        if arg_group.expressions().is_exhausted() {
-            self.write_with_style(eexp_style(), format!("(::){trailing_delimiter}"))?;
-
-            // There are no arguments, so we're done.
-            return Ok(());
-        }
-
-        // Otherwise, it has bytes and it's populated.
         self.write_with_style(eexp_style(), "(::")?;
+
+        // The EExpArgGroup type doesn't currently expose methods needed to easily determine whether
+        // the arg_group is delimited or not. As we inspect each argument, we'll keep track of the
+        // last argument's end index and use it to know whether the overall arg group span contains
+        // a delimited end byte. To start, we'll set it to the last byte in the header span, which is
+        // the index where the arguments (if any) begin.
+        let AnyEExpArgGroupKind::Binary_1_1(raw_arg_group) = arg_group.raw_arg_group().kind()
+        else {
+            unreachable!("text e-expression arg group");
+        };
+        let mut last_arg_end = raw_arg_group.header_span().range().end;
 
         // TODO: This impl will not evaluate nested e-expressions.
         let nested_exprs = MacroExprArgsIterator::from_eexp_arg_group(arg_group.expressions());
         for expr in nested_exprs {
-            match expr? {
+            last_arg_end = match expr? {
                 ValueExpr::ValueLiteral(value) => {
-                    self.inspect_value(depth + 1, "", LazyValue::from(value), no_comment())?
+                    self.inspect_value(depth + 1, "", LazyValue::from(value), no_comment())?;
+                    value
+                        .range()
+                        .expect("eexp arg groups cannot have ephemeral arguments")
+                        .end
                 }
                 ValueExpr::MacroInvocation(invocation) => {
                     use MacroExprKind::*;
                     match invocation.kind() {
-                        EExp(eexp_arg) => self.inspect_eexp(depth + 1, "", eexp_arg)?,
+                        EExp(eexp_arg) => {
+                            self.inspect_eexp(depth + 1, "", eexp_arg)?;
+                            eexp_arg.range().end
+                        }
                         EExpArgGroup(_arg_group) => {
                             unreachable!("e-exp arg groups cannot contain e-exp arg groups")
                         }
@@ -656,7 +667,28 @@ impl<'a, 'b> IonInspector<'a, 'b> {
                 }
             }
         }
-        self.write_text_only_line(depth, eexp_style(), ")")?;
+
+        // If there are bytes in the arg_group span after the end of the last argument, they're
+        // a delimited end of some encoding.
+        let closing_bytes = &arg_group.span().bytes()[last_arg_end - arg_group.range().start..];
+        if closing_bytes.is_empty() {
+            self.write_text_only_line(depth, eexp_style(), ")")?;
+        } else {
+            self.newline()?;
+            // We need to write the closing byte for the delimited
+            let mut formatter = BytesFormatter::new(
+                BYTES_PER_ROW,
+                vec![IonBytes::new(BytesKind::TrailingLength, closing_bytes)],
+            );
+            self.write_offset_length_and_bytes(
+                depth,
+                last_arg_end, // offset of closing bytes
+                closing_bytes.len(),
+                &mut formatter,
+            )?;
+            self.write_with_style(eexp_style(), ")")?;
+        }
+
         Ok(())
     }
 
@@ -1035,7 +1067,10 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         } else {
             let mut formatter = BytesFormatter::new(
                 BYTES_PER_ROW,
-                vec![IonBytes::new(BytesKind::Opcode, delimited_end_span.bytes())],
+                vec![IonBytes::new(
+                    BytesKind::TrailingLength,
+                    delimited_end_span.bytes(),
+                )],
             );
             self.write_offset_length_and_bytes(
                 depth,
