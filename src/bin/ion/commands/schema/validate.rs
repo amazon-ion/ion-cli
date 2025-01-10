@@ -249,6 +249,6 @@ fn write_validation_result_ion<W: ValueWriter>(
 }
 
 /// Transposes a borrowed vec of owned elements into an owned vec of borrowed elements.
-fn vec_of_refs(the_vec: &Vec<Element>) -> Vec<&Element> {
+fn vec_of_refs(the_vec: &[Element]) -> Vec<&Element> {
     the_vec.iter().collect()
 }

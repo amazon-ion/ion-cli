@@ -105,7 +105,7 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
     }
 }
 
-impl<'a, L: Language + 'static> CodeGenerator<'a, L> {
+impl<L: Language + 'static> CodeGenerator<'_, L> {
     /// A [tera] filter that converts given tera string value to [upper camel case].
     /// Returns error if the given value is not a string.
     ///

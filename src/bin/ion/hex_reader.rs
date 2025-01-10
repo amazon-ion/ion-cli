@@ -50,14 +50,14 @@ impl<R: Read> From<R> for HexReader<R> {
 
 impl<R: Read> Read for HexReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        if buf.len() == 0 {
+        if buf.is_empty() {
             return Ok(0);
         }
 
         let mut bytes_read = 0usize;
 
-        while let Some(b) = self.inner.next() {
-            let c = char::from(b?);
+        for byte in &mut self.inner {
+            let c = char::from(byte?);
 
             use DigitState::*;
             match self.digit_state {
@@ -67,9 +67,9 @@ impl<R: Read> Read for HexReader<R> {
                 // Now we know that this hex-encoded byte is going to be `0xHH` rather than `0H`
                 Zero if c == 'x' => self.digit_state = ZeroX,
                 // Reading the first digit of the hex-encoded byte
-                Empty | ZeroX if c.is_digit(16) => self.digit_state = HasUpperNibble(c),
+                Empty | ZeroX if c.is_ascii_hexdigit() => self.digit_state = HasUpperNibble(c),
                 // Reading the second digit of the hex-encoded byte
-                Zero if c.is_digit(16) => {
+                Zero if c.is_ascii_hexdigit() => {
                     // Unwrap is guaranteed not to panic because we've been putting only valid hex
                     // digit characters in the `digit_buffer` String.
                     let value = c.to_digit(16).unwrap();
@@ -78,7 +78,7 @@ impl<R: Read> Read for HexReader<R> {
                     bytes_read += 1;
                     self.digit_state = Empty;
                 }
-                HasUpperNibble(c0) if c.is_digit(16) => {
+                HasUpperNibble(c0) if c.is_ascii_hexdigit() => {
                     // The first unwrap is guaranteed not to panic because we already know that both
                     // chars are valid hex digits.
                     // The second unwrap is guaranteed not to panic because the max it could be is 0x0F
