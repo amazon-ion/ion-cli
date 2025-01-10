@@ -1,14 +1,26 @@
 use anyhow::Result;
-use assert_cmd::Command;
+use assert_cmd::assert::OutputAssertExt;
+use assert_cmd::cargo::CommandCargoExt;
+use assert_cmd::Command as AssertCommand;
 use rstest::rstest;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
+use std::process::Command;
 use tempfile::TempDir;
 
 /// Returns a new [PathBuf] instance with the absolute path of the "code-gen-projects" directory.
 fn code_gen_projects_path() -> PathBuf {
     PathBuf::from_iter([env!("CARGO_MANIFEST_DIR"), "code-gen-projects"])
+}
+
+// Helper functions for paths
+fn schema_dir() -> PathBuf {
+    code_gen_projects_path().join("schema")
+}
+
+fn input_dir() -> PathBuf {
+    code_gen_projects_path().join("input")
 }
 
 #[test]
@@ -149,5 +161,59 @@ fn test_unsupported_schema_types_failures(#[case] test_schema: &str) -> Result<(
     let command_assert = cmd.assert();
     // Code generation process should return an error for unsupported schema types
     command_assert.failure();
+    Ok(())
+}
+
+#[test]
+fn roundtrip_tests_for_generated_code_typescript() -> Result<()> {
+    // Get absolute paths for ion executable and test directories
+    let ion_executable = env!("CARGO_BIN_EXE_ion");
+    let test_project_path = code_gen_projects_path()
+        .join("typescript")
+        .join("code-gen-demo");
+
+    // Clean and generate TypeScript code
+    let generate_output = std::process::Command::new(ion_executable)
+        .current_dir(&test_project_path)
+        .env("ION_CLI", ion_executable)
+        .arg("-X") // Enable unstable features
+        .arg("generate")
+        .arg("--language")
+        .arg("typescript")
+        .arg("--authority")
+        .arg(schema_dir().to_str().unwrap())
+        .arg("--output")
+        .arg("src/generated")
+        .output()
+        .expect("failed to execute ion generate");
+
+    println!("Generate status: {}", generate_output.status);
+    std::io::stdout().write_all(&generate_output.stdout)?;
+    std::io::stderr().write_all(&generate_output.stderr)?;
+    assert!(generate_output.status.success());
+
+    // Run npm install and tests
+    let install_output = std::process::Command::new("npm")
+        .current_dir(&test_project_path)
+        .arg("install")
+        .output()
+        .expect("failed to execute npm install");
+
+    println!("npm install status: {}", install_output.status);
+    std::io::stdout().write_all(&install_output.stdout)?;
+    std::io::stderr().write_all(&install_output.stderr)?;
+    assert!(install_output.status.success());
+
+    let test_output = std::process::Command::new("npm")
+        .current_dir(&test_project_path)
+        .arg("test")
+        .output()
+        .expect("failed to execute npm test");
+
+    println!("npm test status: {}", test_output.status);
+    std::io::stdout().write_all(&test_output.stdout)?;
+    std::io::stderr().write_all(&test_output.stderr)?;
+    assert!(test_output.status.success());
+
     Ok(())
 }

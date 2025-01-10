@@ -1,0 +1,95 @@
+{% import "util_macros.templ" as macros %}
+
+import { makeWriter, Reader, ListType } from 'ion-js';
+import { IonSerializable } from './ion_generated_code';
+
+{% if model.code_gen_type and model.code_gen_type.doc_comment %}
+/**
+ * {{ model.code_gen_type.doc_comment }}
+ */
+{% endif %}
+{% if model.annotations %}
+{%- for annotation in model.annotations %}
+@{{ annotation }}
+{%- endfor %}
+{% endif %}
+/**
+ * Represents a sequence of {{ model.element_type | ion_type_to_ts }}
+ */
+export type {{ model.name }} = Array<{{ model.element_type | ion_type_to_ts }}>;
+
+/**
+ * Type guard for {{ model.name }}
+ * @param value - Value to check
+ * @returns True if value is {{ model.name }}
+ */
+export function is{{ model.name }}(value: any): value is {{ model.name }} {
+    if (!Array.isArray(value)) return false;
+    return value.every(item => {
+        {% if model.element_type.type == "struct" %}
+        return is{{ model.element_type.name }}(item);
+        {% elif model.element_type.type == "enum" %}
+        return is{{ model.element_type.name }}(item);
+        {% else %}
+        return typeof item === '{{ model.element_type | ion_type_to_ts }}';
+        {% endif %}
+    });
+}
+
+/**
+ * Serializer implementation for {{ model.name }}
+ */
+export class {{ model.name }}Serializer implements IonSerializable {
+    private readonly value: {{ model.name }};
+
+    /**
+     * Creates a new serializer instance
+     * @param value - The sequence to serialize
+     */
+    constructor(value: {{ model.name }}) {
+        this.value = value;
+    }
+
+    /**
+     * Serialize to Ion format
+     * @returns Serialized bytes
+     */
+    public toIon(): any {
+        const writer = makeWriter();
+        writer.stepIn(ListType);
+        this.value.forEach(item => {
+            {% if model.element_type.type == "struct" %}
+            writer.writeStruct(item.toIon());
+            {% elif model.element_type.type == "enum" %}
+            writer.writeSymbol(item);
+            {% elif model.element_type.type == "list" %}
+            writer.writeList(item.map(i => i.toIon()));
+            {% else %}
+            writer.write{{ model.element_type.type | title }}(item);
+            {% endif %}
+        });
+        writer.stepOut();
+        return writer.getBytes();
+    }
+
+    /**
+     * Deserialize from Ion format
+     * @param reader - Ion reader
+     * @returns Deserialized {{ model.name }}
+     */
+    public static fromIon(reader: Reader): {{ model.name }} {
+        const result: {{ model.name }} = [];
+        reader.stepIn();
+        while (reader.next() !== null) {
+            {% if model.element_type.type == "struct" %}
+            result.push({{ model.element_type.name }}Impl.fromIon(reader));
+            {% elif model.element_type.type == "enum" %}
+            result.push({{ model.element_type.name }}Impl.fromIon(reader));
+            {% else %}
+            result.push(reader.value());
+            {% endif %}
+        }
+        reader.stepOut();
+        return result;
+    }
+} 

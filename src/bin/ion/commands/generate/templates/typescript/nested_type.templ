@@ -1,0 +1,104 @@
+{% import "util_macros.templ" as macros %}
+
+{% if model.annotations %}
+{%- for annotation in model.annotations %}
+@{{ annotation }}
+{%- endfor %}
+{% endif %}
+export interface {{ model.name }} extends IonSerializable {
+    {% for field in model.fields %}
+    {% if field.annotations %}
+    {%- for annotation in field.annotations %}
+    @{{ annotation }}
+    {%- endfor %}
+    {% endif %}
+    {{ field.name }}: {{ field | nullable_type }};
+    {% endfor %}
+}
+
+{{ macros::type_guard(model=model) }}
+
+export class {{ model.name }}Impl implements {{ model.name }} {
+    {% for field in model.fields %}
+    private _{{ field.name }}: {{ field | nullable_type }};
+    {% endfor %}
+
+    constructor(
+        {% for field in model.fields %}
+        {% if not loop.first %}, {% endif %}{{ field.name }}: {{ field | nullable_type }}
+        {% endfor %}
+    ) {
+        {% for field in model.fields %}
+        this._{{ field.name }} = {{ field.name }};
+        {% endfor %}
+    }
+
+    {% for field in model.fields %}
+    get {{ field.name }}(): {{ field | nullable_type }} {
+        return this._{{ field.name }};
+    }
+
+    set {{ field.name }}(value: {{ field | nullable_type }}) {
+        this._{{ field.name }} = value;
+    }
+    {% endfor %}
+
+    public toIon(): any {
+        const writer = makeWriter();
+        writer.stepIn(StructType);
+        {% for field in model.fields %}
+        if (this._{{ field.name }} !== null) {
+            writer.setFieldName("{{ field.name }}");
+            {% if field.type == "struct" %}
+            writer.writeStruct(this._{{ field.name }}.toIon());
+            {% elif field.type == "list" %}
+            writer.writeList(this._{{ field.name }}.map(item => {
+                if (item === null) return null;
+                {% if field.element_type in ["string", "number", "boolean", "bigint"] %}
+                return item;
+                {% else %}
+                return item.toIon();
+                {% endif %}
+            }));
+            {% else %}
+            writer.write{{ field.type | title }}(this._{{ field.name }});
+            {% endif %}
+        }
+        {% endfor %}
+        writer.stepOut();
+        return writer.getBytes();
+    }
+
+    public static fromIon(reader: Reader): {{ model.name }} {
+        const result = new {{ model.name }}Impl(
+            {% for field in model.fields %}
+            {% if not loop.first %}, {% endif %}null
+            {% endfor %}
+        );
+        reader.stepIn();
+        while (reader.next() !== null) {
+            const fieldName = reader.fieldName();
+            switch (fieldName) {
+                {% for field in model.fields %}
+                case "{{ field.name }}":
+                    {% if field.type == "struct" %}
+                    result._{{ field.name }} = {{ field.type }}Impl.fromIon(reader);
+                    {% elif field.type == "list" %}
+                    {% if field.element_type in ["string", "number", "boolean", "bigint"] %}
+                    result._{{ field.name }} = reader.value();
+                    {% else %}
+                    result._{{ field.name }} = {{ field.element_type }}Impl.fromIon(reader);
+                    {% endif %}
+                    {% else %}
+                    result._{{ field.name }} = reader.value();
+                    {% endif %}
+                    break;
+                {% endfor %}
+                default:
+                    throw new Error(`Unknown field: ${fieldName}`);
+            }
+        }
+        reader.stepOut();
+        return result;
+    }
+} 

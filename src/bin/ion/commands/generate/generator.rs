@@ -9,7 +9,7 @@ use crate::commands::generate::result::{
 };
 use crate::commands::generate::templates;
 use crate::commands::generate::utils::{IonSchemaType, Template};
-use crate::commands::generate::utils::{JavaLanguage, Language, RustLanguage};
+use crate::commands::generate::utils::{JavaLanguage, Language, RustLanguage, TypeScriptLanguage};
 use convert_case::{Case, Casing};
 use ion_rs::Value;
 use ion_schema::isl::isl_constraint::{IslConstraint, IslConstraintValue};
@@ -98,6 +98,42 @@ impl<'a> CodeGenerator<'a, JavaLanguage> {
         Self {
             output,
             current_type_fully_qualified_name: namespace,
+            tera,
+            phantom: PhantomData,
+            data_model_store: HashMap::new(),
+        }
+    }
+}
+
+impl<'a> CodeGenerator<'a, TypeScriptLanguage> {
+    pub fn new(output: &'a Path) -> CodeGenerator<'a, TypeScriptLanguage> {
+        let mut tera = Tera::default();
+        // Add all templates using `typescript_templates` module constants
+        tera.add_raw_templates(vec![
+            ("interface.templ", templates::typescript::INTERFACE),
+            ("scalar.templ", templates::typescript::SCALAR),
+            ("sequence.templ", templates::typescript::SEQUENCE),
+            ("enum.templ", templates::typescript::ENUM),
+            ("util_macros.templ", templates::typescript::UTIL_MACROS),
+            ("nested_type.templ", templates::typescript::NESTED_TYPE),
+            ("import.templ", templates::typescript::IMPORT),
+        ])
+        .unwrap();
+
+        // Render the imports into output file
+        let rendered_import = tera.render("import.templ", &Context::new()).unwrap();
+
+        let mut file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .create(true)
+            .open(output.join("ion_generated_code.ts"))
+            .unwrap();
+        file.write_all(rendered_import.as_bytes()).unwrap();
+
+        Self {
+            output,
+            current_type_fully_qualified_name: vec![],
             tera,
             phantom: PhantomData,
             data_model_store: HashMap::new(),

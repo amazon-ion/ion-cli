@@ -8,7 +8,7 @@ mod model;
 
 use crate::commands::generate::generator::CodeGenerator;
 use crate::commands::generate::model::NamespaceNode;
-use crate::commands::generate::utils::{JavaLanguage, RustLanguage};
+use crate::commands::generate::utils::{JavaLanguage, RustLanguage, TypeScriptLanguage};
 use crate::commands::IonCliCommand;
 use anyhow::{bail, Result};
 use clap::{Arg, ArgAction, ArgMatches, Command, ValueHint};
@@ -58,7 +58,7 @@ impl IonCliCommand for GenerateCommand {
                     .long("language")
                     .short('l')
                     .required(true)
-                    .value_parser(["java", "rust"])
+                    .value_parser(["java", "rust", "typescript"])
                     .help("Programming language for the generated code"),
             )
             .arg(
@@ -121,9 +121,14 @@ impl IonCliCommand for GenerateCommand {
                 Self::print_rust_code_gen_warnings();
                 CodeGenerator::<RustLanguage>::new(output)
                     .generate_code_for_authorities(&authorities, &mut schema_system)?
-            }
+            },
+            "typescript" => {
+                Self::print_typescript_code_gen_warnings();
+                CodeGenerator::<TypeScriptLanguage>::new(output)
+                    .generate_code_for_authorities(&authorities, &mut schema_system)?
+            },
             _ => bail!(
-                "Programming language '{}' is not yet supported. Currently supported targets: 'java', 'rust'",
+                "Programming language '{}' is not yet supported. Currently supported targets: 'java', 'rust', 'typescript'",
                 language
             )
         }
@@ -151,5 +156,11 @@ impl GenerateCommand {
     fn print_rust_code_gen_warnings() {
         println!("{}","WARNING: Code generation in Rust does not yet support any `$NOMINAL_ION_TYPES` data type.(For more information: https://amazon-ion.github.io/ion-schema/docs/isl-2-0/spec#built-in-types) Reference issue: https://github.com/amazon-ion/ion-cli/issues/101".yellow().bold());
         println!("{}","Code generation in Rust does not yet support optional/required fields. It does not have any checks added for this on read or write methods. Reference issue: https://github.com/amazon-ion/ion-cli/issues/106".yellow().bold());
+    }
+
+    // Prints warning messages for TypeScript code generation
+    fn print_typescript_code_gen_warnings() {
+        println!("{}","WARNING: Code generation in TypeScript is in experimental stage.".yellow().bold());
+        println!("{}","TypeScript code generation does not yet support all Ion types and features.".yellow().bold());
     }
 }

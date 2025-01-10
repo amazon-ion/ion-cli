@@ -1,0 +1,45 @@
+{
+  "name": "ion-cli-typescript-demo",
+  "version": "1.0.0",
+  "description": "TypeScript code generation demo for ion-cli",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "prebuild": "npm run generate",
+    "build": "tsc",
+    "test": "jest",
+    "generate": "ion-cli generate -l typescript -d ../../schema -o ./src/models",
+    "clean": "rm -rf ./dist ./src/models/*",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "pretest": "npm run generate && npm run build"
+  },
+  "dependencies": {
+    "ion-js": "^4.3.0",
+    "decimal.js": "^10.4.3"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^18.15.11",
+    "@typescript-eslint/eslint-plugin": "^5.57.1",
+    "@typescript-eslint/parser": "^5.57.1",
+    "eslint": "^8.37.0",
+    "jest": "^29.5.0",
+    "prettier": "^2.8.7",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.3"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/src",
+      "<rootDir>/tests"
+    ],
+    "moduleNameMapper": {
+      "@models/(.*)": "<rootDir>/src/models/$1",
+      "@serializers/(.*)": "<rootDir>/src/serializers/$1",
+      "@validators/(.*)": "<rootDir>/src/validators/$1"
+    }
+  }
+} 

@@ -474,3 +474,102 @@ impl From<&String> for IonSchemaType {
         value.as_str().into()
     }
 }
+
+pub struct TypeScriptLanguage;
+
+impl Language for TypeScriptLanguage {
+    fn file_extension() -> String {
+        "ts".to_string()
+    }
+
+    fn name() -> String {
+        "typescript".to_string()
+    }
+
+    fn file_name_for_type(name: &str) -> String {
+        name.to_case(Case::Camel)
+    }
+
+    fn target_type(ion_schema_type: &IonSchemaType) -> Option<String> {
+        use IonSchemaType::*;
+        Some(
+            match ion_schema_type {
+                Int => "number",
+                String | Symbol => "string",
+                Float => "number",
+                Bool => "boolean",
+                Blob | Clob => "Uint8Array",
+                List | SExp | Struct => return None,
+                SchemaDefined(name) => name,
+            }
+            .to_string(),
+        )
+    }
+
+    fn target_type_as_optional(target_type: FullyQualifiedTypeReference) -> FullyQualifiedTypeReference {
+        let mut optional_type = target_type;
+        optional_type.parameters.push(FullyQualifiedTypeReference {
+            type_name: vec![NamespaceNode::Type("undefined".to_string())],
+            parameters: vec![],
+        });
+        optional_type
+    }
+
+    fn target_type_as_sequence(element_type: FullyQualifiedTypeReference) -> FullyQualifiedTypeReference {
+        FullyQualifiedTypeReference {
+            type_name: vec![NamespaceNode::Type("Array".to_string())],
+            parameters: vec![element_type],
+        }
+    }
+
+    fn template_name(template: &Template) -> String {
+        match template {
+            Template::Struct => "interface",
+            Template::Scalar => "scalar",
+            Template::Sequence => "sequence",
+            Template::Enum => "enum",
+        }.to_string()
+    }
+
+    fn is_built_in_type(type_name: String) -> bool {
+        matches!(
+            type_name.as_str(),
+            "number" | "string" | "boolean" | "Uint8Array" | "undefined" | "Array"
+        )
+    }
+
+    fn namespace_separator() -> &'static str {
+        "/"
+    }
+
+    fn add_type_to_namespace(is_nested_type: bool, type_name: &str, namespace: &mut Vec<NamespaceNode>) {
+        if !is_nested_type {
+            namespace.push(NamespaceNode::Type(type_name.to_case(Case::Camel)));
+        }
+    }
+
+    fn reset_namespace(namespace: &mut Vec<NamespaceNode>) {
+        if let Some(last) = namespace.last() {
+            if matches!(last, NamespaceNode::Type(_)) {
+                namespace.pop();
+            }
+        }
+    }
+
+    fn fully_qualified_type_ref(name: &FullyQualifiedTypeReference) -> String {
+        let type_path = name.type_name.iter().map(|n| n.to_string()).join("/");
+        if name.parameters.is_empty() {
+            type_path
+        } else {
+            format!(
+                "{}{}",
+                type_path,
+                name.parameters
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        }
+    }
+}

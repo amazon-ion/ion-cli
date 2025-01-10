@@ -3,3 +3,7 @@
 *.swp
 *.swo
 *.swn
+*.cursorrules
+*/node_modules/*
+code-gen-projects/typescript/code-gen-demo/node_modules
+code-gen-projects/typescript/code-gen-demo/package-lock.json
