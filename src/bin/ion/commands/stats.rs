@@ -66,7 +66,7 @@ fn analyze<Input: IonInput>(
     mut writer: impl std::io::Write,
     args: &ArgMatches,
 ) -> Result<()> {
-    let stats = analyze_data_stream(reader);
+    let stats = analyze_data_stream(reader)?;
     // Plot a histogram of the above vector, with 4 buckets and a precision
     // chosen by library. The number of buckets could be changed as needed.
     let options = plot::HistogramOptions {
@@ -98,7 +98,7 @@ fn analyze<Input: IonInput>(
 
 fn analyze_data_stream<Input: IonInput>(
     reader: &mut SystemReader<AnyEncoding, Input>,
-) -> StreamStats {
+) -> Result<StreamStats> {
     let mut size_vec: Vec<f64> = Vec::new();
     let mut symtab_count = 0;
     let mut max_depth = 0;
@@ -121,9 +121,12 @@ fn analyze_data_stream<Input: IonInput>(
                 VersionMarker(_) | EncodingDirective(_) => continue,
                 SymbolTable(_) => symtab_count += 1,
                 system_value @ Value(raw_value) => {
-                    let size = system_value.raw_stream_item().unwrap().span().bytes().len();
+                    let size = system_value
+                        .raw_stream_item()
+                        .map(|v| v.span().bytes().len())
+                        .unwrap_or(0); // 1.1 values may not have any physical representation
                     size_vec.push(size as f64);
-                    let current_depth = top_level_max_depth(raw_value);
+                    let current_depth = top_level_max_depth(raw_value)?;
                     max_depth = max(max_depth, current_depth);
                 }
                 // SystemStreamItem is non_exhaustive
@@ -131,44 +134,52 @@ fn analyze_data_stream<Input: IonInput>(
             },
         }
     }
-    // Reduce the number of shared symbols.
-    let symbols_count = reader.symbol_table().symbols().iter().len() - 10;
 
-    StreamStats {
+    // Reduce the number of shared symbols.
+    let version = reader.detected_encoding().version();
+    let system_symbols_offset = if version == IonVersion::v1_0 {
+        version.system_symbol_table().len()
+    } else {
+        0 // 1.1 system symbols are opt-in, it's fair to count them if they are present
+    };
+
+    let symbols_count = reader.symbol_table().len() - system_symbols_offset;
+
+    Ok(StreamStats {
         size_vec,
         symtab_count,
         symbols_count,
         max_depth,
         unparseable_count,
-    }
+    })
 }
 
-fn top_level_max_depth(value: LazyValue<AnyEncoding>) -> usize {
+fn top_level_max_depth(value: LazyValue<AnyEncoding>) -> Result<usize> {
     let mut max_depth = 0;
     let mut stack = vec![(value, 0)];
     while let Some((current_value, depth)) = stack.pop() {
         max_depth = max(max_depth, depth);
         use ValueRef::*;
-        match current_value.read().unwrap() {
+        match current_value.read()? {
             Struct(s) => {
                 for field in s {
-                    stack.push((field.unwrap().value(), depth + 1));
+                    stack.push((field?.value(), depth + 1));
                 }
             }
             List(s) => {
                 for element in s {
-                    stack.push((element.unwrap(), depth + 1));
+                    stack.push((element?, depth + 1));
                 }
             }
             SExp(s) => {
                 for element in s {
-                    stack.push((element.unwrap(), depth + 1));
+                    stack.push((element?, depth + 1));
                 }
             }
             _ => continue,
         }
     }
-    max_depth
+    Ok(max_depth)
 }
 
 #[test]
@@ -210,7 +221,7 @@ fn test_analyze() -> Result<()> {
         buffer
     };
     let mut reader = SystemReader::new(AnyEncoding, buffer.as_slice());
-    let stats = analyze_data_stream(&mut reader);
+    let stats = analyze_data_stream(&mut reader)?;
     assert_eq!(stats, expect_out);
     Ok(())
 }
