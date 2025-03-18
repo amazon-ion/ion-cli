@@ -35,8 +35,6 @@ impl IonCliCommand for JqCommand {
     }
 
     fn configure_args(&self, command: Command) -> Command {
-        // Same flags as `cat`, but with an added `--values` flag to specify the number of values to
-        // write.
         command
             .with_input()
             .with_output()
