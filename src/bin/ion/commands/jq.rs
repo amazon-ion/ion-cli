@@ -6,7 +6,7 @@ use clap::{Arg, ArgMatches, Command};
 use ion_rs::{AnyEncoding, Element, ElementReader, IonData, List, Reader, Sequence};
 use jaq_core::path::Opt;
 use jaq_core::val::Range;
-use jaq_core::{RcIter, ValR, ValX};
+use jaq_core::{Filter, Native, RcIter, ValR, ValX};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, Deref, Div, Mul, Neg, Rem, Sub};
@@ -48,21 +48,18 @@ impl IonCliCommand for JqCommand {
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> anyhow::Result<()> {
         let jq_expr = args.get_one::<String>("expr").unwrap().as_str();
+        let filter = compile_jq_filter(jq_expr);
 
         CommandIo::new(args)?.for_each_input(|output, input| {
             let _format = output.format();
             let _encoding = output.encoding();
-            evaluate_jq_expr(jq_expr, input, output)?;
+            evaluate_jq_expr(&filter, input, output)?;
             Ok(())
         })
     }
 }
 
-fn evaluate_jq_expr(
-    jq_expr: &str,
-    input: CommandInput,
-    output: &mut CommandOutput,
-) -> anyhow::Result<()> {
+fn compile_jq_filter(jq_expr:  &str) -> Filter<Native<JaqElement>> {
     use jaq_core::load::{Arena, File, Loader};
     let program = File {
         code: jq_expr, // a jq expression like ".[]"
@@ -78,13 +75,18 @@ fn evaluate_jq_expr(
     let modules = loader.load(&arena, program).unwrap();
 
     // compile the filter
-    let filter = jaq_core::Compiler::default()
+    jaq_core::Compiler::default()
         // Similar to `defs()` above, this would be our opportunity to extend the built-in filters
         .with_funs(jaq_std::funs::<JaqElement>())
         .compile(modules)
-        .unwrap();
+        .unwrap()
+}
 
-    // TODO: The setup above is happening once per input, but could probably happen once per run.
+fn evaluate_jq_expr(
+    filter: &Filter<Native<JaqElement>>,
+    input: CommandInput,
+    output: &mut CommandOutput,
+) -> anyhow::Result<()> {
 
     let mut reader = Reader::new(AnyEncoding, input.into_source())?;
     let input_elements = reader.read_all_elements()?;
@@ -275,7 +277,6 @@ impl jaq_core::ValT for JaqElement {
                     .ok_or_else(|| jaq_err("index out of bounds"))?;
                 Ok(JaqElement::from(element.to_owned()))
             }
-            // TODO: Should we allow indexing into a struct by integer?
             (Struct(strukt), String(name)) => strukt
                 .get(name)
                 .ok_or_else(|| jaq_err(format!("field name '{name}' not found")))
@@ -286,6 +287,7 @@ impl jaq_core::ValT for JaqElement {
                 .ok_or_else(|| jaq_err(format!("field name '{name}' not found")))
                 .map(Element::to_owned)
                 .map(JaqElement::from),
+            (Struct(_), Int(i)) => jaq_error(format!("cannot index struct with number ({i})")),
             _ => jaq_error(format!("cannot index into {self:?}")),
         }
     }
