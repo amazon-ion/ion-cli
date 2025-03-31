@@ -17,6 +17,7 @@ pub mod generate;
 pub mod hash;
 pub mod head;
 pub mod inspect;
+pub mod jq;
 pub mod primitive;
 pub mod schema;
 pub mod stats;
