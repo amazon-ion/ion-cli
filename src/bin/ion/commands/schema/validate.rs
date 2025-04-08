@@ -4,12 +4,15 @@ use crate::commands::schema::IonSchemaCommandInput;
 use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 use crate::input_grouping::InputGrouping;
 use crate::output::CommandOutput;
-use anyhow::Result;
+use anyhow::{Error, Result};
 use clap::builder::ArgPredicate;
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use ion_rs::{ion_sexp, AnyEncoding, ElementReader, Reader, SequenceWriter, TextFormat, Writer};
-use ion_rs::{v1_0, Element, IonResult, ValueWriter};
+use ion_rs::{
+    ion_sexp, AnyEncoding, ElementReader, IonError, Reader, SequenceWriter, TextFormat, Writer,
+};
+use ion_rs::{v1_0, Element, ValueWriter};
 use ion_schema::result::ValidationResult;
+use ion_schema::violation::Violation;
 use ion_schema::AsDocumentHint;
 use std::io::{BufRead, Write};
 use std::sync::LazyLock;
@@ -135,26 +138,50 @@ impl IonCliCommand for ValidateCommand {
 
             match grouping {
                 FileHandles => {
-                    let reader = Reader::new(AnyEncoding, input.into_source())?;
-                    let document: Vec<_> = reader.into_elements().collect::<IonResult<_>>()?;
-                    let result = type_ref.validate(document.as_document());
-                    all_valid &= result.is_ok();
-                    result_writer.write_result(&mut writer, result)?;
+                    let document: Result<Vec<_>, _> = Reader::new(AnyEncoding, input.into_source())
+                        .and_then(|r| r.into_elements().collect());
+                    match document {
+                        Ok(document) => {
+                            let result = type_ref.validate(document.as_document());
+                            all_valid &= result.is_ok();
+                            result_writer.write_result(&mut writer, result)?;
+                        }
+                        Err(error) => {
+                            all_valid = false;
+                            result_writer.write_result(&mut writer, error)?;
+                        }
+                    }
                 }
                 Lines => {
                     for line in input.into_source().lines() {
-                        let document = Element::read_all(line?)?;
-                        let result = type_ref.validate(document.as_document());
-                        all_valid &= result.is_ok();
-                        result_writer.write_result(&mut writer, result)?;
+                        let document = Element::read_all(line?);
+                        match document {
+                            Ok(document) => {
+                                let result = type_ref.validate(document.as_document());
+                                all_valid &= result.is_ok();
+                                result_writer.write_result(&mut writer, result)?;
+                            }
+                            Err(error) => {
+                                all_valid = false;
+                                result_writer.write_result(&mut writer, error)?;
+                            }
+                        }
                     }
                 }
                 TopLevelValues => {
                     let reader = Reader::new(AnyEncoding, input.into_source())?;
                     for value in reader.into_elements() {
-                        let result = type_ref.validate(&value?);
-                        all_valid &= result.is_ok();
-                        result_writer.write_result(&mut writer, result)?;
+                        match value {
+                            Ok(value) => {
+                                let result = type_ref.validate(&value);
+                                all_valid &= result.is_ok();
+                                result_writer.write_result(&mut writer, result)?;
+                            }
+                            Err(error) => {
+                                all_valid = false;
+                                result_writer.write_result(&mut writer, error)?;
+                            }
+                        }
                     }
                 }
             }
@@ -172,21 +199,40 @@ impl IonCliCommand for ValidateCommand {
     }
 }
 
+enum ResultKind {
+    Ok,
+    ValidationFailed(Violation),
+    InputError(Error),
+}
+impl From<ValidationResult> for ResultKind {
+    fn from(value: ValidationResult) -> Self {
+        match value {
+            Ok(()) => ResultKind::Ok,
+            Err(e) => ResultKind::ValidationFailed(e),
+        }
+    }
+}
+impl From<IonError> for ResultKind {
+    fn from(value: IonError) -> Self {
+        ResultKind::InputError(value.into())
+    }
+}
+
 enum ResultWriter {
     Quiet,
     Ion,
     Report(String),
 }
 impl ResultWriter {
-    fn write_result(
+    fn write_result<R: Into<ResultKind>>(
         &mut self,
         w: &mut Writer<v1_0::Text, &mut CommandOutput<'_>>,
-        result: ValidationResult,
+        result: R,
     ) -> Result<()> {
         match self {
             ResultWriter::Quiet => Ok(()),
-            ResultWriter::Ion => write_validation_result_ion(result, w.value_writer()),
-            ResultWriter::Report(name) => write_validation_report_line(name, w, result),
+            ResultWriter::Ion => write_validation_result_ion(result.into(), w.value_writer()),
+            ResultWriter::Report(name) => write_validation_report_line(name, w, result.into()),
         }
     }
 }
@@ -200,13 +246,13 @@ impl ResultWriter {
 fn write_validation_report_line(
     input_name: &str,
     w: &mut Writer<v1_0::Text, &mut CommandOutput<'_>>,
-    result: ValidationResult,
+    result: ResultKind,
 ) -> Result<()> {
     let output = w.output_mut();
-    let (color, status) = if result.is_ok() {
-        (GREEN, "ok")
-    } else {
-        (RED, "FAILED")
+    let (color, status) = match result {
+        ResultKind::Ok => (GREEN, "ok".to_string()),
+        ResultKind::ValidationFailed(_) => (RED, "FAILED".to_string()),
+        ResultKind::InputError(error) => (RED, format!("ERROR: {}", error)),
     };
     if output.supports_color() {
         output.write_fmt(format_args!("{input_name} ... {color}{status}{NO_STYLE}\n"))?;
@@ -222,12 +268,16 @@ fn write_validation_report_line(
 /// If invalid, then it also contains an s-expression describing each violation.
 /// This output is not (yet?) intended to be stable.
 fn write_validation_result_ion<W: ValueWriter>(
-    validation_result: ValidationResult,
+    validation_result: ResultKind,
     writer: W,
 ) -> Result<()> {
     match validation_result {
-        Ok(_) => writer.write_sexp(vec![&Element::symbol("valid")]),
-        Err(violation) => {
+        ResultKind::Ok => writer.write_sexp(vec![&Element::symbol("valid")]),
+        ResultKind::InputError(error) => {
+            writer.write_sexp(["error".to_string(), format!("{:?}", error)])?;
+            Ok(())
+        }
+        ResultKind::ValidationFailed(violation) => {
             let mut violations: Vec<_> = vec![Element::symbol("invalid")];
             violation
                 .flattened_violations()
