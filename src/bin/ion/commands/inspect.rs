@@ -1467,7 +1467,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
             ephemeral_value_style().clone()
         };
 
-        self.write_with_style(style.clone(), format!("{formatted_value}"))?;
+        self.write_with_style(style.clone(), &formatted_value)?;
         self.write_with_style(style.clone().set_underline(false).clone(), delimiter)?;
         self.with_style(comment_style(), |this| {
             comment_fn(this.output, ValueExpr::ValueLiteral(value.expanded()))?;
