@@ -1,16 +1,19 @@
 use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 use crate::input::CommandInput;
-use crate::output::CommandOutput;
+use crate::output::{CommandOutput, CommandOutputWriter};
 use anyhow::bail;
-use clap::{Arg, ArgMatches, Command};
-use ion_rs::{AnyEncoding, Element, ElementReader, IonData, List, Reader, Sequence};
+use clap::{arg, ArgMatches, Command};
+use ion_rs::{AnyEncoding, Decimal, Element, ElementReader, Int, IonData, IonType, List, Reader, Sequence, Value};
 use jaq_core::path::Opt;
 use jaq_core::val::Range;
-use jaq_core::{Filter, Native, RcIter, ValR, ValX};
+use jaq_core::{Ctx, Filter, Native, RcIter, ValR, ValX};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, Deref, Div, Mul, Neg, Rem, Sub};
 use std::str::FromStr;
+use bigdecimal::{BigDecimal, ToPrimitive};
+use bigdecimal::num_bigint::BigInt;
+use ion_rs::decimal::coefficient::Sign;
 
 pub struct JqCommand;
 
@@ -33,27 +36,24 @@ impl IonCliCommand for JqCommand {
 
     fn configure_args(&self, command: Command) -> Command {
         command
+            .arg(arg!(<filter> "A `jq` filter expression to evaluate"))
+            .arg(arg!(-s --slurp "Read all inputs into an array and use it as the single input value"))
             .with_input()
             .with_output()
             .with_format()
             .with_ion_version()
-            .arg(
-                Arg::new("expr")
-                    .long("expr")
-                    .short('e')
-                    .default_value(".[]")
-                    .help("A `jq` expression to evaluate"),
-            )
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> anyhow::Result<()> {
-        let jq_expr = args.get_one::<String>("expr").unwrap().as_str();
+        let slurp = args.get_flag("slurp");
+
+        let jq_expr = args.get_one::<String>("filter").unwrap().as_str();
         let filter = compile_jq_filter(jq_expr);
 
         CommandIo::new(args)?.for_each_input(|output, input| {
             let _format = output.format();
             let _encoding = output.encoding();
-            evaluate_jq_expr(&filter, input, output)?;
+            evaluate_jq_expr(input, output, &filter, slurp)?;
             Ok(())
         })
     }
@@ -83,31 +83,48 @@ fn compile_jq_filter(jq_expr:  &str) -> Filter<Native<JaqElement>> {
 }
 
 fn evaluate_jq_expr(
-    filter: &Filter<Native<JaqElement>>,
     input: CommandInput,
     output: &mut CommandOutput,
+    filter: &Filter<Native<JaqElement>>,
+    slurp: bool,
 ) -> anyhow::Result<()> {
 
     let mut reader = Reader::new(AnyEncoding, input.into_source())?;
-    let input_elements = reader.read_all_elements()?;
-    let ion_stream_as_element = List::from(input_elements).into();
+    let mut writer = output.as_writer()?;
+
+    if slurp {
+        let all_input_elements = reader.read_all_elements()?;
+        let slurped = List::from(all_input_elements).into();
+        filter_and_print(filter, &mut writer, slurped)?;
+    } else {
+        for item in reader.elements() {
+            let item: JaqElement = item?.into();
+            filter_and_print(filter, &mut writer, item)?;
+        }
+    }
+
+    writer.close()?;
+    Ok(())
+}
+
+fn filter_and_print(
+    filter: &Filter<Native<JaqElement>>,
+    writer: &mut CommandOutputWriter,
+    item: JaqElement
+) -> anyhow::Result<()> {
 
     let inputs = RcIter::new(core::iter::empty());
     // iterator over the output values
-    let out = filter.run((jaq_core::Ctx::new([], &inputs), ion_stream_as_element));
+    let ctx = Ctx::new([], &inputs); // can this be re-used? what even is this?
+    let cv = (ctx, item);
+    let out = filter.run(cv);
 
-    let mut writer = output.as_writer()?;
     for value in out {
         match value {
-            Ok(element) => {
-                writer.write(&element.0)?;
-            }
-            Err(e) => {
-                bail!("jq processing failed: {e}");
-            }
-        }
+            Ok(element) =>  writer.write(&element.0)?,
+            Err(e) => bail!("ion jq: {e}"),
+        };
     }
-    writer.close()?;
     Ok(())
 }
 
@@ -116,11 +133,21 @@ fn evaluate_jq_expr(
 ///  2. Keep all logic related to `jq` behavior in one place.
 #[derive(Clone, Eq, Debug)]
 struct JaqElement(Element);
+//TODO: move to sibling module so that people can't construct this and have to go through 'from'
+// this will allow consistent construction/transformation rules e.g. field deduplication
+
+impl JaqElement {
+    pub fn into_inner(self) -> Element {
+        self.0
+    }
+
+    pub fn into_value(self) -> Value {
+        self.into_inner().into_value()
+    }
+}
 
 // Anything that can be turned into an Element can also be turned into a JaqElement
-impl<T> From<T> for JaqElement
-where
-    Element: From<T>,
+impl<T> From<T> for JaqElement where Element: From<T>
 {
     fn from(value: T) -> Self {
         let element: Element = value.into();
@@ -157,7 +184,7 @@ impl FromIterator<Self> for JaqElement {
     fn from_iter<T: IntoIterator<Item = Self>>(iter: T) -> Self {
         let items = Sequence::from_iter(iter.into_iter().map(|je| je.0));
         let element = Element::from(List::from_iter(items));
-        JaqElement(element)
+        JaqElement::from(element)
     }
 }
 
@@ -175,11 +202,148 @@ impl PartialOrd for JaqElement {
 
 // === Math operator behaviors ===
 
+trait DecimalMath {
+    fn to_big_decimal(self) -> BigDecimal;
+    fn to_decimal(self) -> Decimal;
+    fn add(self, v2: impl DecimalMath) -> Decimal where Self: Sized {
+        let d1 = self.to_big_decimal();
+        let d2 = v2.to_big_decimal();
+        (d1 + d2).to_decimal()
+    }
+}
+
+impl DecimalMath for Decimal {
+    fn to_big_decimal(self) -> BigDecimal {
+        let magnitude = self.coefficient().magnitude().as_u128().unwrap();
+        let bigint = match self.coefficient().sign() {
+            Sign::Negative => -BigInt::from(magnitude),
+            Sign::Positive => BigInt::from(magnitude),
+        };
+        BigDecimal::new(bigint, self.scale())
+    }
+
+    fn to_decimal(self) -> Decimal {
+        self
+    }
+}
+
+impl DecimalMath for Int {
+    fn to_big_decimal(self) -> BigDecimal {
+        let data = self.expect_i128().unwrap(); // error case is unreachable with current ion-rs
+        BigDecimal::from(data)
+    }
+
+    fn to_decimal(self) -> Decimal {
+        let data = self.expect_i128().unwrap(); // error case is unreachable with current ion-rs
+        Decimal::new(data, 0)
+    }
+}
+
+impl DecimalMath for BigDecimal {
+    fn to_big_decimal(self) -> BigDecimal {
+        self
+    }
+
+    fn to_decimal(self) -> Decimal {
+        let (coeff, exponent) = self.into_bigint_and_exponent();
+        let data = coeff.to_i128().unwrap();
+        Decimal::new(data, -exponent)
+    }
+}
+
+trait FloatMath {
+    fn to_f64(self) -> Option<f64>;
+}
+
+impl FloatMath for f64 {
+    fn to_f64(self) -> Option<f64> {
+        Some(self)
+    }
+}
+
+impl FloatMath for Int {
+    fn to_f64(self) -> Option<f64> {
+        self.as_i128().and_then(|data| {
+            let float = data as f64;
+            (float as i128 == data).then_some(float)
+        })
+    }
+}
+
+impl FloatMath for Decimal {
+    fn to_f64(self) -> Option<f64> {
+        self.to_big_decimal().to_f64()
+    }
+}
+
+impl FloatMath for Value {
+    fn to_f64(self) -> Option<f64> {
+        match self {
+            Value::Int(i) => i.to_f64(),
+            Value::Decimal(d) => d.to_f64(),
+            _ => None
+        }
+    }
+}
+
 impl Add for JaqElement {
     type Output = ValR<Self>;
 
     fn add(self, _rhs: Self) -> Self::Output {
-        todo!()
+        let (lhv, rhv) = (self.into_value(), _rhs.into_value());
+
+        use Value::*;
+
+        let elt: Element = match (lhv, rhv) {
+            (List(lhs), List(rhs)) => {
+                ion_rs::List::from_iter(lhs.into_iter().chain(rhs)).into()
+            },
+            (SExp(lhs), SExp(rhs)) => {
+                ion_rs::SExp::from_iter(lhs.into_iter().chain(rhs)).into()
+            },
+            (String(lhs), String(rhs)) => {
+                format!("{}{}", lhs.text(), rhs.text()).into()
+            }
+            (Struct(lhs), Struct(rhs)) => {
+                //TODO: Recursively remove duplicate fields, first field position but rhs and last field wins
+                lhs.clone_builder()
+                    .with_fields(rhs.fields())
+                    .build().into()
+            }
+
+            // Number types, only lossless operations
+            (Int(lhs), Int(rhs)) => (lhs + rhs).into(),
+            (Float(lhs), Float(rhs)) => (lhs + rhs).into(),
+            (Decimal(lhs), Decimal(rhs)) => lhs.add(rhs).into(),
+            (Decimal(dv), Int(iv)) | (Int(iv), Decimal(dv)) => dv.add(iv).into(),
+
+            // jq treats JSON's untyped null as an additive identity, e.g. 0 / "" / [] / {}
+            (lhs, Null(IonType::Null)) => lhs.into(),
+            (Null(IonType::Null), rhs) => rhs.into(),
+
+            // Typed nulls we must handle differently, we can only add similar types
+            (Null(lht), Null(rht)) if lht == rht => Null(lht).into(),
+            (Null(lht), rhs) if lht == rhs.ion_type() => rhs.into(),
+            (lhs, Null(rht)) if lhs.ion_type() == rht => lhs.into(),
+
+            // Only try potentially lossy Float conversions when we've run out of the other options
+            (v, Float(fv)) | (Float(fv), v) if matches!(v.ion_type(), IonType::Int | IonType::Decimal) => {
+                let Some(f) = v.clone().to_f64() else {
+                    return jaq_error(format!("{v:?} cannot be an f64"));
+                };
+                (f + fv).into()
+            }
+
+            //TODO: Better error messaging (display for JaqElement?)
+            // Note this includes timestamps
+            (lhv, rhv) => {
+                let ltype = lhv.ion_type();
+                let rtype = rhv.ion_type();
+                return jaq_error(format!("{ltype} ({lhv}) and {rtype} ({rhv}) cannot be added"))
+            }
+        };
+
+        Ok(JaqElement::from(elt))
     }
 }
 

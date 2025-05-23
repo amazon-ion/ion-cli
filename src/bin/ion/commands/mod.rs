@@ -139,6 +139,8 @@ pub trait WithIonCliArgument {
     fn show_unstable_flag(self) -> Self;
 }
 
+
+
 impl WithIonCliArgument for ClapCommand {
     fn with_input(self) -> Self {
         self.arg(
@@ -178,9 +180,7 @@ impl WithIonCliArgument for ClapCommand {
             .arg(
                 Arg::new(ION_VERSION_ARG_ID)
                     .long("ion-version")
-                    // TODO: Should we find a different short version so that 'v' can be reserved
-                    //       for 'verbose' in future use?
-                    .short('v')
+                    .short('V')
                     .help("UNSTABLE! Output Ion version")
                     .value_parser(["1.0", "1.1"])
                     .default_value("1.0")

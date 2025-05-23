@@ -13,6 +13,7 @@ pub enum CommandOutput<'a> {
     File(FileWriter, CommandOutputSpec),
 }
 
+// #[allow(non_camel_case_types)]
 pub enum CommandOutputWriter<'a, 'b> {
     Text_1_0(Writer<v1_0::Text, &'b mut CommandOutput<'a>>),
     Binary_1_0(Writer<v1_0::Binary, &'b mut CommandOutput<'a>>),
