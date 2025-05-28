@@ -1,10 +1,11 @@
 use crate::file_writer::FileWriter;
 use crate::input::CommandInput;
-use crate::output::CommandOutput;
-use anyhow::Context;
+use crate::output::{CommandOutput, CommandOutputSpec};
 use anyhow::Result;
+use anyhow::{bail, Context};
 use clap::builder::ValueParser;
 use clap::{crate_authors, crate_version, Arg, ArgAction, ArgMatches, Command as ClapCommand};
+use ion_rs::{Encoding, Format, IonEncoding, TextFormat};
 use std::fs::File;
 use std::io::Write;
 use termcolor::{ColorChoice, StandardStream, StandardStreamLock};
@@ -212,11 +213,41 @@ impl WithIonCliArgument for ClapCommand {
 /// Offers convenience methods for working with input and output streams.
 pub struct CommandIo<'a> {
     args: &'a ArgMatches,
+    format: Format,
+    encoding: IonEncoding,
 }
 
 impl CommandIo<'_> {
-    fn new(args: &ArgMatches) -> CommandIo {
-        CommandIo { args }
+    fn new(args: &ArgMatches) -> Result<CommandIo> {
+        // --format pretty|text|lines|binary
+        // `clap` validates the specified format and provides a default otherwise.
+        let format = args.get_one::<String>("format").unwrap().as_str();
+
+        // --ion_version 1.0|1.1
+        // `clap` validates the specified format and provides a default otherwise.
+        let ion_version = args.get_one::<String>(ION_VERSION_ARG_ID).unwrap().as_str();
+
+        let format = match format {
+            "text" => Format::Text(TextFormat::Compact),
+            "lines" => Format::Text(TextFormat::Lines),
+            "pretty" => Format::Text(TextFormat::Pretty),
+            "binary" => Format::Binary,
+            unrecognized => bail!("unsupported format '{unrecognized}'"),
+        };
+
+        let encoding = match (ion_version, format) {
+            ("1.0", Format::Text(_)) => IonEncoding::Text_1_0,
+            ("1.0", Format::Binary) => IonEncoding::Binary_1_0,
+            ("1.1", Format::Text(_)) => IonEncoding::Text_1_1,
+            ("1.1", Format::Binary) => IonEncoding::Binary_1_1,
+            (unrecognized, _) => bail!("unrecognized Ion version '{unrecognized}'"),
+        };
+
+        Ok(CommandIo {
+            args,
+            format,
+            encoding,
+        })
     }
 
     /// Returns `true` if the user has not explicitly disabled auto decompression.
@@ -255,6 +286,11 @@ impl CommandIo<'_> {
         &mut self,
         mut f: impl FnMut(&mut CommandOutput, CommandInput) -> Result<()>,
     ) -> Result<()> {
+        let spec = CommandOutputSpec {
+            format: self.format,
+            encoding: self.encoding,
+        };
+
         // These types are provided by the `termcolor` crate. They wrap the normal `io::Stdout` and
         // `io::StdOutLock` types, making it possible to write colorful text to the output stream when
         // it's a TTY that understands formatting escape codes. These variables are declared here so
@@ -270,12 +306,12 @@ impl CommandIo<'_> {
                     output_file
                 )
             })?;
-            CommandOutput::File(FileWriter::new(file))
+            CommandOutput::File(FileWriter::new(file), spec)
         } else {
             // Otherwise, write to STDOUT.
             stdout = StandardStream::stdout(ColorChoice::Always);
             stdout_lock = stdout.lock();
-            CommandOutput::StdOut(stdout_lock)
+            CommandOutput::StdOut(stdout_lock, spec)
         };
         if let Some(input_file_names) = self.args.get_many::<String>("input") {
             // Input files were specified, run the converter on each of them in turn
@@ -292,6 +328,11 @@ impl CommandIo<'_> {
     }
 
     fn write_output(&self, mut f: impl FnMut(&mut CommandOutput) -> Result<()>) -> Result<()> {
+        let spec = CommandOutputSpec {
+            format: self.format,
+            encoding: self.encoding,
+        };
+
         // These types are provided by the `termcolor` crate. They wrap the normal `io::Stdout` and
         // `io::StdOutLock` types, making it possible to write colorful text to the output stream when
         // it's a TTY that understands formatting escape codes. These variables are declared here so
@@ -307,12 +348,12 @@ impl CommandIo<'_> {
                     output_file
                 )
             })?;
-            CommandOutput::File(FileWriter::new(file))
+            CommandOutput::File(FileWriter::new(file), spec)
         } else {
             // Otherwise, write to STDOUT.
             stdout = StandardStream::stdout(ColorChoice::Always);
             stdout_lock = stdout.lock();
-            CommandOutput::StdOut(stdout_lock)
+            CommandOutput::StdOut(stdout_lock, spec)
         };
         f(&mut output)
     }

@@ -122,7 +122,7 @@ impl IonCliCommand for ValidateCommand {
 
         let mut all_valid = true;
 
-        CommandIo::new(args).for_each_input(|output, input| {
+        CommandIo::new(args)?.for_each_input(|output, input| {
             let input_name = input.name().to_string();
             // Output always uses 'lines' format so that we can have one output line per grouped input.
             // If the user wants something different, use 'ion cat' to change it.

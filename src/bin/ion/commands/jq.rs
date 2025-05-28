@@ -1,12 +1,9 @@
-use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument, ION_VERSION_ARG_ID};
+use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 use crate::input::CommandInput;
 use crate::output::CommandOutput;
 use anyhow::bail;
 use clap::{Arg, ArgMatches, Command};
-use ion_rs::{
-    v1_0, AnyEncoding, Element, ElementReader, Format, IonData, IonEncoding, List, Reader,
-    Sequence, TextFormat, Writer,
-};
+use ion_rs::{AnyEncoding, Element, ElementReader, IonData, List, Reader, Sequence};
 use jaq_core::path::Opt;
 use jaq_core::val::Range;
 use jaq_core::{RcIter, ValR, ValX};
@@ -50,31 +47,11 @@ impl IonCliCommand for JqCommand {
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> anyhow::Result<()> {
-        // --format pretty|text|lines|binary
-        // `clap` validates the specified format and provides a default otherwise.
-        // TODO: Use the specified output format
-        let format: Format = match args.get_one::<String>("format").unwrap().as_str() {
-            "text" => Format::Text(TextFormat::Compact),
-            "lines" => Format::Text(TextFormat::Lines),
-            "pretty" => Format::Text(TextFormat::Pretty),
-            "binary" => Format::Binary,
-            unrecognized => bail!("unsupported format '{unrecognized}'"),
-        };
-        // TODO: Use the specified Ion version
-        let _encoding = match (
-            args.get_one::<String>(ION_VERSION_ARG_ID).unwrap().as_str(),
-            format,
-        ) {
-            ("1.0", Format::Text(_)) => IonEncoding::Text_1_0,
-            ("1.0", Format::Binary) => IonEncoding::Binary_1_0,
-            ("1.1", Format::Text(_)) => IonEncoding::Text_1_1,
-            ("1.1", Format::Binary) => IonEncoding::Binary_1_1,
-            (unrecognized, _) => bail!("unrecognized Ion version '{unrecognized}'"),
-        };
-
         let jq_expr = args.get_one::<String>("expr").unwrap().as_str();
 
-        CommandIo::new(args).for_each_input(|output, input| {
+        CommandIo::new(args)?.for_each_input(|output, input| {
+            let _format = output.format();
+            let _encoding = output.encoding();
             evaluate_jq_expr(jq_expr, input, output)?;
             Ok(())
         })
@@ -117,11 +94,7 @@ fn evaluate_jq_expr(
     // iterator over the output values
     let out = filter.run((jaq_core::Ctx::new([], &inputs), ion_stream_as_element));
 
-    let mut writer = Writer::new(
-        v1_0::Text.with_format(TextFormat::Pretty), // TODO: Use specified version
-        output,
-    )?;
-
+    let mut writer = output.as_writer()?;
     for value in out {
         match value {
             Ok(element) => {
