@@ -138,7 +138,7 @@ impl IonCliCommand for InspectCommand {
 
         let hide_expansion = args.get_flag("hide-expansion");
 
-        let mut command_io = CommandIo::new(args);
+        let mut command_io = CommandIo::new(args)?;
 
         let mut read_as_hex_string = false;
         if let Some(hex_args) = args.get_many::<String>("hex-input") {

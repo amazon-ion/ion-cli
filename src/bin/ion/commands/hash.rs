@@ -89,7 +89,7 @@ impl IonCliCommand for HashCommand {
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
-        CommandIo::new(args).for_each_input(|output, input| {
+        CommandIo::new(args)?.for_each_input(|output, input| {
             let mut reader = Reader::new(AnyEncoding, input.into_source())?;
 
             let hasher = if let Some(hasher) = args.get_one::<DigestType>("hash") {

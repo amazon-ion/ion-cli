@@ -45,7 +45,7 @@ impl IonCliCommand for StatsCommand {
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
-        CommandIo::new(args).for_each_input(|_output, input| {
+        CommandIo::new(args)?.for_each_input(|_output, input| {
             let mut reader = SystemReader::new(AnyEncoding, input.into_source());
             analyze(&mut reader, &mut std::io::stdout(), args)
         })

@@ -36,7 +36,7 @@ impl IonCliCommand for ToJsonCommand {
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
-        CommandIo::new(args).for_each_input(|output, input| {
+        CommandIo::new(args)?.for_each_input(|output, input| {
             let input_name = input.name().to_owned();
             let mut reader = Reader::new(AnyEncoding, input.into_source())
                 .with_context(|| format!("Input file '{}' was not valid Ion.", input_name))?;
