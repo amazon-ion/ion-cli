@@ -5,7 +5,7 @@ use anyhow::Result;
 use anyhow::{bail, Context};
 use clap::builder::ValueParser;
 use clap::{crate_authors, crate_version, Arg, ArgAction, ArgMatches, Command as ClapCommand};
-use ion_rs::{Encoding, Format, IonEncoding, TextFormat};
+use ion_rs::{Format, IonEncoding, TextFormat};
 use std::fs::File;
 use std::io::Write;
 use termcolor::{ColorChoice, StandardStream, StandardStreamLock};
@@ -180,7 +180,7 @@ impl WithIonCliArgument for ClapCommand {
             .arg(
                 Arg::new(ION_VERSION_ARG_ID)
                     .long("ion-version")
-                    .short('V')
+                    .short('i')
                     .help("UNSTABLE! Output Ion version")
                     .value_parser(["1.0", "1.1"])
                     .default_value("1.0")
