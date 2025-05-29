@@ -139,8 +139,6 @@ pub trait WithIonCliArgument {
     fn show_unstable_flag(self) -> Self;
 }
 
-
-
 impl WithIonCliArgument for ClapCommand {
     fn with_input(self) -> Self {
         self.arg(

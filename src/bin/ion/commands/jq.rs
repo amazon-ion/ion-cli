@@ -2,18 +2,22 @@ use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 use crate::input::CommandInput;
 use crate::output::{CommandOutput, CommandOutputWriter};
 use anyhow::bail;
+use bigdecimal::num_bigint::BigInt;
+use bigdecimal::{BigDecimal, ToPrimitive};
 use clap::{arg, ArgMatches, Command};
-use ion_rs::{AnyEncoding, Decimal, Element, ElementReader, Int, IonData, IonType, List, Reader, Sequence, Value};
+use ion_rs::decimal::coefficient::Sign;
+use ion_rs::{
+    AnyEncoding, Decimal, Element, ElementReader, Int, IonData, IonType, List, Reader, Sequence,
+    Value,
+};
 use jaq_core::path::Opt;
 use jaq_core::val::Range;
 use jaq_core::{Ctx, Filter, Native, RcIter, ValR, ValX};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
+use std::iter::Empty;
 use std::ops::{Add, Deref, Div, Mul, Neg, Rem, Sub};
 use std::str::FromStr;
-use bigdecimal::{BigDecimal, ToPrimitive};
-use bigdecimal::num_bigint::BigInt;
-use ion_rs::decimal::coefficient::Sign;
 
 pub struct JqCommand;
 
@@ -59,7 +63,7 @@ impl IonCliCommand for JqCommand {
     }
 }
 
-fn compile_jq_filter(jq_expr:  &str) -> Filter<Native<JaqElement>> {
+fn compile_jq_filter(jq_expr: &str) -> Filter<Native<JaqElement>> {
     use jaq_core::load::{Arena, File, Loader};
     let program = File {
         code: jq_expr, // a jq expression like ".[]"
@@ -88,7 +92,6 @@ fn evaluate_jq_expr(
     filter: &Filter<Native<JaqElement>>,
     slurp: bool,
 ) -> anyhow::Result<()> {
-
     let mut reader = Reader::new(AnyEncoding, input.into_source())?;
     let mut writer = output.as_writer()?;
 
@@ -110,18 +113,17 @@ fn evaluate_jq_expr(
 fn filter_and_print(
     filter: &Filter<Native<JaqElement>>,
     writer: &mut CommandOutputWriter,
-    item: JaqElement
+    item: JaqElement,
 ) -> anyhow::Result<()> {
+    const EMPTY_ITER: RcIter<Empty<Result<JaqElement, String>>> = RcIter::new(core::iter::empty());
 
-    let inputs = RcIter::new(core::iter::empty());
-    // iterator over the output values
-    let ctx = Ctx::new([], &inputs); // can this be re-used? what even is this?
-    let cv = (ctx, item);
-    let out = filter.run(cv);
+    let inputs = &EMPTY_ITER; // filter evaluation starts here, no other contextual inputs exist
+    let ctx = Ctx::new([], inputs); // manages variables etc., use one per filter execution
+    let out = filter.run((ctx, item));
 
     for value in out {
         match value {
-            Ok(element) =>  writer.write(&element.0)?,
+            Ok(element) => writer.write(&element.0)?,
             Err(e) => bail!("ion jq: {e}"),
         };
     }
@@ -147,7 +149,9 @@ impl JaqElement {
 }
 
 // Anything that can be turned into an Element can also be turned into a JaqElement
-impl<T> From<T> for JaqElement where Element: From<T>
+impl<T> From<T> for JaqElement
+where
+    Element: From<T>,
 {
     fn from(value: T) -> Self {
         let element: Element = value.into();
@@ -205,7 +209,10 @@ impl PartialOrd for JaqElement {
 trait DecimalMath {
     fn to_big_decimal(self) -> BigDecimal;
     fn to_decimal(self) -> Decimal;
-    fn add(self, v2: impl DecimalMath) -> Decimal where Self: Sized {
+    fn add(self, v2: impl DecimalMath) -> Decimal
+    where
+        Self: Sized,
+    {
         let d1 = self.to_big_decimal();
         let d2 = v2.to_big_decimal();
         (d1 + d2).to_decimal()
@@ -281,7 +288,7 @@ impl FloatMath for Value {
         match self {
             Value::Int(i) => i.to_f64(),
             Value::Decimal(d) => d.to_f64(),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -295,51 +302,41 @@ impl Add for JaqElement {
         use Value::*;
 
         let elt: Element = match (lhv, rhv) {
-            (List(lhs), List(rhs)) => {
-                ion_rs::List::from_iter(lhs.into_iter().chain(rhs)).into()
-            },
-            (SExp(lhs), SExp(rhs)) => {
-                ion_rs::SExp::from_iter(lhs.into_iter().chain(rhs)).into()
-            },
-            (String(lhs), String(rhs)) => {
-                format!("{}{}", lhs.text(), rhs.text()).into()
-            }
-            (Struct(lhs), Struct(rhs)) => {
-                //TODO: Recursively remove duplicate fields, first field position but rhs and last field wins
-                lhs.clone_builder()
-                    .with_fields(rhs.fields())
-                    .build().into()
-            }
+            (List(a), List(b)) => ion_rs::List::from_iter(a.into_iter().chain(b)).into(),
+            (SExp(a), SExp(b)) => ion_rs::SExp::from_iter(a.into_iter().chain(b)).into(),
+            (String(a), String(b)) => format!("{}{}", a.text(), b.text()).into(),
+            //TODO: Recursively remove duplicate fields, first field position but b and last field wins
+            (Struct(a), Struct(b)) => a.clone_builder().with_fields(b.fields()).build().into(),
 
             // Number types, only lossless operations
-            (Int(lhs), Int(rhs)) => (lhs + rhs).into(),
-            (Float(lhs), Float(rhs)) => (lhs + rhs).into(),
-            (Decimal(lhs), Decimal(rhs)) => lhs.add(rhs).into(),
-            (Decimal(dv), Int(iv)) | (Int(iv), Decimal(dv)) => dv.add(iv).into(),
+            (Int(a), Int(b)) => (a + b).into(),
+            (Float(a), Float(b)) => (a + b).into(),
+            (Decimal(a), Decimal(b)) => a.add(b).into(),
+            (Decimal(a), Int(b)) | (Int(b), Decimal(a)) => a.add(b).into(),
 
             // jq treats JSON's untyped null as an additive identity, e.g. 0 / "" / [] / {}
-            (lhs, Null(IonType::Null)) => lhs.into(),
-            (Null(IonType::Null), rhs) => rhs.into(),
+            (Null(IonType::Null), a) | (a, Null(IonType::Null)) => a.into(),
 
             // Typed nulls we must handle differently, we can only add similar types
-            (Null(lht), Null(rht)) if lht == rht => Null(lht).into(),
-            (Null(lht), rhs) if lht == rhs.ion_type() => rhs.into(),
-            (lhs, Null(rht)) if lhs.ion_type() == rht => lhs.into(),
+            (Null(a), Null(b)) if a == b => Null(a).into(),
+            (Null(a), b) | (b, Null(a)) if a == b.ion_type() => b.into(),
 
             // Only try potentially lossy Float conversions when we've run out of the other options
-            (v, Float(fv)) | (Float(fv), v) if matches!(v.ion_type(), IonType::Int | IonType::Decimal) => {
-                let Some(f) = v.clone().to_f64() else {
-                    return jaq_error(format!("{v:?} cannot be an f64"));
+            (b, Float(a)) | (Float(a), b)
+                if matches!(b.ion_type(), IonType::Int | IonType::Decimal) =>
+            {
+                let Some(f) = b.clone().to_f64() else {
+                    return jaq_error(format!("{b:?} cannot be an f64"));
                 };
-                (f + fv).into()
+                (f + a).into()
             }
 
             //TODO: Better error messaging (display for JaqElement?)
             // Note this includes timestamps
-            (lhv, rhv) => {
-                let ltype = lhv.ion_type();
-                let rtype = rhv.ion_type();
-                return jaq_error(format!("{ltype} ({lhv}) and {rtype} ({rhv}) cannot be added"))
+            (a, b) => {
+                let atype = a.ion_type();
+                let btype = b.ion_type();
+                return jaq_error(format!("{atype} ({a}) and {btype} ({b}) cannot be added"));
             }
         };
 
@@ -517,6 +514,10 @@ impl jaq_std::ValT for JaqElement {
     }
 
     fn as_f64(&self) -> Result<f64, jaq_core::Error<Self>> {
-        todo!()
+        self.0
+            .value()
+            .clone()
+            .to_f64()
+            .ok_or_else(|| jaq_err(format!("{self:?} cannot be an f64")))
     }
 }
