@@ -1,8 +1,7 @@
 use crate::file_writer::FileWriter;
 use anyhow::bail;
-use ion_rs::{v1_0, v1_1, Encoding, Format, IonEncoding, Writer};
-use ion_rs::{IonResult, SequenceWriter, WriteAsIon};
-use itertools::Itertools;
+use ion_rs::{v1_0, v1_1, Format, IonEncoding, Writer};
+use ion_rs::{IonResult, WriteAsIon};
 use std::io::Write;
 use termcolor::{ColorSpec, StandardStreamLock, WriteColor};
 
@@ -13,6 +12,7 @@ pub enum CommandOutput<'a> {
     File(FileWriter, CommandOutputSpec),
 }
 
+#[allow(non_camel_case_types)]
 pub enum CommandOutputWriter<'a, 'b> {
     Text_1_0(Writer<v1_0::Text, &'b mut CommandOutput<'a>>),
     Binary_1_0(Writer<v1_0::Binary, &'b mut CommandOutput<'a>>),
@@ -33,6 +33,7 @@ impl<'a, 'b> CommandOutputWriter<'a, 'b> {
     }
 
     /// Writes bytes of previously encoded values to the output stream.
+    #[allow(dead_code)]
     pub fn flush(&mut self) -> IonResult<()> {
         match self {
             CommandOutputWriter::Text_1_0(w) => w.flush(),

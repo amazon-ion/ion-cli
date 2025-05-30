@@ -1,14 +1,17 @@
 use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 use crate::input::CommandInput;
-use crate::output::CommandOutput;
+use crate::output::{CommandOutput, CommandOutputWriter};
 use anyhow::bail;
-use clap::{Arg, ArgMatches, Command};
-use ion_rs::{AnyEncoding, Element, ElementReader, IonData, List, Reader, Sequence};
+use clap::{arg, ArgMatches, Command};
+use ion_rs::{
+    AnyEncoding, Element, ElementReader, IonData, IonType, List, Reader, Sequence, Value,
+};
 use jaq_core::path::Opt;
 use jaq_core::val::Range;
-use jaq_core::{RcIter, ValR, ValX};
+use jaq_core::{Ctx, Filter, Native, RcIter, ValR, ValX};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
+use std::iter::Empty;
 use std::ops::{Add, Deref, Div, Mul, Neg, Rem, Sub};
 use std::str::FromStr;
 
@@ -33,36 +36,30 @@ impl IonCliCommand for JqCommand {
 
     fn configure_args(&self, command: Command) -> Command {
         command
+            .arg(arg!(<filter> "A `jq` filter expression to evaluate"))
+            .arg(arg!(-s --slurp "Read all inputs into an array and use it as the single input value"))
             .with_input()
             .with_output()
             .with_format()
             .with_ion_version()
-            .arg(
-                Arg::new("expr")
-                    .long("expr")
-                    .short('e')
-                    .default_value(".[]")
-                    .help("A `jq` expression to evaluate"),
-            )
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> anyhow::Result<()> {
-        let jq_expr = args.get_one::<String>("expr").unwrap().as_str();
+        let slurp = args.get_flag("slurp");
+
+        let jq_expr = args.get_one::<String>("filter").unwrap().as_str();
+        let filter = compile_jq_filter(jq_expr);
 
         CommandIo::new(args)?.for_each_input(|output, input| {
             let _format = output.format();
             let _encoding = output.encoding();
-            evaluate_jq_expr(jq_expr, input, output)?;
+            evaluate_jq_expr(input, output, &filter, slurp)?;
             Ok(())
         })
     }
 }
 
-fn evaluate_jq_expr(
-    jq_expr: &str,
-    input: CommandInput,
-    output: &mut CommandOutput,
-) -> anyhow::Result<()> {
+fn compile_jq_filter(jq_expr: &str) -> Filter<Native<JaqElement>> {
     use jaq_core::load::{Arena, File, Loader};
     let program = File {
         code: jq_expr, // a jq expression like ".[]"
@@ -78,34 +75,54 @@ fn evaluate_jq_expr(
     let modules = loader.load(&arena, program).unwrap();
 
     // compile the filter
-    let filter = jaq_core::Compiler::default()
+    jaq_core::Compiler::default()
         // Similar to `defs()` above, this would be our opportunity to extend the built-in filters
         .with_funs(jaq_std::funs::<JaqElement>())
         .compile(modules)
-        .unwrap();
+        .unwrap()
+}
 
-    // TODO: The setup above is happening once per input, but could probably happen once per run.
-
+fn evaluate_jq_expr(
+    input: CommandInput,
+    output: &mut CommandOutput,
+    filter: &Filter<Native<JaqElement>>,
+    slurp: bool,
+) -> anyhow::Result<()> {
     let mut reader = Reader::new(AnyEncoding, input.into_source())?;
-    let input_elements = reader.read_all_elements()?;
-    let ion_stream_as_element = List::from(input_elements).into();
-
-    let inputs = RcIter::new(core::iter::empty());
-    // iterator over the output values
-    let out = filter.run((jaq_core::Ctx::new([], &inputs), ion_stream_as_element));
-
     let mut writer = output.as_writer()?;
-    for value in out {
-        match value {
-            Ok(element) => {
-                writer.write(&element.0)?;
-            }
-            Err(e) => {
-                bail!("jq processing failed: {e}");
-            }
+
+    if slurp {
+        let all_input_elements = reader.read_all_elements()?;
+        let slurped = List::from(all_input_elements).into();
+        filter_and_print(filter, &mut writer, slurped)?;
+    } else {
+        for item in reader.elements() {
+            let item: JaqElement = item?.into();
+            filter_and_print(filter, &mut writer, item)?;
         }
     }
+
     writer.close()?;
+    Ok(())
+}
+
+fn filter_and_print(
+    filter: &Filter<Native<JaqElement>>,
+    writer: &mut CommandOutputWriter,
+    item: JaqElement,
+) -> anyhow::Result<()> {
+    const EMPTY_ITER: RcIter<Empty<Result<JaqElement, String>>> = RcIter::new(core::iter::empty());
+
+    let inputs = &EMPTY_ITER; // filter evaluation starts here, no other contextual inputs exist
+    let ctx = Ctx::new([], inputs); // manages variables etc., use one per filter execution
+    let out = filter.run((ctx, item));
+
+    for value in out {
+        match value {
+            Ok(element) => writer.write(&element.0)?,
+            Err(e) => bail!("ion jq: {e}"),
+        };
+    }
     Ok(())
 }
 
@@ -114,6 +131,18 @@ fn evaluate_jq_expr(
 ///  2. Keep all logic related to `jq` behavior in one place.
 #[derive(Clone, Eq, Debug)]
 struct JaqElement(Element);
+//TODO: move to sibling module so that people can't construct this and have to go through 'from'
+// this will allow consistent construction/transformation rules e.g. field deduplication
+
+impl JaqElement {
+    pub fn into_inner(self) -> Element {
+        self.0
+    }
+
+    pub fn into_value(self) -> Value {
+        self.into_inner().into_value()
+    }
+}
 
 // Anything that can be turned into an Element can also be turned into a JaqElement
 impl<T> From<T> for JaqElement
@@ -155,7 +184,7 @@ impl FromIterator<Self> for JaqElement {
     fn from_iter<T: IntoIterator<Item = Self>>(iter: T) -> Self {
         let items = Sequence::from_iter(iter.into_iter().map(|je| je.0));
         let element = Element::from(List::from_iter(items));
-        JaqElement(element)
+        JaqElement::from(element)
     }
 }
 
@@ -177,7 +206,51 @@ impl Add for JaqElement {
     type Output = ValR<Self>;
 
     fn add(self, _rhs: Self) -> Self::Output {
-        todo!()
+        let (lhv, rhv) = (self.into_value(), _rhs.into_value());
+
+        use ion_math::{DecimalMath, FloatMath};
+        use Value::*;
+
+        let elt: Element = match (lhv, rhv) {
+            (List(a), List(b)) => ion_rs::List::from_iter(a.into_iter().chain(b)).into(),
+            (SExp(a), SExp(b)) => ion_rs::SExp::from_iter(a.into_iter().chain(b)).into(),
+            (String(a), String(b)) => format!("{}{}", a.text(), b.text()).into(),
+            //TODO: Recursively remove duplicate fields, first field position but b and last field wins
+            (Struct(a), Struct(b)) => a.clone_builder().with_fields(b.fields()).build().into(),
+
+            // Number types, only lossless operations
+            (Int(a), Int(b)) => (a + b).into(),
+            (Float(a), Float(b)) => (a + b).into(),
+            (Decimal(a), Decimal(b)) => a.add(b).into(),
+            (Decimal(a), Int(b)) | (Int(b), Decimal(a)) => a.add(b).into(),
+
+            // jq treats JSON's untyped null as an additive identity, e.g. 0 / "" / [] / {}
+            (Null(IonType::Null), a) | (a, Null(IonType::Null)) => a.into(),
+
+            // Typed nulls we must handle differently, we can only add similar types
+            (Null(a), Null(b)) if a == b => Null(a).into(),
+            (Null(a), b) | (b, Null(a)) if a == b.ion_type() => b.into(),
+
+            // Only try potentially lossy Float conversions when we've run out of the other options
+            (b, Float(a)) | (Float(a), b)
+                if matches!(b.ion_type(), IonType::Int | IonType::Decimal) =>
+            {
+                let Some(f) = b.clone().to_f64() else {
+                    return jaq_error(format!("{b:?} cannot be an f64"));
+                };
+                (f + a).into()
+            }
+
+            //TODO: Better error messaging (display for JaqElement?)
+            // Note this includes timestamps
+            (a, b) => {
+                let atype = a.ion_type();
+                let btype = b.ion_type();
+                return jaq_error(format!("{atype} ({a}) and {btype} ({b}) cannot be added"));
+            }
+        };
+
+        Ok(JaqElement::from(elt))
     }
 }
 
@@ -275,7 +348,6 @@ impl jaq_core::ValT for JaqElement {
                     .ok_or_else(|| jaq_err("index out of bounds"))?;
                 Ok(JaqElement::from(element.to_owned()))
             }
-            // TODO: Should we allow indexing into a struct by integer?
             (Struct(strukt), String(name)) => strukt
                 .get(name)
                 .ok_or_else(|| jaq_err(format!("field name '{name}' not found")))
@@ -286,6 +358,7 @@ impl jaq_core::ValT for JaqElement {
                 .ok_or_else(|| jaq_err(format!("field name '{name}' not found")))
                 .map(Element::to_owned)
                 .map(JaqElement::from),
+            (Struct(_), Int(i)) => jaq_error(format!("cannot index struct with number ({i})")),
             _ => jaq_error(format!("cannot index into {self:?}")),
         }
     }
@@ -351,6 +424,111 @@ impl jaq_std::ValT for JaqElement {
     }
 
     fn as_f64(&self) -> Result<f64, jaq_core::Error<Self>> {
-        todo!()
+        use ion_math::FloatMath;
+        self.0
+            .value()
+            .clone()
+            .to_f64()
+            .ok_or_else(|| jaq_err(format!("{self:?} cannot be an f64")))
+    }
+}
+
+/// The general philosophy of number type conversions used here is that lowest precision wins:
+/// 1. Decimal can express any Int, so any binary operation involving a Decimal and an Int produces
+///    a Decimal.
+/// 2. Floats have less precision than a Decimal and less range than an Int, so any binary operation
+///.   involving a Float produces a Float. A Decimal may degrade and lose precision when converted
+///    a Float for arithmetic, but the operation will fail if an operand is out of range for Float.
+pub(crate) mod ion_math {
+    use bigdecimal::num_bigint::BigInt;
+    use bigdecimal::{BigDecimal, ToPrimitive};
+    use ion_rs::decimal::coefficient::Sign;
+    use ion_rs::{Decimal, Int, Value};
+
+    pub(crate) trait DecimalMath {
+        fn to_big_decimal(self) -> BigDecimal;
+        fn to_decimal(self) -> Decimal;
+        fn add(self, v2: impl DecimalMath) -> Decimal
+        where
+            Self: Sized,
+        {
+            let d1 = self.to_big_decimal();
+            let d2 = v2.to_big_decimal();
+            (d1 + d2).to_decimal()
+        }
+    }
+
+    impl DecimalMath for Decimal {
+        fn to_big_decimal(self) -> BigDecimal {
+            let magnitude = self.coefficient().magnitude().as_u128().unwrap();
+            let bigint = match self.coefficient().sign() {
+                Sign::Negative => -BigInt::from(magnitude),
+                Sign::Positive => BigInt::from(magnitude),
+            };
+            BigDecimal::new(bigint, self.scale())
+        }
+
+        fn to_decimal(self) -> Decimal {
+            self
+        }
+    }
+
+    impl DecimalMath for Int {
+        fn to_big_decimal(self) -> BigDecimal {
+            let data = self.expect_i128().unwrap(); // error case is unreachable with current ion-rs
+            BigDecimal::from(data)
+        }
+
+        fn to_decimal(self) -> Decimal {
+            let data = self.expect_i128().unwrap(); // error case is unreachable with current ion-rs
+            Decimal::new(data, 0)
+        }
+    }
+
+    impl DecimalMath for BigDecimal {
+        fn to_big_decimal(self) -> BigDecimal {
+            self
+        }
+
+        fn to_decimal(self) -> Decimal {
+            let (coeff, exponent) = self.into_bigint_and_exponent();
+            let data = coeff.to_i128().unwrap();
+            Decimal::new(data, -exponent)
+        }
+    }
+
+    pub(crate) trait FloatMath {
+        fn to_f64(self) -> Option<f64>;
+    }
+
+    impl FloatMath for f64 {
+        fn to_f64(self) -> Option<f64> {
+            Some(self)
+        }
+    }
+
+    impl FloatMath for Int {
+        fn to_f64(self) -> Option<f64> {
+            self.as_i128().and_then(|data| {
+                let float = data as f64;
+                (float as i128 == data).then_some(float)
+            })
+        }
+    }
+
+    impl FloatMath for Decimal {
+        fn to_f64(self) -> Option<f64> {
+            self.to_big_decimal().to_f64()
+        }
+    }
+
+    impl FloatMath for Value {
+        fn to_f64(self) -> Option<f64> {
+            match self {
+                Value::Int(i) => i.to_f64(),
+                Value::Decimal(d) => d.to_f64(),
+                _ => None,
+            }
+        }
     }
 }
