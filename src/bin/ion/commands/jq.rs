@@ -2,13 +2,9 @@ use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 use crate::input::CommandInput;
 use crate::output::{CommandOutput, CommandOutputWriter};
 use anyhow::bail;
-use bigdecimal::num_bigint::BigInt;
-use bigdecimal::{BigDecimal, ToPrimitive};
 use clap::{arg, ArgMatches, Command};
-use ion_rs::decimal::coefficient::Sign;
 use ion_rs::{
-    AnyEncoding, Decimal, Element, ElementReader, Int, IonData, IonType, List, Reader, Sequence,
-    Value,
+    AnyEncoding, Element, ElementReader, IonData, IonType, List, Reader, Sequence, Value,
 };
 use jaq_core::path::Opt;
 use jaq_core::val::Range;
@@ -206,99 +202,13 @@ impl PartialOrd for JaqElement {
 
 // === Math operator behaviors ===
 
-trait DecimalMath {
-    fn to_big_decimal(self) -> BigDecimal;
-    fn to_decimal(self) -> Decimal;
-    fn add(self, v2: impl DecimalMath) -> Decimal
-    where
-        Self: Sized,
-    {
-        let d1 = self.to_big_decimal();
-        let d2 = v2.to_big_decimal();
-        (d1 + d2).to_decimal()
-    }
-}
-
-impl DecimalMath for Decimal {
-    fn to_big_decimal(self) -> BigDecimal {
-        let magnitude = self.coefficient().magnitude().as_u128().unwrap();
-        let bigint = match self.coefficient().sign() {
-            Sign::Negative => -BigInt::from(magnitude),
-            Sign::Positive => BigInt::from(magnitude),
-        };
-        BigDecimal::new(bigint, self.scale())
-    }
-
-    fn to_decimal(self) -> Decimal {
-        self
-    }
-}
-
-impl DecimalMath for Int {
-    fn to_big_decimal(self) -> BigDecimal {
-        let data = self.expect_i128().unwrap(); // error case is unreachable with current ion-rs
-        BigDecimal::from(data)
-    }
-
-    fn to_decimal(self) -> Decimal {
-        let data = self.expect_i128().unwrap(); // error case is unreachable with current ion-rs
-        Decimal::new(data, 0)
-    }
-}
-
-impl DecimalMath for BigDecimal {
-    fn to_big_decimal(self) -> BigDecimal {
-        self
-    }
-
-    fn to_decimal(self) -> Decimal {
-        let (coeff, exponent) = self.into_bigint_and_exponent();
-        let data = coeff.to_i128().unwrap();
-        Decimal::new(data, -exponent)
-    }
-}
-
-trait FloatMath {
-    fn to_f64(self) -> Option<f64>;
-}
-
-impl FloatMath for f64 {
-    fn to_f64(self) -> Option<f64> {
-        Some(self)
-    }
-}
-
-impl FloatMath for Int {
-    fn to_f64(self) -> Option<f64> {
-        self.as_i128().and_then(|data| {
-            let float = data as f64;
-            (float as i128 == data).then_some(float)
-        })
-    }
-}
-
-impl FloatMath for Decimal {
-    fn to_f64(self) -> Option<f64> {
-        self.to_big_decimal().to_f64()
-    }
-}
-
-impl FloatMath for Value {
-    fn to_f64(self) -> Option<f64> {
-        match self {
-            Value::Int(i) => i.to_f64(),
-            Value::Decimal(d) => d.to_f64(),
-            _ => None,
-        }
-    }
-}
-
 impl Add for JaqElement {
     type Output = ValR<Self>;
 
     fn add(self, _rhs: Self) -> Self::Output {
         let (lhv, rhv) = (self.into_value(), _rhs.into_value());
 
+        use ion_math::{DecimalMath, FloatMath};
         use Value::*;
 
         let elt: Element = match (lhv, rhv) {
@@ -514,10 +424,111 @@ impl jaq_std::ValT for JaqElement {
     }
 
     fn as_f64(&self) -> Result<f64, jaq_core::Error<Self>> {
+        use ion_math::FloatMath;
         self.0
             .value()
             .clone()
             .to_f64()
             .ok_or_else(|| jaq_err(format!("{self:?} cannot be an f64")))
+    }
+}
+
+/// The general philosophy of number type conversions used here is that lowest precision wins:
+/// 1. Decimal can express any Int, so any binary operation involving a Decimal and an Int produces
+///    a Decimal.
+/// 2. Floats have less precision than a Decimal and less range than an Int, so any binary operation
+///.   involving a Float produces a Float. A Decimal may degrade and lose precision when converted
+///    a Float for arithmetic, but the operation will fail if an operand is out of range for Float.
+pub(crate) mod ion_math {
+    use bigdecimal::num_bigint::BigInt;
+    use bigdecimal::{BigDecimal, ToPrimitive};
+    use ion_rs::decimal::coefficient::Sign;
+    use ion_rs::{Decimal, Int, Value};
+
+    pub(crate) trait DecimalMath {
+        fn to_big_decimal(self) -> BigDecimal;
+        fn to_decimal(self) -> Decimal;
+        fn add(self, v2: impl DecimalMath) -> Decimal
+        where
+            Self: Sized,
+        {
+            let d1 = self.to_big_decimal();
+            let d2 = v2.to_big_decimal();
+            (d1 + d2).to_decimal()
+        }
+    }
+
+    impl DecimalMath for Decimal {
+        fn to_big_decimal(self) -> BigDecimal {
+            let magnitude = self.coefficient().magnitude().as_u128().unwrap();
+            let bigint = match self.coefficient().sign() {
+                Sign::Negative => -BigInt::from(magnitude),
+                Sign::Positive => BigInt::from(magnitude),
+            };
+            BigDecimal::new(bigint, self.scale())
+        }
+
+        fn to_decimal(self) -> Decimal {
+            self
+        }
+    }
+
+    impl DecimalMath for Int {
+        fn to_big_decimal(self) -> BigDecimal {
+            let data = self.expect_i128().unwrap(); // error case is unreachable with current ion-rs
+            BigDecimal::from(data)
+        }
+
+        fn to_decimal(self) -> Decimal {
+            let data = self.expect_i128().unwrap(); // error case is unreachable with current ion-rs
+            Decimal::new(data, 0)
+        }
+    }
+
+    impl DecimalMath for BigDecimal {
+        fn to_big_decimal(self) -> BigDecimal {
+            self
+        }
+
+        fn to_decimal(self) -> Decimal {
+            let (coeff, exponent) = self.into_bigint_and_exponent();
+            let data = coeff.to_i128().unwrap();
+            Decimal::new(data, -exponent)
+        }
+    }
+
+    pub(crate) trait FloatMath {
+        fn to_f64(self) -> Option<f64>;
+    }
+
+    impl FloatMath for f64 {
+        fn to_f64(self) -> Option<f64> {
+            Some(self)
+        }
+    }
+
+    impl FloatMath for Int {
+        fn to_f64(self) -> Option<f64> {
+            self.as_i128().and_then(|data| {
+                let float = data as f64;
+                (float as i128 == data).then_some(float)
+            })
+        }
+    }
+
+    impl FloatMath for Decimal {
+        fn to_f64(self) -> Option<f64> {
+            self.to_big_decimal().to_f64()
+        }
+    }
+
+    impl FloatMath for Value {
+        fn to_f64(self) -> Option<f64> {
+            match self {
+                Value::Int(i) => i.to_f64(),
+                Value::Decimal(d) => d.to_f64(),
+                _ => None,
+            }
+        }
     }
 }
