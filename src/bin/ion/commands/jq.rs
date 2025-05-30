@@ -212,9 +212,18 @@ impl Add for JaqElement {
         use Value::*;
 
         let elt: Element = match (lhv, rhv) {
+            // jq treats JSON's untyped null as an additive identity, e.g. 0 / "" / [] / {}
+            (Null(IonType::Null), a) | (a, Null(IonType::Null)) => a.into(),
+
+            // Typed nulls we must handle differently, we can only add similar types
+            (Null(a), Null(b)) if a == b => Null(a).into(),
+            (Null(a), b) | (b, Null(a)) if a == b.ion_type() => b.into(),
+
+            // Sequences and strings concatenate
             (List(a), List(b)) => ion_rs::List::from_iter(a.into_iter().chain(b)).into(),
             (SExp(a), SExp(b)) => ion_rs::SExp::from_iter(a.into_iter().chain(b)).into(),
             (String(a), String(b)) => format!("{}{}", a.text(), b.text()).into(),
+            // Structs merge
             //TODO: Recursively remove duplicate fields, first field position but b and last field wins
             (Struct(a), Struct(b)) => a.clone_builder().with_fields(b.fields()).build().into(),
 
@@ -223,13 +232,6 @@ impl Add for JaqElement {
             (Float(a), Float(b)) => (a + b).into(),
             (Decimal(a), Decimal(b)) => a.add(b).into(),
             (Decimal(a), Int(b)) | (Int(b), Decimal(a)) => a.add(b).into(),
-
-            // jq treats JSON's untyped null as an additive identity, e.g. 0 / "" / [] / {}
-            (Null(IonType::Null), a) | (a, Null(IonType::Null)) => a.into(),
-
-            // Typed nulls we must handle differently, we can only add similar types
-            (Null(a), Null(b)) if a == b => Null(a).into(),
-            (Null(a), b) | (b, Null(a)) if a == b.ion_type() => b.into(),
 
             // Only try potentially lossy Float conversions when we've run out of the other options
             (b, Float(a)) | (Float(a), b)
