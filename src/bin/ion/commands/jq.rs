@@ -6,6 +6,7 @@ use clap::{arg, ArgMatches, Command};
 use ion_rs::{
     AnyEncoding, Element, ElementReader, IonData, IonType, List, Reader, Sequence, Value,
 };
+use itertools::Itertools;
 use jaq_core::path::Opt;
 use jaq_core::val::Range;
 use jaq_core::{Ctx, Filter, Native, RcIter, ValR, ValX};
@@ -174,6 +175,17 @@ fn jaq_error(e: impl Into<Element>) -> ValR<JaqElement> {
     Err(jaq_err(e))
 }
 
+fn jaq_unary_error(v1: Value, reason: &str) -> ValR<JaqElement> {
+    let type1 = v1.ion_type();
+    jaq_error(format!("{type1} ({v1}) {reason}"))
+}
+
+fn jaq_binary_error(v1: Value, v2: Value, reason: &str) -> ValR<JaqElement> {
+    let type1 = v1.ion_type();
+    let type2 = v2.ion_type();
+    jaq_error(format!("{type1} ({v1}) and {type2} ({v2}) {reason}"))
+}
+
 // Convenience method to return a bare `JaqError`, not wrapped in a Result::Err.
 // This is useful inside closures like `ok_or_else`.
 fn jaq_err(e: impl Into<Element>) -> JaqError {
@@ -238,18 +250,13 @@ impl Add for JaqElement {
                 if matches!(b.ion_type(), IonType::Int | IonType::Decimal) =>
             {
                 let Some(f) = b.clone().to_f64() else {
-                    return jaq_error(format!("{b:?} cannot be an f64"));
+                    return jaq_unary_error(b, "cannot be an f64");
                 };
                 (f + a).into()
             }
 
-            //TODO: Better error messaging (display for JaqElement?)
             // Note this includes timestamps
-            (a, b) => {
-                let atype = a.ion_type();
-                let btype = b.ion_type();
-                return jaq_error(format!("{atype} ({a}) and {btype} ({b}) cannot be added"));
-            }
+            (a, b) => return jaq_binary_error(a, b, "cannot be added"),
         };
 
         Ok(JaqElement::from(elt))
@@ -260,7 +267,51 @@ impl Sub for JaqElement {
     type Output = ValR<Self>;
 
     fn sub(self, _rhs: Self) -> Self::Output {
-        todo!()
+        let (lhv, rhv) = (self.into_value(), _rhs.into_value());
+
+        use ion_math::{DecimalMath, FloatMath};
+        use Value::*;
+
+        let elt: Element = match (lhv, rhv) {
+            // Sequences and strings do set subtraction with RHS
+            // b.iter.contains() will make these implementations O(N^2).
+            // Neither Element nor Value implement Hash or Ord, so faster lookup isn't available
+            // Perhaps someday we can do something more clever with ion-hash or IonOrd?
+            (List(a), List(b)) => {
+                let a_less_b = a.into_iter().filter(|i| !b.iter().contains(i));
+                ion_rs::List::from_iter(a_less_b).into()
+            }
+            (SExp(a), SExp(b)) => {
+                let a_less_b = a.into_iter().filter(|i| !b.iter().contains(i));
+                ion_rs::SExp::from_iter(a_less_b).into()
+            }
+
+            // Number types, only lossless operations
+            (Int(a), Int(b)) => (a + -b).into(), //TODO: use bare - when Int implements Sub
+            (Float(a), Float(b)) => (a - b).into(),
+            (Decimal(a), Decimal(b)) => a.sub(b).into(),
+            (Decimal(a), Int(b)) => a.sub(b).into(),
+            (Int(a), Decimal(b)) => a.sub(b).into(),
+
+            // Only try potentially lossy Float conversions when we've run out of the other options
+            (a @ Int(_) | a @ Decimal(_), Float(b)) => {
+                let Some(f) = a.clone().to_f64() else {
+                    return jaq_unary_error(a, "cannot be an f64");
+                };
+                (f - b).into()
+            }
+            (Float(a), b @ Int(_) | b @ Decimal(_)) => {
+                let Some(f) = b.clone().to_f64() else {
+                    return jaq_unary_error(b, "cannot be an f64");
+                };
+                (a - f).into()
+            }
+
+            // Note this includes timestamps, strings, structs, and all nulls
+            (a, b) => return jaq_binary_error(a, b, "cannot be subtracted"),
+        };
+
+        Ok(JaqElement::from(elt))
     }
 }
 
@@ -454,9 +505,13 @@ pub(crate) mod ion_math {
         where
             Self: Sized,
         {
-            let d1 = self.to_big_decimal();
-            let d2 = v2.to_big_decimal();
-            (d1 + d2).to_decimal()
+            (self.to_big_decimal() + v2.to_big_decimal()).to_decimal()
+        }
+        fn sub(self, v2: impl DecimalMath) -> Decimal
+        where
+            Self: Sized,
+        {
+            (self.to_big_decimal() - v2.to_big_decimal()).to_decimal()
         }
     }
 
