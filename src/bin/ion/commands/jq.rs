@@ -1,7 +1,9 @@
+use crate::commands::jq::ion_math::DecimalMath;
 use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 use crate::input::CommandInput;
 use crate::output::{CommandOutput, CommandOutputWriter};
 use anyhow::bail;
+use bigdecimal::ToPrimitive;
 use clap::{arg, ArgMatches, Command};
 use ion_rs::{
     AnyEncoding, Element, ElementReader, IonData, IonType, List, Reader, Sequence, Value,
@@ -217,10 +219,29 @@ impl PartialOrd for JaqElement {
 impl Add for JaqElement {
     type Output = ValR<Self>;
 
+    /// From: https://jqlang.org/manual/#addition
+    ///
+    /// > The operator `+` takes two filters, applies them both to the same input, and adds the
+    /// results together. What "adding" means depends on the types involved:
+    /// >
+    /// > - Numbers are added by normal arithmetic.
+    /// >
+    /// > - Arrays are added by being concatenated into a larger array.
+    /// >
+    /// > - Strings are added by being joined into a larger string.
+    /// >
+    /// > - Objects are added by merging, that is, inserting all the key-value pairs from both
+    /// > objects into a single combined object. If both objects contain a value for the same key,
+    /// > the object on the right of the `+` wins. (For recursive merge use the `*` operator.)
+    /// >
+    /// > `null` can be added to any value, and returns the other value unchanged.
+    ///
+    /// For Ion values we have slightly different semantics–we haven't yet implemented the
+    /// overriding and deduplicating of keys for structs, so structs are simply merged
     fn add(self, _rhs: Self) -> Self::Output {
         let (lhv, rhv) = (self.into_value(), _rhs.into_value());
 
-        use ion_math::{DecimalMath, FloatMath};
+        use ion_math::{DecimalMath, ToFloat};
         use Value::*;
 
         let elt: Element = match (lhv, rhv) {
@@ -235,8 +256,15 @@ impl Add for JaqElement {
             (List(a), List(b)) => ion_rs::List::from_iter(a.into_iter().chain(b)).into(),
             (SExp(a), SExp(b)) => ion_rs::SExp::from_iter(a.into_iter().chain(b)).into(),
             (String(a), String(b)) => format!("{}{}", a.text(), b.text()).into(),
+            (Symbol(a), Symbol(b)) => match (a.text(), b.text()) {
+                (Some(ta), Some(tb)) => format!("{}{}", ta, tb),
+                //TODO: Handle symbols with unknown text?
+                _ => return jaq_binary_error(Symbol(a), Symbol(b), "cannot be added"),
+            }
+            .into(),
+
             // Structs merge
-            //TODO: Recursively remove duplicate fields, first field position but b and last field wins
+            //TODO: Recursively remove duplicate fields, see doc comment for method
             (Struct(a), Struct(b)) => a.clone_builder().with_fields(b.fields()).build().into(),
 
             // Number types, only lossless operations
@@ -246,16 +274,13 @@ impl Add for JaqElement {
             (Decimal(a), Int(b)) | (Int(b), Decimal(a)) => a.add(b).into(),
 
             // Only try potentially lossy Float conversions when we've run out of the other options
-            (b, Float(a)) | (Float(a), b)
-                if matches!(b.ion_type(), IonType::Int | IonType::Decimal) =>
-            {
-                let Some(f) = b.clone().to_f64() else {
-                    return jaq_unary_error(b, "cannot be an f64");
+            (a @ Int(_) | a @ Decimal(_), Float(b)) | (Float(b), a @ Int(_) | a @ Decimal(_)) => {
+                let Some(f) = a.clone().to_f64() else {
+                    return jaq_unary_error(a, "cannot be an f64");
                 };
-                (f + a).into()
+                (f + b).into()
             }
 
-            // Note this includes timestamps
             (a, b) => return jaq_binary_error(a, b, "cannot be added"),
         };
 
@@ -266,10 +291,14 @@ impl Add for JaqElement {
 impl Sub for JaqElement {
     type Output = ValR<Self>;
 
+    /// From: https://jqlang.org/manual/#subtraction
+    ///
+    /// > As well as normal arithmetic subtraction on numbers, the `-` operator can be used on
+    /// > arrays to remove all occurrences of the second array's elements from the first array.
     fn sub(self, _rhs: Self) -> Self::Output {
         let (lhv, rhv) = (self.into_value(), _rhs.into_value());
 
-        use ion_math::{DecimalMath, FloatMath};
+        use ion_math::{DecimalMath, ToFloat};
         use Value::*;
 
         let elt: Element = match (lhv, rhv) {
@@ -287,7 +316,7 @@ impl Sub for JaqElement {
             }
 
             // Number types, only lossless operations
-            (Int(a), Int(b)) => (a + -b).into(), //TODO: use bare - when Int implements Sub
+            (Int(a), Int(b)) => (a + -b).into(), //TODO: use bare - with ion-rs > rc.11
             (Float(a), Float(b)) => (a - b).into(),
             (Decimal(a), Decimal(b)) => a.sub(b).into(),
             (Decimal(a), Int(b)) => a.sub(b).into(),
@@ -307,7 +336,6 @@ impl Sub for JaqElement {
                 (a - f).into()
             }
 
-            // Note this includes timestamps, strings, structs, and all nulls
             (a, b) => return jaq_binary_error(a, b, "cannot be subtracted"),
         };
 
@@ -318,16 +346,112 @@ impl Sub for JaqElement {
 impl Mul for JaqElement {
     type Output = ValR<Self>;
 
+    /// From: https://jqlang.org/manual/#multiplication-division-modulo
+    ///
+    /// > - Multiplying a string by a number produces the concatenation of that string that many times.
+    /// > `"x" * 0` produces `""`.
+    /// >
+    /// > - Multiplying two objects will merge them recursively: this works like addition but if both
+    /// > objects contain a value for the same key, and the values are objects, the two are merged
+    /// > with the same strategy.
     fn mul(self, _rhs: Self) -> Self::Output {
-        todo!()
+        let (lhv, rhv) = (self.into_value(), _rhs.into_value());
+
+        use ion_math::{DecimalMath, ToFloat};
+        use Value::*;
+
+        let elt: Element = match (lhv, rhv) {
+            (String(a), Int(b)) | (Int(b), String(a)) => match b.as_usize() {
+                Some(n) => a.text().repeat(n).into(),
+                None => Null(IonType::Null).into(),
+            },
+
+            (Symbol(a), Int(b)) | (Int(b), Symbol(a)) => match (b.as_usize(), a.text()) {
+                (Some(n), Some(t)) => t.repeat(n).into(),
+                //TODO: Handle symbols with unknown text?
+                _ => Null(IonType::Null).into(),
+            },
+
+            // Structs merge recursively
+            //TODO: Recursively remove duplicate fields, recursively merge if struct fields collide
+            (Struct(a), Struct(b)) => a.clone_builder().with_fields(b.fields()).build().into(),
+
+            // Number types, only lossless operations
+            //TODO: use (a*b) when using ion-rs > rc.11
+            (Int(a), Int(b)) => (a.expect_i128().unwrap() * b.expect_i128().unwrap()).into(),
+            (Float(a), Float(b)) => (a * b).into(),
+            (Decimal(a), Decimal(b)) => a.mul(b).into(),
+            (Decimal(a), Int(b)) | (Int(b), Decimal(a)) => a.mul(b).into(),
+
+            // Only try potentially lossy Float conversions when we've run out of the other options
+            (a @ Int(_) | a @ Decimal(_), Float(b)) | (Float(b), a @ Int(_) | a @ Decimal(_)) => {
+                let Some(f) = a.clone().to_f64() else {
+                    return jaq_unary_error(a, "cannot be an f64");
+                };
+                (f * b).into()
+            }
+
+            (a, b) => return jaq_binary_error(a, b, "cannot be multiplied"),
+        };
+
+        Ok(JaqElement::from(elt))
     }
 }
 
 impl Div for JaqElement {
     type Output = ValR<Self>;
 
+    /// From: https://jqlang.org/manual/#multiplication-division-modulo
+    ///
+    /// > Dividing a string by another splits the first using the second as separators.
     fn div(self, _rhs: Self) -> Self::Output {
-        todo!()
+        let (lhv, rhv) = (self.into_value(), _rhs.into_value());
+
+        use ion_math::{DecimalMath, ToFloat};
+        use Value::*;
+
+        let elt: Element = match (lhv, rhv) {
+            // Dividing a string by another splits the first using the second as separators.
+            (String(a), String(b)) => {
+                let split = a.text().split(b.text());
+                let iter = split.map(|s| String(s.into())).map(Element::from);
+                ion_rs::List::from_iter(iter).into()
+            }
+            (Symbol(a), Symbol(b)) => match (a.text(), b.text()) {
+                (Some(ta), Some(tb)) => {
+                    let iter = ta.split(tb).map(|s| Symbol(s.into())).map(Element::from);
+                    ion_rs::List::from_iter(iter)
+                }
+                //TODO: Handle symbols with unknown text?
+                _ => return jaq_binary_error(Symbol(a), Symbol(b), "cannot be divided"),
+            }
+            .into(),
+
+            // Number types, only lossless operations
+            (Int(a), Int(b)) => (a.expect_i128().unwrap() / b.expect_i128().unwrap()).into(),
+            (Float(a), Float(b)) => (a / b).into(),
+            (Decimal(a), Decimal(b)) => a.div(b).into(),
+            (Decimal(a), Int(b)) => a.div(b).into(),
+            (Int(a), Decimal(b)) => a.div(b).into(),
+
+            // Only try potentially lossy Float conversions when we've run out of the other options
+            (a @ Int(_) | a @ Decimal(_), Float(b)) => {
+                let Some(f) = a.clone().to_f64() else {
+                    return jaq_unary_error(a, "cannot be an f64");
+                };
+                (f / b).into()
+            }
+            (Float(a), b @ Int(_) | b @ Decimal(_)) => {
+                let Some(f) = b.clone().to_f64() else {
+                    return jaq_unary_error(b, "cannot be an f64");
+                };
+                (a / f).into()
+            }
+
+            (a, b) => return jaq_binary_error(a, b, "cannot be divided"),
+        };
+
+        Ok(JaqElement::from(elt))
     }
 }
 
@@ -335,7 +459,37 @@ impl Rem for JaqElement {
     type Output = ValR<Self>;
 
     fn rem(self, _rhs: Self) -> Self::Output {
-        todo!()
+        let (lhv, rhv) = (self.into_value(), _rhs.into_value());
+
+        use ion_math::{DecimalMath, ToFloat};
+        use Value::*;
+
+        let elt: Element = match (lhv, rhv) {
+            // Number types, only lossless operations
+            (Int(a), Int(b)) => (a.expect_i128().unwrap() % b.expect_i128().unwrap()).into(),
+            (Float(a), Float(b)) => (a % b).into(),
+            (Decimal(a), Decimal(b)) => a.rem(b).into(),
+            (Decimal(a), Int(b)) => a.rem(b).into(),
+            (Int(a), Decimal(b)) => a.rem(b).into(),
+
+            // Only try potentially lossy Float conversions when we've run out of the other options
+            (a @ Int(_) | a @ Decimal(_), Float(b)) => {
+                let Some(f) = a.clone().to_f64() else {
+                    return jaq_unary_error(a, "cannot be an f64");
+                };
+                (f % b).into()
+            }
+            (Float(a), b @ Int(_) | b @ Decimal(_)) => {
+                let Some(f) = b.clone().to_f64() else {
+                    return jaq_unary_error(b, "cannot be an f64");
+                };
+                (a % f).into()
+            }
+
+            (a, b) => return jaq_binary_error(a, b, "cannot be divided (remainder)"),
+        };
+
+        Ok(JaqElement::from(elt))
     }
 }
 
@@ -343,7 +497,21 @@ impl Neg for JaqElement {
     type Output = ValR<Self>;
 
     fn neg(self) -> Self::Output {
-        todo!()
+        let val = self.into_value();
+
+        use ion_math::DecimalMath;
+        use Value::*;
+
+        let elt: Element = match val {
+            // Only number types can be negated
+            Int(a) => (-a).into(),
+            Float(a) => (-a).into(),
+            Decimal(a) => (-a.to_big_decimal()).to_decimal().into(),
+
+            other => return jaq_unary_error(other, "cannot be negated"),
+        };
+
+        Ok(JaqElement::from(elt))
     }
 }
 
@@ -473,11 +641,15 @@ impl jaq_std::ValT for JaqElement {
     }
 
     fn as_isize(&self) -> Option<isize> {
-        todo!()
+        match self.0.value() {
+            Value::Int(i) => i.expect_i64().unwrap().to_isize(),
+            Value::Decimal(d) => d.to_big_decimal().to_isize(),
+            _ => None,
+        }
     }
 
     fn as_f64(&self) -> Result<f64, jaq_core::Error<Self>> {
-        use ion_math::FloatMath;
+        use ion_math::ToFloat;
         self.0
             .value()
             .clone()
@@ -498,20 +670,29 @@ pub(crate) mod ion_math {
     use ion_rs::decimal::coefficient::Sign;
     use ion_rs::{Decimal, Int, Value};
 
-    pub(crate) trait DecimalMath {
+    /// We can't provide math traits for Decimal directly, so we have a helper trait
+    pub(crate) trait DecimalMath: Sized {
         fn to_big_decimal(self) -> BigDecimal;
         fn to_decimal(self) -> Decimal;
-        fn add(self, v2: impl DecimalMath) -> Decimal
-        where
-            Self: Sized,
-        {
+
+        fn add(self, v2: impl DecimalMath) -> Decimal {
             (self.to_big_decimal() + v2.to_big_decimal()).to_decimal()
         }
-        fn sub(self, v2: impl DecimalMath) -> Decimal
-        where
-            Self: Sized,
-        {
+
+        fn sub(self, v2: impl DecimalMath) -> Decimal {
             (self.to_big_decimal() - v2.to_big_decimal()).to_decimal()
+        }
+
+        fn mul(self, v2: impl DecimalMath) -> Decimal {
+            (self.to_big_decimal() * v2.to_big_decimal()).to_decimal()
+        }
+
+        fn div(self, v2: impl DecimalMath) -> Decimal {
+            (self.to_big_decimal() / v2.to_big_decimal()).to_decimal()
+        }
+
+        fn rem(self, v2: impl DecimalMath) -> Decimal {
+            (self.to_big_decimal() % v2.to_big_decimal()).to_decimal()
         }
     }
 
@@ -554,17 +735,17 @@ pub(crate) mod ion_math {
         }
     }
 
-    pub(crate) trait FloatMath {
+    pub(crate) trait ToFloat {
         fn to_f64(self) -> Option<f64>;
     }
 
-    impl FloatMath for f64 {
+    impl ToFloat for f64 {
         fn to_f64(self) -> Option<f64> {
             Some(self)
         }
     }
 
-    impl FloatMath for Int {
+    impl ToFloat for Int {
         fn to_f64(self) -> Option<f64> {
             self.as_i128().and_then(|data| {
                 let float = data as f64;
@@ -573,17 +754,18 @@ pub(crate) mod ion_math {
         }
     }
 
-    impl FloatMath for Decimal {
+    impl ToFloat for Decimal {
         fn to_f64(self) -> Option<f64> {
             self.to_big_decimal().to_f64()
         }
     }
 
-    impl FloatMath for Value {
+    impl ToFloat for Value {
         fn to_f64(self) -> Option<f64> {
             match self {
                 Value::Int(i) => i.to_f64(),
                 Value::Decimal(d) => d.to_f64(),
+                Value::Float(f) => f.to_f64(),
                 _ => None,
             }
         }
