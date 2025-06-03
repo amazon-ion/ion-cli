@@ -519,29 +519,43 @@ impl jaq_core::ValT for JaqElement {
     fn index(self, index: &Self) -> ValR<Self> {
         use ion_rs::Value::*;
 
-        match (self.value(), index.value()) {
-            (List(seq) | SExp(seq), Int(i)) => {
-                let index = i
-                    .expect_usize()
-                    .map_err(|_| jaq_err("index must be usize"))?;
-                let element = seq
-                    .get(index)
-                    .ok_or_else(|| jaq_err("index out of bounds"))?;
-                Ok(JaqElement::from(element.to_owned()))
-            }
-            (Struct(strukt), String(name)) => strukt
-                .get(name)
-                .ok_or_else(|| jaq_err(format!("field name '{name}' not found")))
-                .map(Element::to_owned)
-                .map(JaqElement::from),
-            (Struct(strukt), Symbol(name)) => strukt
-                .get(name)
-                .ok_or_else(|| jaq_err(format!("field name '{name}' not found")))
-                .map(Element::to_owned)
-                .map(JaqElement::from),
-            (Struct(_), Int(i)) => jaq_error(format!("cannot index struct with number ({i})")),
-            _ => jaq_error(format!("cannot index into {self:?}")),
+        trait OrOwnedNull {
+            fn or_owned_null(self) -> Element;
         }
+
+        impl OrOwnedNull for Option<&Element> {
+            fn or_owned_null(self) -> Element {
+                self.map_or_else(|| Null(IonType::Null).into(), Element::to_owned)
+            }
+        }
+
+        /// Handles the case where we want to index into a Sequence with a potentially-negative
+        /// value. Negative numbers index from the back of the sequence.
+        /// Returns an owned Null Element if the index is out of bounds.
+        fn index_i128(seq: &Sequence, index: Option<i128>) -> Element {
+            let opt = match index {
+                Some(i @ ..0) => (seq.len() as i128 + i).to_usize(),
+                Some(i) => i.to_usize(),
+                None => None,
+            };
+
+            opt.and_then(|u| seq.get(u)).or_owned_null()
+        }
+
+        let elt: Element = match (self.value(), index.value()) {
+            (List(seq) | SExp(seq), Int(i)) => index_i128(seq, i.as_i128()),
+            (List(seq) | SExp(seq), Float(f)) => index_i128(seq, Some(*f as i128)),
+            (List(seq) | SExp(seq), Decimal(d)) => index_i128(seq, d.into_big_decimal().to_i128()),
+            (Struct(strukt), String(name)) => strukt.get(name).or_owned_null(),
+            (Struct(strukt), Symbol(name)) => strukt.get(name).or_owned_null(),
+
+            (a, b) => {
+                let (alpha, beta) = (a.ion_type(), b.ion_type());
+                return jaq_error(format!("cannot index {} with {}", alpha, beta));
+            }
+        };
+
+        Ok(JaqElement::from(elt))
     }
 
     // Behavior for slicing containers.
