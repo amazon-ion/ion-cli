@@ -255,6 +255,7 @@ impl Add for JaqElement {
             // Sequences and strings concatenate
             (List(a), List(b)) => ion_rs::List::from_iter(a.into_iter().chain(b)).into(),
             (SExp(a), SExp(b)) => ion_rs::SExp::from_iter(a.into_iter().chain(b)).into(),
+            //TODO: Does it make sense to concatenate a String and a Symbol? What type results?
             (String(a), String(b)) => format!("{}{}", a.text(), b.text()).into(),
             (Symbol(a), Symbol(b)) => match (a.text(), b.text()) {
                 (Some(ta), Some(tb)) => format!("{}{}", ta, tb),
@@ -264,22 +265,18 @@ impl Add for JaqElement {
             .into(),
 
             // Structs merge
-            //TODO: Recursively remove duplicate fields, see doc comment for method
+            //TODO: Recursively remove duplicate fields, see doc comment for rules
             (Struct(a), Struct(b)) => a.clone_builder().with_fields(b.fields()).build().into(),
 
             // Number types, only lossless operations
             (Int(a), Int(b)) => (a + b).into(),
-            (Float(a), Float(b)) => (a + b).into(),
+            (Float(a), Float(b)) => a.add(b).into(),
             (Decimal(a), Decimal(b)) => a.add(b).into(),
             (Decimal(a), Int(b)) | (Int(b), Decimal(a)) => a.add(b).into(),
 
             // Only try potentially lossy Float conversions when we've run out of the other options
-            (a @ Int(_) | a @ Decimal(_), Float(b)) | (Float(b), a @ Int(_) | a @ Decimal(_)) => {
-                let Some(f) = a.clone().to_f64() else {
-                    return jaq_unary_error(a, "cannot be an f64");
-                };
-                (f + b).into()
-            }
+            (a @ Int(_) | a @ Decimal(_), Float(b)) => (a.to_f64().unwrap() + b).into(),
+            (Float(a), b @ Int(_) | b @ Decimal(_)) => (a + b.to_f64().unwrap()).into(),
 
             (a, b) => return jaq_binary_error(a, b, "cannot be added"),
         };
@@ -301,40 +298,28 @@ impl Sub for JaqElement {
         use ion_math::{DecimalMath, ToFloat};
         use Value::*;
 
+        // b.iter.contains() will make these implementations O(N^2).
+        // Neither Element nor Value implement Hash or Ord, so faster lookup isn't available
+        // Perhaps someday we can do something more clever with ionhash or IonOrd?
+        fn remove_elements(a: Sequence, b: &Sequence) -> impl Iterator<Item = Element> + '_ {
+            a.into_iter().filter(|i| !b.iter().contains(i))
+        }
+
         let elt: Element = match (lhv, rhv) {
             // Sequences and strings do set subtraction with RHS
-            // b.iter.contains() will make these implementations O(N^2).
-            // Neither Element nor Value implement Hash or Ord, so faster lookup isn't available
-            // Perhaps someday we can do something more clever with ion-hash or IonOrd?
-            (List(a), List(b)) => {
-                let a_less_b = a.into_iter().filter(|i| !b.iter().contains(i));
-                ion_rs::List::from_iter(a_less_b).into()
-            }
-            (SExp(a), SExp(b)) => {
-                let a_less_b = a.into_iter().filter(|i| !b.iter().contains(i));
-                ion_rs::SExp::from_iter(a_less_b).into()
-            }
+            (List(a), List(b)) => ion_rs::List::from_iter(remove_elements(a, &b)).into(),
+            (SExp(a), SExp(b)) => ion_rs::SExp::from_iter(remove_elements(a, &b)).into(),
 
             // Number types, only lossless operations
             (Int(a), Int(b)) => (a + -b).into(), //TODO: use bare - with ion-rs > rc.11
-            (Float(a), Float(b)) => (a - b).into(),
+            (Float(a), Float(b)) => a.sub(b).into(),
             (Decimal(a), Decimal(b)) => a.sub(b).into(),
             (Decimal(a), Int(b)) => a.sub(b).into(),
             (Int(a), Decimal(b)) => a.sub(b).into(),
 
             // Only try potentially lossy Float conversions when we've run out of the other options
-            (a @ Int(_) | a @ Decimal(_), Float(b)) => {
-                let Some(f) = a.clone().to_f64() else {
-                    return jaq_unary_error(a, "cannot be an f64");
-                };
-                (f - b).into()
-            }
-            (Float(a), b @ Int(_) | b @ Decimal(_)) => {
-                let Some(f) = b.clone().to_f64() else {
-                    return jaq_unary_error(b, "cannot be an f64");
-                };
-                (a - f).into()
-            }
+            (a @ Int(_) | a @ Decimal(_), Float(b)) => (a.to_f64().unwrap() - b).into(),
+            (Float(a), b @ Int(_) | b @ Decimal(_)) => (a - b.to_f64().unwrap()).into(),
 
             (a, b) => return jaq_binary_error(a, b, "cannot be subtracted"),
         };
@@ -368,12 +353,11 @@ impl Mul for JaqElement {
 
             (Symbol(a), Int(b)) | (Int(b), Symbol(a)) => match (b.as_usize(), a.text()) {
                 (Some(n), Some(t)) => t.repeat(n).into(),
-                //TODO: Handle symbols with unknown text?
-                _ => Null(IonType::Null).into(),
+                _ => Null(IonType::Null).into(), //TODO: Handle symbols with unknown text? How?
             },
 
             // Structs merge recursively
-            //TODO: Recursively remove duplicate fields, recursively merge if struct fields collide
+            //TODO: Recursively remove duplicate fields, see doc comments for rules
             (Struct(a), Struct(b)) => a.clone_builder().with_fields(b.fields()).build().into(),
 
             // Number types, only lossless operations
@@ -384,12 +368,8 @@ impl Mul for JaqElement {
             (Decimal(a), Int(b)) | (Int(b), Decimal(a)) => a.mul(b).into(),
 
             // Only try potentially lossy Float conversions when we've run out of the other options
-            (a @ Int(_) | a @ Decimal(_), Float(b)) | (Float(b), a @ Int(_) | a @ Decimal(_)) => {
-                let Some(f) = a.clone().to_f64() else {
-                    return jaq_unary_error(a, "cannot be an f64");
-                };
-                (f * b).into()
-            }
+            (a @ Int(_) | a @ Decimal(_), Float(b)) => (a.to_f64().unwrap() * b).into(),
+            (Float(a), b @ Int(_) | b @ Decimal(_)) => (a * b.to_f64().unwrap()).into(),
 
             (a, b) => return jaq_binary_error(a, b, "cannot be multiplied"),
         };
@@ -413,13 +393,13 @@ impl Div for JaqElement {
         let elt: Element = match (lhv, rhv) {
             // Dividing a string by another splits the first using the second as separators.
             (String(a), String(b)) => {
-                let split = a.text().split(b.text());
-                let iter = split.map(|s| String(s.into())).map(Element::from);
+                let (ta, tb) = (a.text(), b.text());
+                let iter = ta.split(tb).map(ion_rs::Str::from).map(Element::from);
                 ion_rs::List::from_iter(iter).into()
             }
             (Symbol(a), Symbol(b)) => match (a.text(), b.text()) {
                 (Some(ta), Some(tb)) => {
-                    let iter = ta.split(tb).map(|s| Symbol(s.into())).map(Element::from);
+                    let iter = ta.split(tb).map(ion_rs::Symbol::from).map(Element::from);
                     ion_rs::List::from_iter(iter)
                 }
                 //TODO: Handle symbols with unknown text?
@@ -435,18 +415,8 @@ impl Div for JaqElement {
             (Int(a), Decimal(b)) => a.div(b).into(),
 
             // Only try potentially lossy Float conversions when we've run out of the other options
-            (a @ Int(_) | a @ Decimal(_), Float(b)) => {
-                let Some(f) = a.clone().to_f64() else {
-                    return jaq_unary_error(a, "cannot be an f64");
-                };
-                (f / b).into()
-            }
-            (Float(a), b @ Int(_) | b @ Decimal(_)) => {
-                let Some(f) = b.clone().to_f64() else {
-                    return jaq_unary_error(b, "cannot be an f64");
-                };
-                (a / f).into()
-            }
+            (a @ Int(_) | a @ Decimal(_), Float(b)) => (a.to_f64().unwrap() / b).into(),
+            (Float(a), b @ Int(_) | b @ Decimal(_)) => (a / b.to_f64().unwrap()).into(),
 
             (a, b) => return jaq_binary_error(a, b, "cannot be divided"),
         };
@@ -473,18 +443,8 @@ impl Rem for JaqElement {
             (Int(a), Decimal(b)) => a.rem(b).into(),
 
             // Only try potentially lossy Float conversions when we've run out of the other options
-            (a @ Int(_) | a @ Decimal(_), Float(b)) => {
-                let Some(f) = a.clone().to_f64() else {
-                    return jaq_unary_error(a, "cannot be an f64");
-                };
-                (f % b).into()
-            }
-            (Float(a), b @ Int(_) | b @ Decimal(_)) => {
-                let Some(f) = b.clone().to_f64() else {
-                    return jaq_unary_error(b, "cannot be an f64");
-                };
-                (a % f).into()
-            }
+            (a @ Int(_) | a @ Decimal(_), Float(b)) => (a.to_f64().unwrap() % b).into(),
+            (Float(a), b @ Int(_) | b @ Decimal(_)) => (a % b.to_f64().unwrap()).into(),
 
             (a, b) => return jaq_binary_error(a, b, "cannot be divided (remainder)"),
         };
@@ -506,7 +466,7 @@ impl Neg for JaqElement {
             // Only number types can be negated
             Int(a) => (-a).into(),
             Float(a) => (-a).into(),
-            Decimal(a) => (-a.to_big_decimal()).to_decimal().into(),
+            Decimal(a) => (-a.into_big_decimal()).into_decimal().into(),
 
             other => return jaq_unary_error(other, "cannot be negated"),
         };
@@ -643,7 +603,7 @@ impl jaq_std::ValT for JaqElement {
     fn as_isize(&self) -> Option<isize> {
         match self.0.value() {
             Value::Int(i) => i.expect_i64().unwrap().to_isize(),
-            Value::Decimal(d) => d.to_big_decimal().to_isize(),
+            Value::Decimal(d) => d.into_big_decimal().to_isize(),
             _ => None,
         }
     }
@@ -672,32 +632,32 @@ pub(crate) mod ion_math {
 
     /// We can't provide math traits for Decimal directly, so we have a helper trait
     pub(crate) trait DecimalMath: Sized {
-        fn to_big_decimal(self) -> BigDecimal;
-        fn to_decimal(self) -> Decimal;
+        fn into_big_decimal(self) -> BigDecimal;
+        fn into_decimal(self) -> Decimal;
 
         fn add(self, v2: impl DecimalMath) -> Decimal {
-            (self.to_big_decimal() + v2.to_big_decimal()).to_decimal()
+            (self.into_big_decimal() + v2.into_big_decimal()).into_decimal()
         }
 
         fn sub(self, v2: impl DecimalMath) -> Decimal {
-            (self.to_big_decimal() - v2.to_big_decimal()).to_decimal()
+            (self.into_big_decimal() - v2.into_big_decimal()).into_decimal()
         }
 
         fn mul(self, v2: impl DecimalMath) -> Decimal {
-            (self.to_big_decimal() * v2.to_big_decimal()).to_decimal()
+            (self.into_big_decimal() * v2.into_big_decimal()).into_decimal()
         }
 
         fn div(self, v2: impl DecimalMath) -> Decimal {
-            (self.to_big_decimal() / v2.to_big_decimal()).to_decimal()
+            (self.into_big_decimal() / v2.into_big_decimal()).into_decimal()
         }
 
         fn rem(self, v2: impl DecimalMath) -> Decimal {
-            (self.to_big_decimal() % v2.to_big_decimal()).to_decimal()
+            (self.into_big_decimal() % v2.into_big_decimal()).into_decimal()
         }
     }
 
     impl DecimalMath for Decimal {
-        fn to_big_decimal(self) -> BigDecimal {
+        fn into_big_decimal(self) -> BigDecimal {
             let magnitude = self.coefficient().magnitude().as_u128().unwrap();
             let bigint = match self.coefficient().sign() {
                 Sign::Negative => -BigInt::from(magnitude),
@@ -706,35 +666,41 @@ pub(crate) mod ion_math {
             BigDecimal::new(bigint, self.scale())
         }
 
-        fn to_decimal(self) -> Decimal {
+        fn into_decimal(self) -> Decimal {
             self
         }
     }
 
     impl DecimalMath for Int {
-        fn to_big_decimal(self) -> BigDecimal {
+        fn into_big_decimal(self) -> BigDecimal {
             let data = self.expect_i128().unwrap(); // error case is unreachable with current ion-rs
             BigDecimal::from(data)
         }
 
-        fn to_decimal(self) -> Decimal {
+        fn into_decimal(self) -> Decimal {
             let data = self.expect_i128().unwrap(); // error case is unreachable with current ion-rs
             Decimal::new(data, 0)
         }
     }
 
     impl DecimalMath for BigDecimal {
-        fn to_big_decimal(self) -> BigDecimal {
+        fn into_big_decimal(self) -> BigDecimal {
             self
         }
 
-        fn to_decimal(self) -> Decimal {
+        fn into_decimal(self) -> Decimal {
             let (coeff, exponent) = self.into_bigint_and_exponent();
             let data = coeff.to_i128().unwrap();
             Decimal::new(data, -exponent)
         }
     }
 
+    /// A helper trait to allow conversion of various Ion value types into f64. This is inherently a
+    /// lossy conversion for most possible expressible Decimal and Integer values even inside f64's
+    /// range of expression, so we accept that and move on. The only `None` case for any of these
+    /// conversions is when converting a non-numeric `Value` type. A large enough `Int` or `Decimal`
+    /// may convert to `Inf` as a float, but that's just the cost of doing business with floating
+    /// point math.
     pub(crate) trait ToFloat {
         fn to_f64(self) -> Option<f64>;
     }
@@ -747,16 +713,13 @@ pub(crate) mod ion_math {
 
     impl ToFloat for Int {
         fn to_f64(self) -> Option<f64> {
-            self.as_i128().and_then(|data| {
-                let float = data as f64;
-                (float as i128 == data).then_some(float)
-            })
+            self.as_i128().map(|data| data as f64)
         }
     }
 
     impl ToFloat for Decimal {
         fn to_f64(self) -> Option<f64> {
-            self.to_big_decimal().to_f64()
+            self.into_big_decimal().to_f64()
         }
     }
 
