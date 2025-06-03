@@ -591,9 +591,15 @@ impl jaq_core::ValT for JaqElement {
         todo!()
     }
 
-    // If we want "truthiness" for containers (e.g. empty list -> false), define that here
+    /// From https://jqlang.org/manual/#if-then-else-end
+    ///
+    /// > `if A then B else C end` will act the same as `B` if `A` produces a value other than
+    /// > `false` or `null`, but act the same as `C` otherwise.
     fn as_bool(&self) -> bool {
-        self.0.as_bool().unwrap_or(false)
+        match self.0.value() {
+            Value::Null(_) | Value::Bool(false) => false,
+            _ => true
+        }
     }
 
     // If the element is a text value, return its text.
