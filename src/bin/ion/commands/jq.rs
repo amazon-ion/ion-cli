@@ -177,15 +177,14 @@ fn jaq_error(e: impl Into<Element>) -> ValR<JaqElement> {
     Err(jaq_err(e))
 }
 
-fn jaq_unary_error(v1: Value, reason: &str) -> ValR<JaqElement> {
-    let type1 = v1.ion_type();
-    jaq_error(format!("{type1} ({v1}) {reason}"))
+fn jaq_unary_error(a: Value, reason: &str) -> ValR<JaqElement> {
+    let alpha = a.ion_type();
+    jaq_error(format!("{alpha} ({a}) {reason}"))
 }
 
-fn jaq_binary_error(v1: Value, v2: Value, reason: &str) -> ValR<JaqElement> {
-    let type1 = v1.ion_type();
-    let type2 = v2.ion_type();
-    jaq_error(format!("{type1} ({v1}) and {type2} ({v2}) {reason}"))
+fn jaq_binary_error(a: Value, b: Value, reason: &str) -> ValR<JaqElement> {
+    let (alpha, beta) = (a.ion_type(), b.ion_type());
+    jaq_error(format!("{alpha} ({a}) and {beta} ({b}) {reason}"))
 }
 
 // Convenience method to return a bare `JaqError`, not wrapped in a Result::Err.
