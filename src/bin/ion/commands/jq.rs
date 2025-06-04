@@ -240,6 +240,11 @@ impl Add for JaqElement {
     fn add(self, _rhs: Self) -> Self::Output {
         let (lhv, rhv) = (self.into_value(), _rhs.into_value());
 
+        fn unknown_symbol_err(a: Value, b: Value) -> ValR<JaqElement> {
+            let (alpha, beta) = (a.ion_type(), b.ion_type());
+            jaq_error(format!("{alpha} ({a}) and {beta} ({b}) cannot be added"))
+        }
+
         use ion_math::{DecimalMath, ToFloat};
         use Value::*;
 
@@ -254,14 +259,25 @@ impl Add for JaqElement {
             // Sequences and strings concatenate
             (List(a), List(b)) => ion_rs::List::from_iter(a.into_iter().chain(b)).into(),
             (SExp(a), SExp(b)) => ion_rs::SExp::from_iter(a.into_iter().chain(b)).into(),
-            //TODO: Does it make sense to concatenate a String and a Symbol? What type results?
+
+            // We don't work with unknown symbols
+            (Symbol(a), b) if a.text().is_none() => return unknown_symbol_err(Symbol(a), b),
+            (a, Symbol(b)) if b.text().is_none() => return unknown_symbol_err(a, Symbol(b)),
+
+            // Like text types add to the same type
             (String(a), String(b)) => format!("{}{}", a.text(), b.text()).into(),
-            (Symbol(a), Symbol(b)) => match (a.text(), b.text()) {
-                (Some(ta), Some(tb)) => format!("{}{}", ta, tb),
-                //TODO: Handle symbols with unknown text?
-                _ => return jaq_binary_error(Symbol(a), Symbol(b), "cannot be added"),
+            (Symbol(a), Symbol(b)) => {
+                Symbol(format!("{}{}", a.text().unwrap(), b.text().unwrap()).into()).into()
             }
-            .into(),
+
+            // Any combination of String/Symbol gets to be a String
+            // We have to account for these cases to allow string interpolation
+            (String(a), Symbol(b)) => {
+                String(format!("{}{}", a.text(), b.text().unwrap()).into()).into()
+            }
+            (Symbol(a), String(b)) => {
+                String(format!("{}{}", a.text().unwrap(), b.text()).into()).into()
+            }
 
             // Structs merge
             //TODO: Recursively remove duplicate fields, see doc comment for rules
@@ -277,7 +293,7 @@ impl Add for JaqElement {
             (a @ Int(_) | a @ Decimal(_), Float(b)) => (a.to_f64().unwrap() + b).into(),
             (Float(a), b @ Int(_) | b @ Decimal(_)) => (a + b.to_f64().unwrap()).into(),
 
-            (a, b) => return jaq_binary_error(a, b, "cannot be added"),
+            (a, b) => return unknown_symbol_err(a, b),
         };
 
         Ok(JaqElement::from(elt))
@@ -598,7 +614,7 @@ impl jaq_core::ValT for JaqElement {
     fn as_bool(&self) -> bool {
         match self.0.value() {
             Value::Null(_) | Value::Bool(false) => false,
-            _ => true
+            _ => true,
         }
     }
 
