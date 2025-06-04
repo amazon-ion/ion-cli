@@ -177,15 +177,14 @@ fn jaq_error(e: impl Into<Element>) -> ValR<JaqElement> {
     Err(jaq_err(e))
 }
 
-fn jaq_unary_error(v1: Value, reason: &str) -> ValR<JaqElement> {
-    let type1 = v1.ion_type();
-    jaq_error(format!("{type1} ({v1}) {reason}"))
+fn jaq_unary_error(a: Value, reason: &str) -> ValR<JaqElement> {
+    let alpha = a.ion_type();
+    jaq_error(format!("{alpha} ({a}) {reason}"))
 }
 
-fn jaq_binary_error(v1: Value, v2: Value, reason: &str) -> ValR<JaqElement> {
-    let type1 = v1.ion_type();
-    let type2 = v2.ion_type();
-    jaq_error(format!("{type1} ({v1}) and {type2} ({v2}) {reason}"))
+fn jaq_binary_error(a: Value, b: Value, reason: &str) -> ValR<JaqElement> {
+    let (alpha, beta) = (a.ion_type(), b.ion_type());
+    jaq_error(format!("{alpha} ({a}) and {beta} ({b}) {reason}"))
 }
 
 // Convenience method to return a bare `JaqError`, not wrapped in a Result::Err.
@@ -241,6 +240,11 @@ impl Add for JaqElement {
     fn add(self, _rhs: Self) -> Self::Output {
         let (lhv, rhv) = (self.into_value(), _rhs.into_value());
 
+        fn unknown_symbol_err(a: Value, b: Value) -> ValR<JaqElement> {
+            let (alpha, beta) = (a.ion_type(), b.ion_type());
+            jaq_error(format!("{alpha} ({a}) and {beta} ({b}) cannot be added"))
+        }
+
         use ion_math::{DecimalMath, ToFloat};
         use Value::*;
 
@@ -255,14 +259,25 @@ impl Add for JaqElement {
             // Sequences and strings concatenate
             (List(a), List(b)) => ion_rs::List::from_iter(a.into_iter().chain(b)).into(),
             (SExp(a), SExp(b)) => ion_rs::SExp::from_iter(a.into_iter().chain(b)).into(),
-            //TODO: Does it make sense to concatenate a String and a Symbol? What type results?
+
+            // We don't work with unknown symbols
+            (Symbol(a), b) if a.text().is_none() => return unknown_symbol_err(Symbol(a), b),
+            (a, Symbol(b)) if b.text().is_none() => return unknown_symbol_err(a, Symbol(b)),
+
+            // Like text types add to the same type
             (String(a), String(b)) => format!("{}{}", a.text(), b.text()).into(),
-            (Symbol(a), Symbol(b)) => match (a.text(), b.text()) {
-                (Some(ta), Some(tb)) => format!("{}{}", ta, tb),
-                //TODO: Handle symbols with unknown text?
-                _ => return jaq_binary_error(Symbol(a), Symbol(b), "cannot be added"),
+            (Symbol(a), Symbol(b)) => {
+                Symbol(format!("{}{}", a.text().unwrap(), b.text().unwrap()).into()).into()
             }
-            .into(),
+
+            // Any combination of String/Symbol gets to be a String
+            // We have to account for these cases to allow string interpolation
+            (String(a), Symbol(b)) => {
+                String(format!("{}{}", a.text(), b.text().unwrap()).into()).into()
+            }
+            (Symbol(a), String(b)) => {
+                String(format!("{}{}", a.text().unwrap(), b.text()).into()).into()
+            }
 
             // Structs merge
             //TODO: Recursively remove duplicate fields, see doc comment for rules
@@ -278,7 +293,7 @@ impl Add for JaqElement {
             (a @ Int(_) | a @ Decimal(_), Float(b)) => (a.to_f64().unwrap() + b).into(),
             (Float(a), b @ Int(_) | b @ Decimal(_)) => (a + b.to_f64().unwrap()).into(),
 
-            (a, b) => return jaq_binary_error(a, b, "cannot be added"),
+            (a, b) => return unknown_symbol_err(a, b),
         };
 
         Ok(JaqElement::from(elt))
@@ -519,29 +534,43 @@ impl jaq_core::ValT for JaqElement {
     fn index(self, index: &Self) -> ValR<Self> {
         use ion_rs::Value::*;
 
-        match (self.value(), index.value()) {
-            (List(seq) | SExp(seq), Int(i)) => {
-                let index = i
-                    .expect_usize()
-                    .map_err(|_| jaq_err("index must be usize"))?;
-                let element = seq
-                    .get(index)
-                    .ok_or_else(|| jaq_err("index out of bounds"))?;
-                Ok(JaqElement::from(element.to_owned()))
-            }
-            (Struct(strukt), String(name)) => strukt
-                .get(name)
-                .ok_or_else(|| jaq_err(format!("field name '{name}' not found")))
-                .map(Element::to_owned)
-                .map(JaqElement::from),
-            (Struct(strukt), Symbol(name)) => strukt
-                .get(name)
-                .ok_or_else(|| jaq_err(format!("field name '{name}' not found")))
-                .map(Element::to_owned)
-                .map(JaqElement::from),
-            (Struct(_), Int(i)) => jaq_error(format!("cannot index struct with number ({i})")),
-            _ => jaq_error(format!("cannot index into {self:?}")),
+        trait OrOwnedNull {
+            fn or_owned_null(self) -> Element;
         }
+
+        impl OrOwnedNull for Option<&Element> {
+            fn or_owned_null(self) -> Element {
+                self.map_or_else(|| Null(IonType::Null).into(), Element::to_owned)
+            }
+        }
+
+        /// Handles the case where we want to index into a Sequence with a potentially-negative
+        /// value. Negative numbers index from the back of the sequence.
+        /// Returns an owned Null Element if the index is out of bounds.
+        fn index_i128(seq: &Sequence, index: Option<i128>) -> Element {
+            let opt = match index {
+                Some(i @ ..0) => (seq.len() as i128 + i).to_usize(),
+                Some(i) => i.to_usize(),
+                None => None,
+            };
+
+            opt.and_then(|u| seq.get(u)).or_owned_null()
+        }
+
+        let elt: Element = match (self.value(), index.value()) {
+            (List(seq) | SExp(seq), Int(i)) => index_i128(seq, i.as_i128()),
+            (List(seq) | SExp(seq), Float(f)) => index_i128(seq, Some(*f as i128)),
+            (List(seq) | SExp(seq), Decimal(d)) => index_i128(seq, d.into_big_decimal().to_i128()),
+            (Struct(strukt), String(name)) => strukt.get(name).or_owned_null(),
+            (Struct(strukt), Symbol(name)) => strukt.get(name).or_owned_null(),
+
+            (a, b) => {
+                let (alpha, beta) = (a.ion_type(), b.ion_type());
+                return jaq_error(format!("cannot index {} with {}", alpha, beta));
+            }
+        };
+
+        Ok(JaqElement::from(elt))
     }
 
     // Behavior for slicing containers.
@@ -578,9 +607,15 @@ impl jaq_core::ValT for JaqElement {
         todo!()
     }
 
-    // If we want "truthiness" for containers (e.g. empty list -> false), define that here
+    /// From https://jqlang.org/manual/#if-then-else-end
+    ///
+    /// > `if A then B else C end` will act the same as `B` if `A` produces a value other than
+    /// > `false` or `null`, but act the same as `C` otherwise.
     fn as_bool(&self) -> bool {
-        self.0.as_bool().unwrap_or(false)
+        match self.0.value() {
+            Value::Null(_) | Value::Bool(false) => false,
+            _ => true,
+        }
     }
 
     // If the element is a text value, return its text.
