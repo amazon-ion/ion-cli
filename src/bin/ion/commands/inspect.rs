@@ -13,7 +13,7 @@ use clap::builder::ValueParser;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_rs::v1_0::{EncodedBinaryValue, RawValueRef};
 use ion_rs::*;
-use termcolor::{Color, ColorSpec, WriteColor};
+use termcolor::{Color, ColorChoice, ColorSpec, WriteColor};
 
 pub struct InspectCommand;
 
@@ -40,6 +40,7 @@ impl IonCliCommand for InspectCommand {
         command
             .with_input()
             .with_output()
+            .with_color()
             .arg(
                 // This is named `skip-bytes` instead of `skip` to accommodate a future `skip-values` option.
                 Arg::new("skip-bytes")
@@ -106,6 +107,15 @@ impl IonCliCommand for InspectCommand {
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
+        use std::io::IsTerminal;
+        let pre_pager_stdout = std::io::stdout().is_terminal();
+
+        // We have to compensate for the way Pager changes tty detection
+        let mut command_io = CommandIo::new(args)?;
+        if command_io.color == ColorChoice::Auto && !pre_pager_stdout {
+            command_io.color = ColorChoice::Never
+        }
+
         // On macOS and Linux, the `inspect` command's output will automatically be rerouted to a paging
         // utility like `less` when STDOUT is a TTY.
         // TODO find a cross-platform pager implementation.
@@ -137,8 +147,6 @@ impl IonCliCommand for InspectCommand {
         }
 
         let hide_expansion = args.get_flag("hide-expansion");
-
-        let mut command_io = CommandIo::new(args)?;
 
         let mut read_as_hex_string = false;
         if let Some(hex_args) = args.get_many::<String>("hex-input") {
