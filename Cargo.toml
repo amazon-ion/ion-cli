@@ -38,6 +38,8 @@ itertools = "0.13.0"
 jaq-core = "2.1.1"
 jaq-std = "2.1.0"
 bigdecimal = "0.4.8"
+syntect = "5.2.0"
+syntect-assets = "0.23.6"
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 pager = "0.16.1"

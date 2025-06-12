@@ -40,6 +40,7 @@ impl IonCliCommand for InspectCommand {
         command
             .with_input()
             .with_output()
+            .with_color()
             .arg(
                 // This is named `skip-bytes` instead of `skip` to accommodate a future `skip-values` option.
                 Arg::new("skip-bytes")
