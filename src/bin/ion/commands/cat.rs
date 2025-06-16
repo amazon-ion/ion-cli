@@ -30,6 +30,7 @@ impl IonCliCommand for CatCommand {
             .with_input()
             .with_output()
             .with_format()
+            .with_color()
             .with_ion_version()
     }
 

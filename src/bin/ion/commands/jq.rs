@@ -44,6 +44,7 @@ impl IonCliCommand for JqCommand {
             .with_input()
             .with_output()
             .with_format()
+            .with_color()
             .with_ion_version()
     }
 
@@ -101,7 +102,10 @@ fn evaluate_jq_expr(
     } else {
         for item in reader.elements() {
             let item: JaqElement = item?.into();
-            filter_and_print(filter, &mut writer, item)?;
+            // Match jq behavior., print err to stderr per item and process the rest
+            if let Err(e) = filter_and_print(filter, &mut writer, item) {
+                eprintln!("{}", e);
+            }
         }
     }
 
@@ -221,7 +225,7 @@ impl Add for JaqElement {
     /// From: https://jqlang.org/manual/#addition
     ///
     /// > The operator `+` takes two filters, applies them both to the same input, and adds the
-    /// results together. What "adding" means depends on the types involved:
+    /// > results together. What "adding" means depends on the types involved:
     /// >
     /// > - Numbers are added by normal arithmetic.
     /// >
@@ -230,8 +234,8 @@ impl Add for JaqElement {
     /// > - Strings are added by being joined into a larger string.
     /// >
     /// > - Objects are added by merging, that is, inserting all the key-value pairs from both
-    /// > objects into a single combined object. If both objects contain a value for the same key,
-    /// > the object on the right of the `+` wins. (For recursive merge use the `*` operator.)
+    /// >   objects into a single combined object. If both objects contain a value for the same key,
+    /// >   the object on the right of the `+` wins. (For recursive merge use the `*` operator.)
     /// >
     /// > `null` can be added to any value, and returns the other value unchanged.
     ///
@@ -349,11 +353,11 @@ impl Mul for JaqElement {
     /// From: https://jqlang.org/manual/#multiplication-division-modulo
     ///
     /// > - Multiplying a string by a number produces the concatenation of that string that many times.
-    /// > `"x" * 0` produces `""`.
+    /// >   `"x" * 0` produces `""`.
     /// >
     /// > - Multiplying two objects will merge them recursively: this works like addition but if both
-    /// > objects contain a value for the same key, and the values are objects, the two are merged
-    /// > with the same strategy.
+    /// >   objects contain a value for the same key, and the values are objects, the two are merged
+    /// >   with the same strategy.
     fn mul(self, _rhs: Self) -> Self::Output {
         let (lhv, rhv) = (self.into_value(), _rhs.into_value());
 
