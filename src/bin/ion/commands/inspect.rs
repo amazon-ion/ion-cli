@@ -13,7 +13,7 @@ use clap::builder::ValueParser;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use ion_rs::v1_0::{EncodedBinaryValue, RawValueRef};
 use ion_rs::*;
-use termcolor::{Color, ColorChoice, ColorSpec, WriteColor};
+use termcolor::{Color, ColorSpec, WriteColor};
 
 pub struct InspectCommand;
 
@@ -107,14 +107,7 @@ impl IonCliCommand for InspectCommand {
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
-        use std::io::IsTerminal;
-        let pre_pager_stdout = std::io::stdout().is_terminal();
-
-        // We have to compensate for the way Pager changes tty detection
-        let mut command_io = CommandIo::new(args)?;
-        if command_io.color == ColorChoice::Auto && !pre_pager_stdout {
-            command_io.color = ColorChoice::Never
-        }
+        let mut command_io = CommandIo::new(args)?; // must initialize *before* initializing pager
 
         // On macOS and Linux, the `inspect` command's output will automatically be rerouted to a paging
         // utility like `less` when STDOUT is a TTY.

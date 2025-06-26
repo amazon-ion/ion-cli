@@ -292,7 +292,8 @@ impl CommandIo<'_> {
             ColorChoice::Never
         } else if *color {
             ColorChoice::Always
-        } else if *monochrome {
+        } else if !std::io::stdout().is_terminal() || *monochrome {
+            // We disable color if stdout is not a terminal or if explicitly disabled by the user
             ColorChoice::Never
         } else {
             ColorChoice::Auto
