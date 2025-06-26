@@ -40,6 +40,7 @@ impl IonCliCommand for InspectCommand {
         command
             .with_input()
             .with_output()
+            .with_color()
             .arg(
                 // This is named `skip-bytes` instead of `skip` to accommodate a future `skip-values` option.
                 Arg::new("skip-bytes")
@@ -106,6 +107,8 @@ impl IonCliCommand for InspectCommand {
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
+        let mut command_io = CommandIo::new(args)?; // must initialize *before* initializing pager
+
         // On macOS and Linux, the `inspect` command's output will automatically be rerouted to a paging
         // utility like `less` when STDOUT is a TTY.
         // TODO find a cross-platform pager implementation.
@@ -137,8 +140,6 @@ impl IonCliCommand for InspectCommand {
         }
 
         let hide_expansion = args.get_flag("hide-expansion");
-
-        let mut command_io = CommandIo::new(args)?;
 
         let mut read_as_hex_string = false;
         if let Some(hex_args) = args.get_many::<String>("hex-input") {
