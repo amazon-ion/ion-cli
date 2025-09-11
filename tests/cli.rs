@@ -222,33 +222,25 @@ mod timestamp_roundtrip_tests {
     use super::*;
 
     #[rstest]
-    #[case::valid_timestamp(
-        r#"{created: 2023-12-25T10:30:00Z, name: "test"}"#
-    )]
-    #[case::timestamp_with_milliseconds(
-        r#"{timestamp: 2023-01-01T12:00:00.123Z}"#
-    )]
-    #[case::timestamp_with_timezone(
-        r#"{date: 2023-06-15T14:30:45+05:00}"#
-    )]
+    #[case::valid_timestamp(r#"{created: 2023-12-25T10:30:00Z, name: "test"}"#)]
+    #[case::timestamp_with_milliseconds(r#"{timestamp: 2023-01-01T12:00:00.123Z}"#)]
+    #[case::timestamp_with_timezone(r#"{date: 2023-06-15T14:30:45+05:00}"#)]
     #[case::date_only(r#"{birthday: 2023-12-25}"#)]
-    #[case::microsecond_precision(
-        r#"{precise: 2023-01-01T12:00:00.123456Z}"#
-    )]
+    #[case::microsecond_precision(r#"{precise: 2023-01-01T12:00:00.123456Z}"#)]
     /// Tests Ion → JSON → Ion roundtrip with timestamp preservation
-    fn test_ion_json_ion_roundtrip_with_timestamps(
-        #[case] original_ion: &str,
-    ) -> Result<()> {
+    fn test_ion_json_ion_roundtrip_with_timestamps(#[case] original_ion: &str) -> Result<()> {
         // Step 1: Ion → JSON
         let mut to_json_cmd = Command::cargo_bin("ion")?;
-        to_json_cmd.args(["to", "-X", "json"])
+        to_json_cmd
+            .args(["to", "-X", "json"])
             .timeout(Duration::new(5, 0))
             .write_stdin(original_ion.as_bytes());
         let json_output = to_json_cmd.assert().success().get_output().stdout.clone();
 
         // Step 2: JSON → Ion with timestamp detection
         let mut from_json_cmd = Command::cargo_bin("ion")?;
-        from_json_cmd.args(["from", "-X", "json", "--detect-timestamps"])
+        from_json_cmd
+            .args(["from", "-X", "json", "--detect-timestamps"])
             .timeout(Duration::new(5, 0))
             .write_stdin(json_output);
         let final_output = from_json_cmd.assert().success().get_output().stdout.clone();
