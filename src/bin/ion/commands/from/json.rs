@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{arg, ArgMatches, Command};
 use ion_rs::{Element, Timestamp};
-use serde_json::{Value, Deserializer};
+use serde_json::{Deserializer, Value};
 
 use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 use crate::output::CommandOutput;
@@ -39,7 +39,7 @@ impl IonCliCommand for FromJsonCommand {
         // Because JSON data is valid Ion, the `cat` command may be reused for converting JSON.
         // TODO ideally, this would perform some smarter "up-conversion".
         let detect_timestamps = args.get_flag("detect-timestamps");
-        
+
         CommandIo::new(args)?.for_each_input(|output, input| {
             let input_name = input.name().to_owned();
             let reader = input.into_source();
@@ -101,7 +101,8 @@ fn to_ion_element(value: Value, detect_timestamps: bool) -> Result<Element> {
             Element::from(s)
         }
         Value::Array(arr) => {
-            let elements: Result<Vec<Element>> = arr.into_iter()
+            let elements: Result<Vec<Element>> = arr
+                .into_iter()
                 .map(|v| to_ion_element(v, detect_timestamps))
                 .collect();
             Element::from(ion_rs::List::from(elements?))
@@ -109,7 +110,8 @@ fn to_ion_element(value: Value, detect_timestamps: bool) -> Result<Element> {
         Value::Object(obj) => {
             let mut struct_builder = ion_rs::Struct::builder();
             for (key, val) in obj {
-                struct_builder = struct_builder.with_field(key, to_ion_element(val, detect_timestamps)?);
+                struct_builder =
+                    struct_builder.with_field(key, to_ion_element(val, detect_timestamps)?);
             }
             Element::from(struct_builder.build())
         }
@@ -147,7 +149,12 @@ fn parse_timestamp(s: &str) -> Result<Timestamp> {
     let hour: u32 = time_parts[0].parse()?;
     let minute: u32 = time_parts[1].parse()?;
     let second: u32 = if time_parts.len() > 2 {
-        time_parts[2].split('.').next().unwrap_or("0").parse().unwrap_or(0)
+        time_parts[2]
+            .split('.')
+            .next()
+            .unwrap_or("0")
+            .parse()
+            .unwrap_or(0)
     } else {
         0
     };
