@@ -83,7 +83,9 @@ fn to_ion_element(value: Value, detect_timestamps: bool) -> Result<Element> {
             }
         }
         Value::String(s) => {
+            // Using is_timestamp_like as a heuristic provides a filter that eliminates non-timestamp
             if detect_timestamps && is_timestamp_like(&s) {
+                // Using ion_rs to parse the string to ensure it's a valid timestamp
                 if let Ok(element) = Element::read_one(s.as_bytes()) {
                     if element.ion_type() == ion_rs::IonType::Timestamp {
                         return Ok(element);
