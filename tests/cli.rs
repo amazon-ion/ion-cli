@@ -218,42 +218,45 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     Ok(())
 }
 
-mod from_json_tests {
+mod timestamp_roundtrip_tests {
     use super::*;
 
     #[rstest]
     #[case::valid_timestamp(
-        r#"{"created": "2023-12-25T10:30:00Z", "name": "test"}"#,
-        r#"{created: 2023-12-25T10:30:00+00:00, name: "test"}"#
+        r#"{created: 2023-12-25T10:30:00Z, name: "test"}"#
     )]
     #[case::timestamp_with_milliseconds(
-        r#"{"timestamp": "2023-01-01T12:00:00.123Z"}"#,
-        r#"{timestamp: 2023-01-01T12:00:00.123+00:00}"#
+        r#"{timestamp: 2023-01-01T12:00:00.123Z}"#
     )]
     #[case::timestamp_with_timezone(
-        r#"{"date": "2023-06-15T14:30:45+05:00"}"#,
         r#"{date: 2023-06-15T14:30:45+05:00}"#
     )]
-    #[case::date_only(r#"{"birthday": "2023-12-25"}"#, r#"{birthday: 2023-12-25}"#)]
+    #[case::date_only(r#"{birthday: 2023-12-25}"#)]
     #[case::microsecond_precision(
-        r#"{"precise": "2023-01-01T12:00:00.123456Z"}"#,
-        r#"{precise: 2023-01-01T12:00:00.123456+00:00}"#
+        r#"{precise: 2023-01-01T12:00:00.123456Z}"#
     )]
-    /// Tests JSON to Ion conversion with timestamp detection enabled
-    fn test_from_json_with_timestamp_detection(
-        #[case] json_input: &str,
-        #[case] expected_ion: &str,
+    /// Tests Ion → JSON → Ion roundtrip with timestamp preservation
+    fn test_ion_json_ion_roundtrip_with_timestamps(
+        #[case] original_ion: &str,
     ) -> Result<()> {
-        let mut cmd = Command::cargo_bin("ion")?;
-        cmd.args(["from", "-X", "json", "--detect-timestamps"])
+        // Step 1: Ion → JSON
+        let mut to_json_cmd = Command::cargo_bin("ion")?;
+        to_json_cmd.args(["to", "-X", "json"])
             .timeout(Duration::new(5, 0))
-            .write_stdin(json_input.as_bytes());
+            .write_stdin(original_ion.as_bytes());
+        let json_output = to_json_cmd.assert().success().get_output().stdout.clone();
 
-        let assert = cmd.assert().success();
-        let output = assert.get_output();
-        let actual_ion = Element::read_one(&output.stdout)?;
-        let expected_element = Element::read_one(expected_ion.as_bytes())?;
-        assert_eq!(expected_element, actual_ion);
+        // Step 2: JSON → Ion with timestamp detection
+        let mut from_json_cmd = Command::cargo_bin("ion")?;
+        from_json_cmd.args(["from", "-X", "json", "--detect-timestamps"])
+            .timeout(Duration::new(5, 0))
+            .write_stdin(json_output);
+        let final_output = from_json_cmd.assert().success().get_output().stdout.clone();
+
+        // Verify roundtrip preserves timestamps
+        let original_element = Element::read_one(original_ion.as_bytes())?;
+        let final_element = Element::read_one(&final_output)?;
+        assert_eq!(original_element, final_element);
         Ok(())
     }
 
