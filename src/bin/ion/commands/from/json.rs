@@ -111,7 +111,7 @@ fn to_ion_element(value: Value, detect_timestamps: bool) -> Result<Element> {
 }
 
 fn is_timestamp_like(s: &str) -> bool {
-    s.len() >= 4 
+    s.len() >= 4
         && s[..4].chars().all(|c| c.is_ascii_digit())
         && (s.contains('T') || (s.len() == 10 && s.matches('-').count() == 2))
         && !(s.len() == 4 && s.chars().all(|c| c.is_ascii_digit()))

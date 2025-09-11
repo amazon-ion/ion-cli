@@ -234,10 +234,7 @@ mod from_json_tests {
         r#"{"date": "2023-06-15T14:30:45+05:00"}"#,
         r#"{date: 2023-06-15T14:30:45+05:00}"#
     )]
-    #[case::date_only(
-        r#"{"birthday": "2023-12-25"}"#,
-        r#"{birthday: 2023-12-25}"#
-    )]
+    #[case::date_only(r#"{"birthday": "2023-12-25"}"#, r#"{birthday: 2023-12-25}"#)]
     #[case::microsecond_precision(
         r#"{"precise": "2023-01-01T12:00:00.123456Z"}"#,
         r#"{precise: 2023-01-01T12:00:00.123456+00:00}"#
@@ -286,8 +283,6 @@ mod from_json_tests {
         assert_eq!(expected_element, actual_ion);
         Ok(())
     }
-
-
 }
 
 mod code_gen_tests {
