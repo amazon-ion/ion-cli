@@ -218,6 +218,70 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     Ok(())
 }
 
+mod from_json_tests {
+    use super::*;
+
+    #[rstest]
+    #[case::valid_timestamp(
+        r#"{"created": "2023-12-25T10:30:00Z", "name": "test"}"#,
+        r#"{created: 2023-12-25T10:30:00-00:00, name: "test"}"#
+    )]
+    #[case::timestamp_with_milliseconds(
+        r#"{"timestamp": "2023-01-01T12:00:00.123Z"}"#,
+        r#"{timestamp: 2023-01-01T12:00:00-00:00}"#
+    )]
+    #[case::timestamp_with_timezone(
+        r#"{"date": "2023-06-15T14:30:45+05:00"}"#,
+        r#"{date: 2023-06-15T14:30:45-00:00}"#
+    )]
+    /// Tests JSON to Ion conversion with timestamp detection enabled
+    fn test_from_json_with_timestamp_detection(
+        #[case] json_input: &str,
+        #[case] expected_ion: &str,
+    ) -> Result<()> {
+        let mut cmd = Command::cargo_bin("ion")?;
+        cmd.args(["from", "-X", "json", "--detect-timestamps"])
+            .timeout(Duration::new(5, 0))
+            .write_stdin(json_input.as_bytes());
+
+        let assert = cmd.assert().success();
+        let output = assert.get_output();
+        let actual_ion = Element::read_one(&output.stdout)?;
+        let expected_element = Element::read_one(expected_ion.as_bytes())?;
+        assert_eq!(expected_element, actual_ion);
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::invalid_timestamp_like(
+        r#"{"date": "2023-13-45T25:70:80Z", "name": "test"}"#,
+        r#"{date: "2023-13-45T25:70:80Z", name: "test"}"#
+    )]
+    #[case::non_timestamp_string(
+        r#"{"description": "This looks like 2023-01-01T but is not"}"#,
+        r#"{description: "This looks like 2023-01-01T but is not"}"#
+    )]
+    /// Tests that invalid timestamp-like strings remain as strings
+    fn test_from_json_invalid_timestamps_fallback(
+        #[case] json_input: &str,
+        #[case] expected_ion: &str,
+    ) -> Result<()> {
+        let mut cmd = Command::cargo_bin("ion")?;
+        cmd.args(["from", "-X", "json", "--detect-timestamps"])
+            .timeout(Duration::new(5, 0))
+            .write_stdin(json_input.as_bytes());
+
+        let assert = cmd.assert().success();
+        let output = assert.get_output();
+        let actual_ion = Element::read_one(&output.stdout)?;
+        let expected_element = Element::read_one(expected_ion.as_bytes())?;
+        assert_eq!(expected_element, actual_ion);
+        Ok(())
+    }
+
+
+}
+
 mod code_gen_tests {
     use super::*;
     use std::fs;
