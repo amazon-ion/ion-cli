@@ -51,17 +51,19 @@ pub fn convert(
     detect_timestamps: bool,
     input_name: &str,
 ) -> Result<()> {
+    const FLUSH_EVERY_N: usize = 100;
     let mut writer = output.as_writer()?;
+    let mut value_count = 0usize;
 
     // Streaming deserializer to handle large JSON files
     let deserializer = Deserializer::from_reader(reader);
 
-    for (i, json_value) in deserializer.into_iter::<Value>().enumerate() {
+    for json_value in deserializer.into_iter::<Value>() {
         let json_value = json_value
             .with_context(|| format!("Input file '{}' contains invalid JSON.", input_name))?;
         writer.write(&to_ion_element(json_value, detect_timestamps)?)?;
-        // Periodic flushing
-        if i % 100 == 99 {
+        value_count += 1;
+        if value_count % FLUSH_EVERY_N == 0 {
             writer.flush()?;
         }
     }
