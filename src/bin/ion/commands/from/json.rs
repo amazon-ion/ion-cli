@@ -1,9 +1,9 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::{arg, ArgMatches, Command};
-use ion_rs::Element;
-use serde_json::{Deserializer, Value};
+use ion_rs::{AnyEncoding, Element, IonType, Reader};
 
 use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
+use crate::input::CommandInput;
 use crate::output::CommandOutput;
 
 pub struct FromJsonCommand;
@@ -38,30 +38,30 @@ impl IonCliCommand for FromJsonCommand {
         // Because JSON data is valid Ion, the `cat` command may be reused for converting JSON.
         // TODO ideally, this would perform some smarter "up-conversion".
         let detect_timestamps = args.get_flag("detect-timestamps");
-        CommandIo::new(args)?.for_each_input(|output, input| {
-            let input_name = input.name().to_owned();
-            convert(input.into_source(), output, detect_timestamps, &input_name)
-        })
+        CommandIo::new(args)?
+            .for_each_input(|output, input| convert(input, output, detect_timestamps))
     }
 }
 
 pub fn convert(
-    reader: impl std::io::Read,
+    input: CommandInput,
     output: &mut CommandOutput,
     detect_timestamps: bool,
-    input_name: &str,
 ) -> Result<()> {
     const FLUSH_EVERY_N: usize = 100;
     let mut writer = output.as_writer()?;
     let mut value_count = 0usize;
+    let mut ion_reader = Reader::new(AnyEncoding, input.into_source())?;
 
-    // Streaming deserializer to handle large JSON files
-    let deserializer = Deserializer::from_reader(reader);
-
-    for json_value in deserializer.into_iter::<Value>() {
-        let json_value = json_value
-            .with_context(|| format!("Input file '{}' contains invalid JSON.", input_name))?;
-        writer.write(&to_ion_element(json_value, detect_timestamps)?)?;
+    while let Some(lazy_value) = ion_reader.next()? {
+        let value_ref = lazy_value.read()?;
+        let element = Element::try_from(value_ref)?;
+        let converted_element = if detect_timestamps {
+            convert_timestamps(element)?
+        } else {
+            element
+        };
+        writer.write(&converted_element)?;
         value_count += 1;
         if value_count % FLUSH_EVERY_N == 0 {
             writer.flush()?;
@@ -71,52 +71,72 @@ pub fn convert(
     writer.close().map_err(Into::into)
 }
 
-fn to_ion_element(value: Value, detect_timestamps: bool) -> Result<Element> {
-    Ok(match value {
-        Value::Null => Element::null(ion_rs::IonType::Null),
-        Value::Bool(b) => Element::from(b),
-        Value::Number(n) => {
-            // Preserve integer precision when possible
-            // fall back to float
-            if let Some(i) = n.as_i64() {
-                Element::from(i)
-            } else {
-                Element::from(n.as_f64().unwrap())
-            }
-        }
-        Value::String(s) => {
-            // Using is_timestamp_like as a heuristic provides a filter that eliminates non-timestamp
-            if detect_timestamps && is_timestamp_like(&s) {
-                // Using ion_rs to parse the string to ensure it's a valid timestamp
-                if let Ok(element) = Element::read_one(s.as_bytes()) {
-                    if element.ion_type() == ion_rs::IonType::Timestamp {
-                        return Ok(element);
+fn convert_timestamps(element: Element) -> Result<Element> {
+    Ok(match element.ion_type() {
+        IonType::String => {
+            let s = element.as_string().unwrap();
+            if is_timestamp_like(s) {
+                if let Ok(timestamp_element) = Element::read_one(s.as_bytes()) {
+                    if timestamp_element.ion_type() == IonType::Timestamp {
+                        return Ok(timestamp_element);
                     }
                 }
             }
-            Element::from(s)
+            element
         }
-        Value::Array(arr) => {
-            let elements: Result<Vec<_>> = arr
-                .into_iter()
-                .map(|v| to_ion_element(v, detect_timestamps))
+        IonType::List => {
+            let list = element.as_sequence().unwrap();
+            let converted: Result<Vec<_>> = list
+                .elements()
+                .map(|e| convert_timestamps(e.clone()))
                 .collect();
-            Element::from(ion_rs::List::from(elements?))
+            Element::from(ion_rs::List::from(converted?))
         }
-        Value::Object(obj) => {
+        IonType::Struct => {
+            let struct_val = element.as_struct().unwrap();
             let mut struct_builder = ion_rs::Struct::builder();
-            for (key, val) in obj {
+            for (field, value) in struct_val.fields() {
                 struct_builder =
-                    struct_builder.with_field(key, to_ion_element(val, detect_timestamps)?);
+                    struct_builder.with_field(field, convert_timestamps(value.clone())?);
             }
             Element::from(struct_builder.build())
         }
+        _ => element,
     })
 }
 
+/// Heuristic to identify strings that could be Ion timestamps
+///
+/// Ion timestamps follow ISO 8601 format with these constraints:
+/// - Years 0001-9999 (4 digits)
+/// - Precision up to nanoseconds
+/// - Must have date component (YYYY, YYYY-MM, or YYYY-MM-DD)
+///
+/// This function uses position-based checks, which are cheaper compared to string operations:
+/// - Length bounds (4-35 chars for timestamp range)
+/// - Direct character position checks
 fn is_timestamp_like(s: &str) -> bool {
-    s.len() >= 4
-        && s[..4].chars().all(|c| c.is_ascii_digit())
-        && (s.contains('T') || (s.len() == 10 && s.matches('-').count() == 2))
-        && !(s.len() == 4 && s.chars().all(|c| c.is_ascii_digit()))
+    let len = s.len();
+
+    // Bounds check, timestamps are 4-35 chars
+    if !(4..=35).contains(&len) {
+        return false;
+    }
+
+    // Must start with 4 digits
+    let bytes = s.as_bytes();
+    if !bytes[0].is_ascii_digit()
+        || !bytes[1].is_ascii_digit()
+        || !bytes[2].is_ascii_digit()
+        || !bytes[3].is_ascii_digit()
+    {
+        return false;
+    }
+
+    match len {
+        4 => false,
+        5..=9 => bytes[len - 1] == b'T',
+        10 => bytes[4] == b'-' && bytes[7] == b'-',
+        _ => len > 10 && bytes[10] == b'T',
+    }
 }
