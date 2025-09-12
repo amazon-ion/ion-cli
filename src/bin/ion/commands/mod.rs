@@ -146,7 +146,6 @@ impl WithIonCliArgument for ClapCommand {
     fn with_input(self) -> Self {
         self.arg(
             Arg::new("input")
-                .trailing_var_arg(true)
                 .action(ArgAction::Append)
                 .help("Input file"),
         )
