@@ -317,10 +317,10 @@ mod timestamp_roundtrip_tests {
         cmd.args(["cat", flag, "--format", "pretty"])
             .timeout(Duration::new(5, 0))
             .write_stdin(input_ion.as_bytes());
-        
+
         let output = cmd.assert().success().get_output().stdout.clone();
         let result_element = Element::read_one(&output)?;
-        
+
         // Should convert string to timestamp
         let expected = Element::read_one(r#"{created: 2025-01-01T10:30:00+00:00}"#.as_bytes())?;
         assert_eq!(expected, result_element);
