@@ -222,11 +222,11 @@ mod timestamp_roundtrip_tests {
     use super::*;
 
     #[rstest]
-    #[case::valid_timestamp(r#"{created: 2023-12-25T10:30:00Z, name: "test"}"#)]
-    #[case::timestamp_with_milliseconds(r#"{timestamp: 2023-01-01T12:00:00.123Z}"#)]
-    #[case::timestamp_with_timezone(r#"{date: 2023-06-15T14:30:45+05:00}"#)]
-    #[case::date_only(r#"{birthday: 2023-12-25}"#)]
-    #[case::microsecond_precision(r#"{precise: 2023-01-01T12:00:00.123456Z}"#)]
+    #[case::valid_timestamp(r#"{created: 2025-01-01T10:30:00Z, name: "test"}"#)]
+    #[case::timestamp_with_milliseconds(r#"{timestamp: 2025-01-01T12:00:00.123Z}"#)]
+    #[case::timestamp_with_timezone(r#"{date: 2025-01-01T14:30:45+05:00}"#)]
+    #[case::date_only(r#"{birthday: 2025-01-01}"#)]
+    #[case::microsecond_precision(r#"{precise: 2025-01-01T12:00:00.123456Z}"#)]
     /// Tests Ion to JSON to Ion roundtrip with timestamp preservation
     fn test_ion_json_ion_roundtrip_with_timestamps(#[case] original_ion: &str) -> Result<()> {
         //  Ion to JSON
@@ -254,12 +254,12 @@ mod timestamp_roundtrip_tests {
 
     #[rstest]
     #[case::invalid_timestamp_like(
-        r#"{"date": "2023-13-45T25:70:80Z", "name": "test"}"#,
-        r#"{date: "2023-13-45T25:70:80Z", name: "test"}"#
+        r#"{"date": "2025-13-45T25:70:80Z", "name": "test"}"#,
+        r#"{date: "2025-13-45T25:70:80Z", name: "test"}"#
     )]
     #[case::non_timestamp_string(
-        r#"{"description": "This looks like 2023-01-01T but is not"}"#,
-        r#"{description: "This looks like 2023-01-01T but is not"}"#
+        r#"{"description": "This looks like 2025-01-01T but is not"}"#,
+        r#"{description: "This looks like 2025-01-01T but is not"}"#
     )]
     /// Tests that invalid timestamp-like strings remain as strings
     fn test_from_json_invalid_timestamps_fallback(
@@ -276,6 +276,54 @@ mod timestamp_roundtrip_tests {
         let actual_ion = Element::read_one(&output.stdout)?;
         let expected_element = Element::read_one(expected_ion.as_bytes())?;
         assert_eq!(expected_element, actual_ion);
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::valid_timestamp(r#"{created: 2025-01-01T10:30:00Z, name: "test"}"#)]
+    #[case::timestamp_with_milliseconds(r#"{timestamp: 2025-01-01T12:00:00.123Z}"#)]
+    #[case::timestamp_with_timezone(r#"{date: 2025-01-01T14:30:45+05:00}"#)]
+    /// Tests cat command timestamp detection with Ion to JSON to Ion roundtrip
+    fn test_cat_timestamp_detection_roundtrip(#[case] original_ion: &str) -> Result<()> {
+        // Ion to JSON
+        let mut to_json_cmd = Command::cargo_bin("ion")?;
+        to_json_cmd
+            .args(["to", "-X", "json"])
+            .timeout(Duration::new(5, 0))
+            .write_stdin(original_ion.as_bytes());
+        let json_output = to_json_cmd.assert().success().get_output().stdout.clone();
+
+        // JSON to Ion using cat with timestamp detection
+        let mut cat_cmd = Command::cargo_bin("ion")?;
+        cat_cmd
+            .args(["cat", "-t", "--format", "pretty"])
+            .timeout(Duration::new(5, 0))
+            .write_stdin(json_output);
+        let final_output = cat_cmd.assert().success().get_output().stdout.clone();
+
+        // Verify roundtrip preserves timestamps
+        let original_element = Element::read_one(original_ion.as_bytes())?;
+        let final_element = Element::read_one(&final_output)?;
+        assert_eq!(original_element, final_element);
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::short_form_flag(r#"{created: "2025-01-01T10:30:00Z"}"#, "-t")]
+    #[case::long_form_flag(r#"{created: "2025-01-01T10:30:00Z"}"#, "--detect-timestamps")]
+    /// Tests both short and long form flags work for timestamp detection
+    fn test_timestamp_flag_variants(#[case] input_ion: &str, #[case] flag: &str) -> Result<()> {
+        let mut cmd = Command::cargo_bin("ion")?;
+        cmd.args(["cat", flag, "--format", "pretty"])
+            .timeout(Duration::new(5, 0))
+            .write_stdin(input_ion.as_bytes());
+        
+        let output = cmd.assert().success().get_output().stdout.clone();
+        let result_element = Element::read_one(&output)?;
+        
+        // Should convert string to timestamp
+        let expected = Element::read_one(r#"{created: 2025-01-01T10:30:00+00:00}"#.as_bytes())?;
+        assert_eq!(expected, result_element);
         Ok(())
     }
 }
