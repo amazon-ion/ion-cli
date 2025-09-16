@@ -58,3 +58,28 @@ impl IonCliCommand for CatCommand {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_timestamp_string_conversion() -> Result<()> {
+        // Test that timestamp-like strings are converted
+        let timestamp_string = Element::from("2023-01-01T00:00:00Z");
+        let result = convert_timestamps(timestamp_string)?;
+        assert_eq!(result.ion_type(), IonType::Timestamp);
+
+        // Test nested timestamp in struct (tests pre-order traversal)
+        let struct_with_timestamp = Element::from(
+            ion_rs::Struct::builder()
+                .with_field("created", "2025-01-01T12:00:00Z")
+                .build(),
+        );
+        let result = convert_timestamps(struct_with_timestamp)?;
+        let created_field = result.as_struct().unwrap().get("created").unwrap();
+        assert_eq!(created_field.ion_type(), IonType::Timestamp);
+
+        Ok(())
+    }
+}

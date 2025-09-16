@@ -14,35 +14,36 @@ pub trait ValueVisitor<T> {
     fn result(self) -> T;
 }
 
-/// Iteratively applies a mapper to all elements in an Ion structure
-/// This function uses an explicit work stack instead of recursion
-/// It processes the structure in post-order (children before parents) to enable reconstruction
+/// Iteratively applies a mapper to all elements in an Ion structure using pre-order traversal
+///
+/// Pre-order means the mapper is applied to each element BEFORE descending into its children.
+/// This enables early termination and structural mutations that post-order cannot handle efficiently.
 pub fn map_structure<M: ElementMapper>(root: Element, mapper: &M) -> Result<Element> {
     enum WorkItem {
-        Process(Element), // Process a single element (apply mapper or recurse into children)
-        BuildList(usize),
-        BuildStruct(Vec<String>),
+        Process(Element),         // Apply mapper to element, then decide whether to descend
+        BuildList(usize),         // Reconstruct list from the next size results
+        BuildStruct(Vec<String>), // Reconstruct struct using field names and next size results
     }
 
     let mut stack = vec![WorkItem::Process(root)];
-    let mut results = Vec::new(); // Store processed elements in post-order
+    let mut results = Vec::new();
 
     while let Some(item) = stack.pop() {
         match item {
             WorkItem::Process(element) => {
-                match element.ion_type() {
+                let mapped = mapper.map(element)?; // Applying mapper first
+                match mapped.ion_type() {
                     IonType::List => {
-                        // For lists, collect all elements, then push reconstruction work
-                        let list = element.as_sequence().unwrap();
-                        let elements: Vec<_> = list.elements().cloned().collect();
-                        stack.push(WorkItem::BuildList(elements.len()));
-                        for elem in elements.into_iter().rev() {
-                            stack.push(WorkItem::Process(elem));
+                        let list = mapped.as_sequence().unwrap(); // Mapper returned a list, now processing its children
+                        let children: Vec<_> = list.elements().cloned().collect();
+                        stack.push(WorkItem::BuildList(children.len()));
+                        for child in children.into_iter().rev() {
+                            // Push children in reverse order
+                            stack.push(WorkItem::Process(child));
                         }
                     }
                     IonType::Struct => {
-                        // For structs, collect field names & values, then push reconstruction work
-                        let struct_val = element.as_struct().unwrap();
+                        let struct_val = mapped.as_struct().unwrap();
                         let fields: Vec<_> = struct_val.fields().collect();
                         let field_names: Vec<_> = fields
                             .iter()
@@ -54,17 +55,17 @@ pub fn map_structure<M: ElementMapper>(root: Element, mapper: &M) -> Result<Elem
                         }
                     }
                     _ => {
-                        let mapped = mapper.map(element)?;
                         results.push(mapped);
                     }
                 }
             }
             WorkItem::BuildList(size) => {
+                // Reconstructing the list from the last size processed results
                 let elements = results.split_off(results.len() - size);
                 results.push(Element::from(ion_rs::List::from(elements)));
             }
             WorkItem::BuildStruct(field_names) => {
-                // Take the last `field_names.len()` elements & build a struct
+                // Reconstructing the struct from field names and processed values
                 let values = results.split_off(results.len() - field_names.len());
                 let mut struct_builder = ion_rs::Struct::builder();
                 for (name, value) in field_names.into_iter().zip(values) {
