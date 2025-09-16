@@ -155,31 +155,25 @@ fn analyze_data_stream<Input: IonInput>(
 }
 
 fn top_level_max_depth(value: LazyValue<AnyEncoding>) -> Result<usize> {
-    let mut max_depth = 0;
-    let mut stack = vec![(value, 0)];
-    while let Some((current_value, depth)) = stack.pop() {
-        max_depth = max(max_depth, depth);
-        use ValueRef::*;
-        match current_value.read()? {
-            Struct(s) => {
-                for field in s {
-                    stack.push((field?.value(), depth + 1));
-                }
-            }
-            List(s) => {
-                for element in s {
-                    stack.push((element?, depth + 1));
-                }
-            }
-            SExp(s) => {
-                for element in s {
-                    stack.push((element?, depth + 1));
-                }
-            }
-            _ => continue,
+    use super::structural_recursion::{visit_structure, ValueVisitor};
+
+    struct MaxDepthVisitor {
+        max_depth: usize,
+    }
+
+    impl ValueVisitor<usize> for MaxDepthVisitor {
+        fn visit(&mut self, _value: ValueRef<AnyEncoding>, depth: usize) -> Result<()> {
+            self.max_depth = self.max_depth.max(depth);
+            Ok(())
+        }
+
+        fn result(self) -> usize {
+            self.max_depth
         }
     }
-    Ok(max_depth)
+
+    let visitor = MaxDepthVisitor { max_depth: 0 };
+    visit_structure(value, visitor)
 }
 
 #[test]

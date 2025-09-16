@@ -1,39 +1,32 @@
 use anyhow::Result;
 use ion_rs::{Element, IonType};
 
-/// Recursively converts timestamp-like strings to Ion timestamps in the given element.
-pub fn convert_timestamps(element: Element) -> Result<Element> {
-    Ok(match element.ion_type() {
-        IonType::String => {
-            let s = element.as_string().unwrap();
-            if is_timestamp_like(s) {
-                if let Ok(timestamp_element) = Element::read_one(s.as_bytes()) {
-                    if timestamp_element.ion_type() == IonType::Timestamp {
-                        return Ok(timestamp_element);
+use super::structural_recursion::{map_structure, ElementMapper};
+
+struct TimestampConverter;
+
+impl ElementMapper for TimestampConverter {
+    fn map(&self, element: Element) -> Result<Element> {
+        Ok(match element.ion_type() {
+            IonType::String => {
+                let s = element.as_string().unwrap();
+                if is_timestamp_like(s) {
+                    if let Ok(timestamp_element) = Element::read_one(s.as_bytes()) {
+                        if timestamp_element.ion_type() == IonType::Timestamp {
+                            return Ok(timestamp_element);
+                        }
                     }
                 }
+                element
             }
-            element
-        }
-        IonType::List => {
-            let list = element.as_sequence().unwrap();
-            let converted: Result<Vec<_>> = list
-                .elements()
-                .map(|e| convert_timestamps(e.clone()))
-                .collect();
-            Element::from(ion_rs::List::from(converted?))
-        }
-        IonType::Struct => {
-            let struct_val = element.as_struct().unwrap();
-            let mut struct_builder = ion_rs::Struct::builder();
-            for (field, value) in struct_val.fields() {
-                struct_builder =
-                    struct_builder.with_field(field, convert_timestamps(value.clone())?);
-            }
-            Element::from(struct_builder.build())
-        }
-        _ => element,
-    })
+            _ => element,
+        })
+    }
+}
+
+/// Converts timestamp-like strings to Ion timestamps using iterative traversal
+pub fn convert_timestamps(element: Element) -> Result<Element> {
+    map_structure(element, &TimestampConverter)
 }
 
 /// Heuristic to identify strings that could be Ion timestamps
