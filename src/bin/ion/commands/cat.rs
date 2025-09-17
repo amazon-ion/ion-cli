@@ -37,7 +37,8 @@ impl IonCliCommand for CatCommand {
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
-        let mapper = if args.get_flag("detect-timestamps") { // no-op that passes the element through unchanged
+        let mapper = if args.get_flag("detect-timestamps") {
+            // no-op that passes the element through unchanged
             convert_timestamps
         } else {
             |element| Ok(element)
