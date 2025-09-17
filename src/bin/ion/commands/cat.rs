@@ -4,7 +4,7 @@ use ion_rs::*;
 
 use crate::commands::timestamp_conversion::convert_timestamps;
 use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
-use crate::transcribe::{write_all_as, write_all_as_with_mapper};
+use crate::transcribe::write_all_as;
 
 pub struct CatCommand;
 
@@ -37,23 +37,21 @@ impl IonCliCommand for CatCommand {
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
-        let detect_timestamps = args.get_flag("detect-timestamps");
-        let mapper = if detect_timestamps {
-            Some(convert_timestamps as fn(Element) -> Result<Element>)
+        let mapper = if args.get_flag("detect-timestamps") { // no-op that passes the element through unchanged
+            convert_timestamps
         } else {
-            None
+            |element| Ok(element)
         };
 
         CommandIo::new(args)?.for_each_input(|output, input| {
             let mut reader = Reader::new(AnyEncoding, input.into_source())?;
-            let encoding = *output.encoding();
-            let format = *output.format();
-
-            if detect_timestamps {
-                write_all_as_with_mapper(&mut reader, output, encoding, format, mapper)?;
-            } else {
-                write_all_as(&mut reader, output, encoding, format)?;
-            }
+            write_all_as(
+                &mut reader,
+                output,
+                *output.encoding(),
+                *output.format(),
+                mapper,
+            )?;
             Ok(())
         })
     }

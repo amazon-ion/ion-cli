@@ -54,14 +54,16 @@ pub fn convert(
     let mut value_count = 0usize;
     let mut ion_reader = Reader::new(AnyEncoding, input.into_source())?;
 
+    let mapper = if detect_timestamps {
+        convert_timestamps
+    } else {
+        |element| Ok(element) // Identity mapper
+    };
+
     while let Some(lazy_value) = ion_reader.next()? {
         let value_ref = lazy_value.read()?;
         let element = Element::try_from(value_ref)?;
-        let converted_element = if detect_timestamps {
-            convert_timestamps(element)?
-        } else {
-            element
-        };
+        let converted_element = mapper(element)?;
         writer.write(&converted_element)?;
         value_count += 1;
         if value_count % FLUSH_EVERY_N == 0 {

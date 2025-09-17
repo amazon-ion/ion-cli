@@ -53,7 +53,7 @@ impl IonCliCommand for HeadCommand {
             let mut reader = Reader::new(AnyEncoding, input.into_source())?;
             let encoding = *output.encoding();
             let format = *output.format();
-            write_n_as(&mut reader, output, encoding, format, num_values)?;
+            write_n_as(&mut reader, output, encoding, format, num_values, |e| Ok(e))?;
             Ok(())
         })
     }
