@@ -83,7 +83,7 @@ fn to_json_value(value: LazyValue<AnyEncoding>) -> Result<JsonValue> {
                     .with_context(|| format!("{d} could not be turned into a Number"))?,
             )
         }
-        Timestamp(t) => JsonValue::String(t.to_string()),
+        Timestamp(t) => JsonValue::String(t.to_string()), // Note: normalizes 'Z' to '+00:00' format
         Symbol(s) => s
             .text()
             .map(|text| JsonValue::String(text.to_owned()))
