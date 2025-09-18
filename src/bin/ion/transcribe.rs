@@ -3,26 +3,26 @@ use ion_rs::*;
 use std::io::Write;
 
 /// Constructs the appropriate writer for the given format, then writes all values from the
-/// `Reader` to the new `Writer`, applying a mapping function to each element.
+/// `Reader` to the new `Writer`, applying an optional mapping function to each element.
 pub(crate) fn write_all_as<I: IonInput, M: Fn(Element) -> Result<Element>>(
     reader: &mut Reader<AnyEncoding, I>,
     output: &mut impl Write,
     encoding: IonEncoding,
     format: Format,
-    mapper: M,
+    mapper: Option<M>,
 ) -> Result<usize> {
     write_n_as(reader, output, encoding, format, usize::MAX, mapper)
 }
 
 /// Constructs the appropriate writer for the given format, then writes up to `count` values from the
-/// `Reader` to the new `Writer`, applying a mapping function to each element.
+/// `Reader` to the new `Writer`, applying an optional mapping function to each element.
 pub(crate) fn write_n_as<I: IonInput, M: Fn(Element) -> Result<Element>>(
     reader: &mut Reader<AnyEncoding, I>,
     output: &mut impl Write,
     encoding: IonEncoding,
     format: Format,
     count: usize,
-    mapper: M,
+    mapper: Option<M>,
 ) -> Result<usize> {
     let written = match (encoding, format) {
         (IonEncoding::Text_1_0, Format::Text(text_format)) => {
@@ -47,12 +47,12 @@ pub(crate) fn write_n_as<I: IonInput, M: Fn(Element) -> Result<Element>>(
 }
 
 /// Writes up to `count` values from the `Reader` to the provided `Writer`,
-/// applying a mapping function to each element.
+/// applying an optional mapping function to each element.
 fn transcribe_n<M: Fn(Element) -> Result<Element>>(
     writer: &mut Writer<impl Encoding, impl Write>,
     reader: &mut Reader<impl Decoder, impl IonInput>,
     count: usize,
-    mapper: M,
+    mapper: Option<M>,
 ) -> Result<usize> {
     const FLUSH_EVERY_N: usize = 100;
     let mut values_since_flush: usize = 0;
@@ -63,9 +63,17 @@ fn transcribe_n<M: Fn(Element) -> Result<Element>>(
             break;
         }
 
-        let element = Element::try_from(lazy_value.read()?)?;
-        let transformed_element = mapper(element)?;
-        writer.write(&transformed_element)?;
+        match mapper {
+            Some(ref map_fn) => {
+                // materialize and apply mapper
+                let element = Element::try_from(lazy_value.read()?)?;
+                let transformed = map_fn(element)?;
+                writer.write(&transformed)?;
+            }
+            None => {
+                writer.write(lazy_value)?;
+            }
+        }
 
         index += 1;
         values_since_flush += 1;

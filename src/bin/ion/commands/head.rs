@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{value_parser, Arg, ArgMatches, Command};
-use ion_rs::{AnyEncoding, Reader};
+use ion_rs::{AnyEncoding, Element, Reader};
 
 use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 use crate::transcribe::write_n_as;
@@ -53,7 +53,14 @@ impl IonCliCommand for HeadCommand {
             let mut reader = Reader::new(AnyEncoding, input.into_source())?;
             let encoding = *output.encoding();
             let format = *output.format();
-            write_n_as(&mut reader, output, encoding, format, num_values, |e| Ok(e))?;
+            write_n_as(
+                &mut reader,
+                output,
+                encoding,
+                format,
+                num_values,
+                None::<fn(Element) -> Result<Element>>,
+            )?;
             Ok(())
         })
     }

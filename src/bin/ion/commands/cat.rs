@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{arg, ArgMatches, Command};
+use ion_rs::serde::de;
 use ion_rs::*;
 
 use crate::commands::timestamp_conversion::convert_timestamps;
@@ -37,22 +38,15 @@ impl IonCliCommand for CatCommand {
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
-        let mapper = if args.get_flag("detect-timestamps") {
-            // no-op that passes the element through unchanged
-            convert_timestamps
-        } else {
-            |element| Ok(element)
-        };
+        let detect_timestamps = args.get_flag("detect-timestamps");
 
         CommandIo::new(args)?.for_each_input(|output, input| {
             let mut reader = Reader::new(AnyEncoding, input.into_source())?;
-            write_all_as(
-                &mut reader,
-                output,
-                *output.encoding(),
-                *output.format(),
-                mapper,
-            )?;
+            let encoding = *output.encoding();
+            let format = *output.format();
+            let mapper =
+                detect_timestamps.then_some(convert_timestamps as fn(Element) -> Result<Element>);
+            write_all_as(&mut reader, output, encoding, format, mapper)?;
             Ok(())
         })
     }
