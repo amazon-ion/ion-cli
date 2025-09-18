@@ -1,6 +1,5 @@
 use anyhow::Result;
 use clap::{arg, ArgMatches, Command};
-use ion_rs::serde::de;
 use ion_rs::*;
 
 use crate::commands::timestamp_conversion::convert_timestamps;
