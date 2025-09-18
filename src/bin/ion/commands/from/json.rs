@@ -4,8 +4,7 @@ use ion_rs::{AnyEncoding, Element, Reader};
 
 use crate::commands::timestamp_conversion::convert_timestamps;
 use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
-use crate::input::CommandInput;
-use crate::output::CommandOutput;
+use crate::transcribe::write_all_as;
 
 pub struct FromJsonCommand;
 
@@ -39,37 +38,15 @@ impl IonCliCommand for FromJsonCommand {
         // Because JSON data is valid Ion, the `cat` command may be reused for converting JSON.
         // TODO ideally, this would perform some smarter "up-conversion".
         let detect_timestamps = args.get_flag("detect-timestamps");
-        CommandIo::new(args)?
-            .for_each_input(|output, input| convert(input, output, detect_timestamps))
+
+        CommandIo::new(args)?.for_each_input(|output, input| {
+            let mut reader = Reader::new(AnyEncoding, input.into_source())?;
+            let encoding = *output.encoding();
+            let format = *output.format();
+            let mapper =
+                detect_timestamps.then_some(convert_timestamps as fn(Element) -> Result<Element>);
+            write_all_as(&mut reader, output, encoding, format, mapper)?;
+            Ok(())
+        })
     }
-}
-
-pub fn convert(
-    input: CommandInput,
-    output: &mut CommandOutput,
-    detect_timestamps: bool,
-) -> Result<()> {
-    const FLUSH_EVERY_N: usize = 100;
-    let mut writer = output.as_writer()?;
-    let mut value_count = 0usize;
-    let mut ion_reader = Reader::new(AnyEncoding, input.into_source())?;
-
-    while let Some(lazy_value) = ion_reader.next()? {
-        let value_ref = lazy_value.read()?;
-        let element = Element::try_from(value_ref)?;
-
-        let converted_element = if detect_timestamps {
-            convert_timestamps(element)?
-        } else {
-            element
-        };
-
-        writer.write(&converted_element)?;
-        value_count += 1;
-        if value_count % FLUSH_EVERY_N == 0 {
-            writer.flush()?;
-        }
-    }
-
-    writer.close().map_err(Into::into)
 }
