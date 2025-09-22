@@ -41,13 +41,8 @@ impl IonCliCommand for FromJsonCommand {
         CommandIo::new(args)?.for_each_input(|output, input| {
             let mut reader = Reader::new(AnyEncoding, input.into_source())?;
             let mapper = detect_timestamps.then_some(convert_timestamps);
-            write_all_as(
-                &mut reader,
-                output,
-                *output.encoding(),
-                *output.format(),
-                mapper,
-            )?;
+            let (encoding, format) = (*output.encoding(), *output.format());
+            write_all_as(&mut reader, output, encoding, format, mapper)?;
             Ok(())
         })
     }

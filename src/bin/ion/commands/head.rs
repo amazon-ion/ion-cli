@@ -52,14 +52,8 @@ impl IonCliCommand for HeadCommand {
         let transform = None::<fn(Element) -> Result<Element>>;
         CommandIo::new(args)?.for_each_input(|output, input| {
             let mut reader = Reader::new(AnyEncoding, input.into_source())?;
-            write_n_as(
-                &mut reader,
-                output,
-                *output.encoding(),
-                *output.format(),
-                num_values,
-                transform,
-            )?;
+            let (encoding, format) = (*output.encoding(), *output.format());
+            write_n_as(&mut reader, output, encoding, format, num_values, transform)?;
             Ok(())
         })
     }

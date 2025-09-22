@@ -38,13 +38,8 @@ impl IonCliCommand for CatCommand {
         let transform = None::<fn(Element) -> Result<Element>>;
         CommandIo::new(args)?.for_each_input(|output, input| {
             let mut reader = Reader::new(AnyEncoding, input.into_source())?;
-            write_all_as(
-                &mut reader,
-                output,
-                *output.encoding(),
-                *output.format(),
-                transform,
-            )?;
+            let (encoding, format) = (*output.encoding(), *output.format());
+            write_all_as(&mut reader, output, encoding, format, transform)?;
             Ok(())
         })
     }
