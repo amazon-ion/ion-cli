@@ -22,7 +22,7 @@ impl IonCliCommand for ToJsonCommand {
     }
 
     fn is_stable(&self) -> bool {
-        false
+        true
     }
 
     fn is_porcelain(&self) -> bool {

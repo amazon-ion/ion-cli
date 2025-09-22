@@ -18,7 +18,7 @@ impl IonCliCommand for FromJsonCommand {
     }
 
     fn is_stable(&self) -> bool {
-        false // TODO: Should this be true?
+        true
     }
 
     fn is_porcelain(&self) -> bool {
