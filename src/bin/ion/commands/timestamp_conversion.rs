@@ -31,10 +31,11 @@ pub fn convert_timestamps(element: Element) -> Result<Element> {
 
 /// Heuristic to identify strings that could be Ion timestamps
 ///
-/// Ion timestamps follow ISO 8601 format with these constraints:
-/// - Years 0001-9999 (4 digits)
-/// - Precision up to nanoseconds
+/// Ion timestamps follow W3C date/time format with these constraints:
 /// - Must have date component (YYYY, YYYY-MM, or YYYY-MM-DD)
+/// - Precision up to fractional seconds (unlimited precision)
+/// - Must end with 'T' if time components are present
+/// - Time zone offset required for timestamps with time, not allowed for date-only values
 ///
 /// This function uses position-based checks, which are cheaper compared to string operations:
 /// - Length bounds (4-35 chars for timestamp range)

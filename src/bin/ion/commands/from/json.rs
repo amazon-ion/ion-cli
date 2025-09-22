@@ -36,7 +36,6 @@ impl IonCliCommand for FromJsonCommand {
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
         // Because JSON data is valid Ion, the `cat` command may be reused for converting JSON.
-        // TODO ideally, this would perform some smarter "up-conversion".
         let detect_timestamps = args.get_flag("detect-timestamps");
 
         CommandIo::new(args)?.for_each_input(|output, input| {
