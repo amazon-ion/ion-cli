@@ -283,7 +283,7 @@ mod timestamp_roundtrip_tests {
     #[case::valid_timestamp(r#"{created: 2025-01-01T10:30:00Z, name: "test"}"#)]
     #[case::timestamp_with_milliseconds(r#"{timestamp: 2025-01-01T12:00:00.123Z}"#)]
     #[case::timestamp_with_timezone(r#"{date: 2025-01-01T14:30:45+05:00}"#)]
-    /// Tests cat command timestamp detection with Ion to JSON to Ion roundtrip
+    /// Tests cat command preserves JSON data as-is (strings remain strings)
     fn test_cat_timestamp_detection_roundtrip(#[case] original_ion: &str) -> Result<()> {
         // Ion to JSON
         let mut to_json_cmd = Command::cargo_bin("ion")?;
@@ -293,36 +293,35 @@ mod timestamp_roundtrip_tests {
             .write_stdin(original_ion.as_bytes());
         let json_output = to_json_cmd.assert().success().get_output().stdout.clone();
 
-        // JSON to Ion using cat with timestamp detection
+        // JSON to Ion using cat (preserves data as-is)
         let mut cat_cmd = Command::cargo_bin("ion")?;
         cat_cmd
-            .args(["cat", "-t", "--format", "pretty"])
+            .args(["cat", "--format", "pretty"])
             .timeout(Duration::new(5, 0))
-            .write_stdin(json_output);
+            .write_stdin(json_output.clone());
         let final_output = cat_cmd.assert().success().get_output().stdout.clone();
 
-        // Verify roundtrip preserves timestamps
-        let original_element = Element::read_one(original_ion.as_bytes())?;
+        // Verify cat preserves JSON data as-is (timestamps become strings)
         let final_element = Element::read_one(&final_output)?;
-        assert_eq!(original_element, final_element);
+        let json_element = Element::read_one(&json_output)?;
+        assert_eq!(json_element, final_element);
         Ok(())
     }
 
     #[rstest]
-    #[case::short_form_flag(r#"{created: "2025-01-01T10:30:00Z"}"#, "-t")]
-    #[case::long_form_flag(r#"{created: "2025-01-01T10:30:00Z"}"#, "--detect-timestamps")]
-    /// Tests both short and long form flags work for timestamp detection
-    fn test_timestamp_flag_variants(#[case] input_ion: &str, #[case] flag: &str) -> Result<()> {
+    #[case::cat_preserves_timestamps(r#"{created: "2025-01-01T10:30:00Z"}"#)]
+    /// Tests that cat command preserves data as-is (strings remain strings)
+    fn test_timestamp_flag_variants(#[case] input_ion: &str) -> Result<()> {
         let mut cmd = Command::cargo_bin("ion")?;
-        cmd.args(["cat", flag, "--format", "pretty"])
+        cmd.args(["cat", "--format", "pretty"])
             .timeout(Duration::new(5, 0))
             .write_stdin(input_ion.as_bytes());
 
         let output = cmd.assert().success().get_output().stdout.clone();
         let result_element = Element::read_one(&output)?;
 
-        // Should convert string to timestamp
-        let expected = Element::read_one(r#"{created: 2025-01-01T10:30:00+00:00}"#.as_bytes())?;
+        // Should preserve string as-is
+        let expected = Element::read_one(input_ion.as_bytes())?;
         assert_eq!(expected, result_element);
         Ok(())
     }

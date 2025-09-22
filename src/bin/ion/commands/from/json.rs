@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{arg, ArgMatches, Command};
-use ion_rs::{AnyEncoding, Element, Reader};
+use ion_rs::{AnyEncoding, Reader};
 
 use crate::commands::timestamp_conversion::convert_timestamps;
 use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
