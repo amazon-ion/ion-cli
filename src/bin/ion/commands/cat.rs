@@ -1,8 +1,7 @@
 use anyhow::Result;
-use clap::{arg, ArgMatches, Command};
+use clap::{ArgMatches, Command};
 use ion_rs::*;
 
-use crate::commands::timestamp_conversion::convert_timestamps;
 use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 use crate::transcribe::write_all_as;
 
@@ -28,7 +27,6 @@ impl IonCliCommand for CatCommand {
     fn configure_args(&self, command: Command) -> Command {
         command
             .alias("dump")
-            .arg(arg!(-t --"detect-timestamps" "Preserve Ion timestamps when going from Ion to JSON to Ion"))
             .with_input()
             .with_output()
             .with_format()
@@ -37,15 +35,16 @@ impl IonCliCommand for CatCommand {
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
-        let detect_timestamps = args.get_flag("detect-timestamps");
-
+        let transform = None::<fn(Element) -> Result<Element>>;
         CommandIo::new(args)?.for_each_input(|output, input| {
             let mut reader = Reader::new(AnyEncoding, input.into_source())?;
-            let encoding = *output.encoding();
-            let format = *output.format();
-            let mapper =
-                detect_timestamps.then_some(convert_timestamps as fn(Element) -> Result<Element>);
-            write_all_as(&mut reader, output, encoding, format, mapper)?;
+            write_all_as(
+                &mut reader,
+                output,
+                *output.encoding(),
+                *output.format(),
+                transform,
+            )?;
             Ok(())
         })
     }
