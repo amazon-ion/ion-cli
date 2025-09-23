@@ -83,21 +83,7 @@ fn symbol_fn() -> Filter<Native<JaqElement>> {
 /// Returns the Ion type name as a string
 fn ion_type_fn() -> Filter<Native<JaqElement>> {
     let run: RunPtr<JaqElement> = |_, (_, v)| {
-        let type_name = match v.ion_type() {
-            IonType::Null => "null",
-            IonType::Bool => "boolean",
-            IonType::Int => "integer",
-            IonType::Float => "float",
-            IonType::Decimal => "decimal",
-            IonType::Timestamp => "timestamp",
-            IonType::Symbol => "symbol",
-            IonType::String => "string",
-            IonType::Clob => "clob",
-            IonType::Blob => "blob",
-            IonType::List => "list",
-            IonType::SExp => "sexp",
-            IonType::Struct => "struct",
-        };
+        let type_name = format!("{:?}", v.ion_type()).to_lowercase();
         box_once(Ok(JaqElement::from(Element::from(type_name))))
     };
 
