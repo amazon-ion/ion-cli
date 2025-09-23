@@ -3,6 +3,11 @@ use ion_rs::{Element, IonType};
 use jaq_core::{box_iter::box_once, Native, RunPtr, ValT};
 use jaq_std::Filter;
 
+/// Helper to create error for invalid input type
+fn input_error(expected: &str) -> jaq_core::Exn<'_, JaqElement> {
+    jaq_core::Error::str(format!("{} filter requires a string input", expected)).into()
+}
+
 /// Ion-specific jq function definitions (filters implemented as definitions)
 pub fn ion_defs() -> impl Iterator<Item = jaq_core::load::parse::Def<&'static str>> {
     const ION_DEFS: &str = r#"
@@ -43,10 +48,7 @@ fn timestamp_fn() -> Filter<Native<JaqElement>> {
             }
             _ => box_once(Err(jaq_core::Error::str("invalid timestamp format").into())),
         },
-        None => box_once(Err(jaq_core::Error::str(
-            "timestamp filter requires a string input",
-        )
-        .into())),
+        None => box_once(Err(input_error("timestamp"))),
     };
 
     ("timestamp", Box::new([]), Native::new(run))
@@ -71,10 +73,7 @@ fn sexp_fn() -> Filter<Native<JaqElement>> {
 fn symbol_fn() -> Filter<Native<JaqElement>> {
     let run: RunPtr<JaqElement> = |_, (_, v)| match v.as_str() {
         Some(s) => box_once(Ok(JaqElement::from(Element::from(ion_rs::Symbol::from(s))))),
-        None => box_once(Err(jaq_core::Error::str(
-            "symbol filter requires a string input",
-        )
-        .into())),
+        None => box_once(Err(input_error("symbol"))),
     };
 
     ("symbol", Box::new([]), Native::new(run))
