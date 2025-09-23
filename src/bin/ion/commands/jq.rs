@@ -1,4 +1,5 @@
 use crate::commands::jq::ion_math::DecimalMath;
+mod ion_functions;
 use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 use crate::input::CommandInput;
 use crate::output::{CommandOutput, CommandOutputWriter};
@@ -70,18 +71,16 @@ fn compile_jq_filter(jq_expr: &str) -> Filter<Native<JaqElement>> {
         path: (),      // For error reporting, but not currently used by this program
     };
 
-    // If we wanted to define our own Ion-centric stdlib methods, we'd do something like:
-    //    Loader::new(jaq_std::defs().chain(jaq_ion::defs()))
-    let loader = Loader::new(jaq_std::defs());
+    // Load standard jq definitions plus Ion-specific definitions
+    let loader = Loader::new(jaq_std::defs().chain(ion_functions::ion_defs()));
     let arena = Arena::default();
 
     // parse the filter
     let modules = loader.load(&arena, program).unwrap();
 
-    // compile the filter
+    // compile the filter with standard and Ion-specific functions
     jaq_core::Compiler::default()
-        // Similar to `defs()` above, this would be our opportunity to extend the built-in filters
-        .with_funs(jaq_std::funs::<JaqElement>())
+        .with_funs(jaq_std::funs::<JaqElement>().chain(ion_functions::ion_funs()))
         .compile(modules)
         .unwrap()
 }
