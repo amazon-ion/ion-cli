@@ -3,63 +3,77 @@ use ion_rs::*;
 use std::io::Write;
 
 /// Constructs the appropriate writer for the given format, then writes all values from the
-/// `Reader` to the new `Writer`.
-pub(crate) fn write_all_as<I: IonInput>(
+/// `Reader` to the new `Writer`, applying an optional mapping function to each element.
+pub(crate) fn write_all_as<I: IonInput, M: Fn(Element) -> Result<Element>>(
     reader: &mut Reader<AnyEncoding, I>,
     output: &mut impl Write,
     encoding: IonEncoding,
     format: Format,
+    mapper: Option<M>,
 ) -> Result<usize> {
-    write_n_as(reader, output, encoding, format, usize::MAX)
+    write_n_as(reader, output, encoding, format, usize::MAX, mapper)
 }
 
 /// Constructs the appropriate writer for the given format, then writes up to `count` values from the
-/// `Reader` to the new `Writer`.
-pub(crate) fn write_n_as<I: IonInput>(
+/// `Reader` to the new `Writer`, applying an optional mapping function to each element.
+pub(crate) fn write_n_as<I: IonInput, M: Fn(Element) -> Result<Element>>(
     reader: &mut Reader<AnyEncoding, I>,
     output: &mut impl Write,
     encoding: IonEncoding,
     format: Format,
     count: usize,
+    mapper: Option<M>,
 ) -> Result<usize> {
     let written = match (encoding, format) {
         (IonEncoding::Text_1_0, Format::Text(text_format)) => {
             let mut writer = Writer::new(v1_0::Text.with_format(text_format), output)?;
-            transcribe_n(reader, &mut writer, count)
+            transcribe_n(&mut writer, reader, count, mapper)
         }
         (IonEncoding::Text_1_1, Format::Text(text_format)) => {
             let mut writer = Writer::new(v1_1::Text.with_format(text_format), output)?;
-            transcribe_n(reader, &mut writer, count)
+            transcribe_n(&mut writer, reader, count, mapper)
         }
         (IonEncoding::Binary_1_0, Format::Binary) => {
             let mut writer = Writer::new(v1_0::Binary, output)?;
-            transcribe_n(reader, &mut writer, count)
+            transcribe_n(&mut writer, reader, count, mapper)
         }
         (IonEncoding::Binary_1_1, Format::Binary) => {
             let mut writer = Writer::new(v1_1::Binary, output)?;
-            transcribe_n(reader, &mut writer, count)
+            transcribe_n(&mut writer, reader, count, mapper)
         }
         unrecognized => bail!("unsupported format '{:?}'", unrecognized),
     }?;
     Ok(written)
 }
 
-/// Writes up to `count` values from the `Reader` to the provided `Writer`.
-fn transcribe_n(
-    reader: &mut Reader<impl Decoder, impl IonInput>,
+/// Writes up to `count` values from the `Reader` to the provided `Writer`,
+/// applying an optional mapping function to each element.
+fn transcribe_n<M: Fn(Element) -> Result<Element>>(
     writer: &mut Writer<impl Encoding, impl Write>,
+    reader: &mut Reader<impl Decoder, impl IonInput>,
     count: usize,
+    mapper: Option<M>,
 ) -> Result<usize> {
     const FLUSH_EVERY_N: usize = 100;
     let mut values_since_flush: usize = 0;
     let mut index: usize = 0;
 
-    while let Some(value) = reader.next()? {
+    while let Some(lazy_value) = reader.next()? {
         if index >= count {
             break;
         }
 
-        writer.write(value)?;
+        match mapper {
+            Some(ref map_fn) => {
+                // materialize and apply mapper
+                let element = Element::try_from(lazy_value.read()?)?;
+                let transformed = map_fn(element)?;
+                writer.write(&transformed)?;
+            }
+            None => {
+                writer.write(lazy_value)?;
+            }
+        }
 
         index += 1;
         values_since_flush += 1;

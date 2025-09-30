@@ -35,11 +35,11 @@ impl IonCliCommand for CatCommand {
     }
 
     fn run(&self, _command_path: &mut Vec<String>, args: &ArgMatches) -> Result<()> {
+        let transform = None::<fn(Element) -> Result<Element>>;
         CommandIo::new(args)?.for_each_input(|output, input| {
             let mut reader = Reader::new(AnyEncoding, input.into_source())?;
-            let encoding = *output.encoding();
-            let format = *output.format();
-            write_all_as(&mut reader, output, encoding, format)?;
+            let (encoding, format) = (*output.encoding(), *output.format());
+            write_all_as(&mut reader, output, encoding, format, transform)?;
             Ok(())
         })
     }

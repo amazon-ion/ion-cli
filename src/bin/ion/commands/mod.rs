@@ -24,7 +24,9 @@ pub mod jq;
 pub mod primitive;
 pub mod schema;
 pub mod stats;
+pub mod structural_recursion;
 pub mod symtab;
+pub mod timestamp_conversion;
 pub mod to;
 
 pub(crate) use command_namespace::IonCliNamespace;

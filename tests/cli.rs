@@ -218,6 +218,68 @@ fn test_write_all_values(#[case] number: i32, #[case] expected_output: &str) -> 
     Ok(())
 }
 
+mod timestamp_roundtrip_tests {
+    use super::*;
+
+    #[rstest]
+    #[case::valid_timestamp(r#"{created: 2025-01-01T10:30:00Z, name: "test"}"#)]
+    #[case::timestamp_with_milliseconds(r#"{timestamp: 2025-01-01T12:00:00.123Z}"#)]
+    #[case::timestamp_with_timezone(r#"{date: 2025-01-01T14:30:45+05:00}"#)]
+    #[case::date_only(r#"{birthday: 2025-01-01}"#)]
+    #[case::microsecond_precision(r#"{precise: 2025-01-01T12:00:00.123456Z}"#)]
+    /// Tests Ion to JSON to Ion roundtrip with timestamp preservation
+    fn test_ion_json_ion_roundtrip_with_timestamps(#[case] original_ion: &str) -> Result<()> {
+        //  Ion to JSON
+        let mut to_json_cmd = Command::cargo_bin("ion")?;
+        to_json_cmd
+            .args(["to", "-X", "json"])
+            .timeout(Duration::new(5, 0))
+            .write_stdin(original_ion.as_bytes());
+        let json_output = to_json_cmd.assert().success().get_output().stdout.clone();
+
+        // JSON to Ion with timestamp detection
+        let mut from_json_cmd = Command::cargo_bin("ion")?;
+        from_json_cmd
+            .args(["from", "-X", "json", "--detect-timestamps"])
+            .timeout(Duration::new(5, 0))
+            .write_stdin(json_output);
+        let final_output = from_json_cmd.assert().success().get_output().stdout.clone();
+
+        // Verify roundtrip preserves timestamps
+        let original_element = Element::read_one(original_ion.as_bytes())?;
+        let final_element = Element::read_one(&final_output)?;
+        assert_eq!(original_element, final_element);
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::invalid_timestamp_like(
+        r#"{"date": "2025-13-45T25:70:80Z", "name": "test"}"#,
+        r#"{date: "2025-13-45T25:70:80Z", name: "test"}"#
+    )]
+    #[case::non_timestamp_string(
+        r#"{"description": "This looks like 2025-01-01T but is not"}"#,
+        r#"{description: "This looks like 2025-01-01T but is not"}"#
+    )]
+    /// Tests that invalid timestamp-like strings remain as strings
+    fn test_from_json_invalid_timestamps_fallback(
+        #[case] json_input: &str,
+        #[case] expected_ion: &str,
+    ) -> Result<()> {
+        let mut cmd = Command::cargo_bin("ion")?;
+        cmd.args(["from", "-X", "json", "--detect-timestamps"])
+            .timeout(Duration::new(5, 0))
+            .write_stdin(json_input.as_bytes());
+
+        let assert = cmd.assert().success();
+        let output = assert.get_output();
+        let actual_ion = Element::read_one(&output.stdout)?;
+        let expected_element = Element::read_one(expected_ion.as_bytes())?;
+        assert_eq!(expected_element, actual_ion);
+        Ok(())
+    }
+}
+
 mod code_gen_tests {
     use super::*;
     use std::fs;
