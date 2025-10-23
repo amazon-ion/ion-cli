@@ -332,9 +332,9 @@ impl Sub for JaqElement {
             // Number types, only lossless operations
             (Int(a), Int(b)) => (a + -b).into(), //TODO: use bare - with ion-rs > rc.11
             (Float(a), Float(b)) => a.sub(b).into(),
-            (Decimal(a), Decimal(b)) => a.sub(b).into(),
-            (Decimal(a), Int(b)) => a.sub(b).into(),
-            (Int(a), Decimal(b)) => a.sub(b).into(),
+            (Decimal(a), Decimal(b)) => DecimalMath::sub(a, b).into(),
+            (Decimal(a), Int(b)) => DecimalMath::sub(a, b).into(),
+            (Int(a), Decimal(b)) => DecimalMath::sub(a, b).into(),
 
             // Only try potentially lossy Float conversions when we've run out of the other options
             (a @ Int(_) | a @ Decimal(_), Float(b)) => (a.to_f64().unwrap() - b).into(),
