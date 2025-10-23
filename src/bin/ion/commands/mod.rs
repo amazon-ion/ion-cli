@@ -240,7 +240,7 @@ pub struct CommandIo<'a> {
 }
 
 impl CommandIo<'_> {
-    fn new(args: &ArgMatches) -> Result<CommandIo> {
+    fn new(args: &ArgMatches) -> Result<CommandIo<'_>> {
         // --format pretty|text|lines|binary
         let format = args
             .try_get_one("format")
