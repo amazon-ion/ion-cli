@@ -92,7 +92,7 @@ pub fn visit_structure<V: ValueVisitor<T>, T>(
 
     while let Some((current_value, depth)) = stack.pop() {
         let value_ref = current_value.read()?;
-        visitor.visit(value_ref, depth)?;
+        visitor.visit(value_ref.clone(), depth)?;
 
         // For container types, add children to the stack with incremented depth
         match value_ref {

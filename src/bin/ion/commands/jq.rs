@@ -332,9 +332,9 @@ impl Sub for JaqElement {
             // Number types, only lossless operations
             (Int(a), Int(b)) => (a + -b).into(), //TODO: use bare - with ion-rs > rc.11
             (Float(a), Float(b)) => a.sub(b).into(),
-            (Decimal(a), Decimal(b)) => a.sub(b).into(),
-            (Decimal(a), Int(b)) => a.sub(b).into(),
-            (Int(a), Decimal(b)) => a.sub(b).into(),
+            (Decimal(a), Decimal(b)) => DecimalMath::sub(a, b).into(),
+            (Decimal(a), Int(b)) => DecimalMath::sub(a, b).into(),
+            (Int(a), Decimal(b)) => DecimalMath::sub(a, b).into(),
 
             // Only try potentially lossy Float conversions when we've run out of the other options
             (a @ Int(_) | a @ Decimal(_), Float(b)) => (a.to_f64().unwrap() - b).into(),
@@ -564,7 +564,7 @@ impl jaq_core::ValT for JaqElement {
         let elt: Element = match (self.value(), index.value()) {
             (List(seq) | SExp(seq), Int(i)) => index_i128(seq, i.as_i128()),
             (List(seq) | SExp(seq), Float(f)) => index_i128(seq, Some(*f as i128)),
-            (List(seq) | SExp(seq), Decimal(d)) => index_i128(seq, d.into_big_decimal().to_i128()),
+            (List(seq) | SExp(seq), Decimal(d)) => index_i128(seq, d.clone().into_big_decimal().to_i128()),
             (Struct(strukt), String(name)) => strukt.get(name).or_owned_null(),
             (Struct(strukt), Symbol(name)) => strukt.get(name).or_owned_null(),
 
@@ -642,7 +642,7 @@ impl jaq_std::ValT for JaqElement {
     fn as_isize(&self) -> Option<isize> {
         match self.0.value() {
             Value::Int(i) => i.expect_i64().unwrap().to_isize(),
-            Value::Decimal(d) => d.into_big_decimal().to_isize(),
+            Value::Decimal(d) => d.clone().into_big_decimal().to_isize(),
             _ => None,
         }
     }
