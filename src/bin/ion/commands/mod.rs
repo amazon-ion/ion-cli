@@ -96,8 +96,8 @@ pub trait IonCliCommand {
 
         if !self.is_stable() {
             let about = base_command.get_about().map(|x| x.to_string());
-            if about.is_some() {
-                base_command = base_command.about(format!("(UNSTABLE) {}", about.unwrap()))
+            if let Some(about) = about {
+                base_command = base_command.about(format!("(UNSTABLE) {}", about))
             }
             base_command = base_command
                 .before_help("WARNING: This command is unstable and requires explicit opt-in using '--unstable' or '-X'.");
@@ -240,7 +240,7 @@ pub struct CommandIo<'a> {
 }
 
 impl CommandIo<'_> {
-    fn new(args: &ArgMatches) -> Result<CommandIo> {
+    fn new(args: &ArgMatches) -> Result<CommandIo<'_>> {
         // --format pretty|text|lines|binary
         let format = args
             .try_get_one("format")
@@ -375,7 +375,10 @@ impl CommandIo<'_> {
             match self.color {
                 ColorChoice::Never => CommandOutput::StdOut(stdout_lock, spec),
                 ColorChoice::Auto if !stdout_tty => CommandOutput::StdOut(stdout_lock, spec),
-                _ => CommandOutput::HighlightedOut(HighlightedStreamWriter::new(stdout_lock), spec),
+                _ => CommandOutput::HighlightedOut(
+                    Box::new(HighlightedStreamWriter::new(stdout_lock)),
+                    spec,
+                ),
             }
         };
 

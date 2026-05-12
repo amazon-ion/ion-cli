@@ -1,3 +1,6 @@
+// The JAQ errors are large and it's out of our control.
+#![allow(clippy::result_large_err)]
+
 use crate::commands::jq::ion_math::DecimalMath;
 use crate::commands::{CommandIo, IonCliCommand, WithIonCliArgument};
 use crate::input::CommandInput;
@@ -118,10 +121,12 @@ fn filter_and_print(
     writer: &mut CommandOutputWriter,
     item: JaqElement,
 ) -> anyhow::Result<()> {
+    // TODO: See if we can avoid a mutable interior constant here
+    #[allow(clippy::declare_interior_mutable_const)]
     const EMPTY_ITER: RcIter<Empty<Result<JaqElement, String>>> = RcIter::new(core::iter::empty());
 
-    let inputs = &EMPTY_ITER; // filter evaluation starts here, no other contextual inputs exist
-    let ctx = Ctx::new([], inputs); // manages variables etc., use one per filter execution
+    let inputs = EMPTY_ITER; // filter evaluation starts here, no other contextual inputs exist
+    let ctx = Ctx::new([], &inputs); // manages variables etc., use one per filter execution
     let out = filter.run((ctx, item));
 
     for value in out {
@@ -207,10 +212,12 @@ impl FromIterator<Self> for JaqElement {
 
 impl PartialEq<Self> for JaqElement {
     fn eq(&self, other: &Self) -> bool {
+        // TODO: Should this use IonData::eq instead?
         self.0.eq(&other.0)
     }
 }
 
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl PartialOrd for JaqElement {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(IonData::from(self).cmp(&IonData::from(other)))
@@ -564,7 +571,9 @@ impl jaq_core::ValT for JaqElement {
         let elt: Element = match (self.value(), index.value()) {
             (List(seq) | SExp(seq), Int(i)) => index_i128(seq, i.as_i128()),
             (List(seq) | SExp(seq), Float(f)) => index_i128(seq, Some(*f as i128)),
-            (List(seq) | SExp(seq), Decimal(d)) => index_i128(seq, d.clone().into_big_decimal().to_i128()),
+            (List(seq) | SExp(seq), Decimal(d)) => {
+                index_i128(seq, d.clone().into_big_decimal().to_i128())
+            }
             (Struct(strukt), String(name)) => strukt.get(name).or_owned_null(),
             (Struct(strukt), Symbol(name)) => strukt.get(name).or_owned_null(),
 
@@ -616,10 +625,7 @@ impl jaq_core::ValT for JaqElement {
     /// > `if A then B else C end` will act the same as `B` if `A` produces a value other than
     /// > `false` or `null`, but act the same as `C` otherwise.
     fn as_bool(&self) -> bool {
-        match self.0.value() {
-            Value::Null(_) | Value::Bool(false) => false,
-            _ => true,
-        }
+        !matches!(self.0.value(), Value::Null(_) | Value::Bool(false))
     }
 
     // If the element is a text value, return its text.
@@ -661,7 +667,7 @@ impl jaq_std::ValT for JaqElement {
 /// 1. Decimal can express any Int, so any binary operation involving a Decimal and an Int produces
 ///    a Decimal.
 /// 2. Floats have less precision than a Decimal and less range than an Int, so any binary operation
-///.   involving a Float produces a Float. A Decimal may degrade and lose precision when converted
+///    involving a Float produces a Float. A Decimal may degrade and lose precision when converted
 ///    a Float for arithmetic, but the operation will fail if an operand is out of range for Float.
 pub(crate) mod ion_math {
     use bigdecimal::num_bigint::BigInt;

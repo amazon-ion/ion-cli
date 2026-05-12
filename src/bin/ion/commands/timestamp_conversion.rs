@@ -7,9 +7,7 @@ struct TimestampConverter;
 
 impl ElementMapper for TimestampConverter {
     fn map(&self, element: Element) -> Result<Element> {
-        Ok(element.as_text()
-            .and_then(as_timestamp)
-            .unwrap_or(element))
+        Ok(element.as_text().and_then(as_timestamp).unwrap_or(element))
     }
 }
 
@@ -59,6 +57,7 @@ fn as_timestamp(s: &str) -> Option<Element> {
     if !is_timestamp_like(s) {
         return None;
     }
-    Element::read_one(s.as_bytes()).ok()
+    Element::read_one(s.as_bytes())
+        .ok()
         .filter(|e| e.ion_type() == IonType::Timestamp)
 }

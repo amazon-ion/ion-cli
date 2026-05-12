@@ -365,11 +365,11 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     }
 
     /// If `maybe_item` is:
-    ///    * `Some(entity)`, checks to see if the entity's final byte offset is beyond the configured
-    ///                      number of bytes to skip.
-    ///    * `None`, then there is no stream-level entity backing the item (that is: it was the result
-    ///              of a macro expansion). Checks to see if the inspector has already completed its
-    ///              skipping phase on an earlier item.
+    ///  * `Some(entity)`, checks to see if the entity's final byte offset is beyond the configured
+    ///    number of bytes to skip.
+    ///  * `None`, then there is no stream-level entity backing the item (that is: it was the result
+    ///    of a macro expansion). Checks to see if the inspector has already completed its
+    ///    skipping phase on an earlier item.
     fn should_skip<T: HasRange>(&mut self, maybe_item: &Option<T>) -> bool {
         match maybe_item {
             // If this item came from an input literal, see if the input literal ends after
@@ -382,11 +382,11 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     }
 
     /// If `maybe_item` is:
-    ///    * `Some(entity)`, checks to see if the entity's final byte offset is beyond the configured
-    ///                      number of bytes to inspect.
-    ///    * `None`, then there is no stream-level entity backing the item. These will always be
-    ///              inspected; if the e-expression that produced the value was not beyond the limit,
-    ///              none of the ephemeral values it produces are either.
+    ///  * `Some(entity)`, checks to see if the entity's final byte offset is beyond the configured
+    ///    number of bytes to inspect.
+    ///  * `None`, then there is no stream-level entity backing the item. These will always be
+    ///    inspected; if the e-expression that produced the value was not beyond the limit,
+    ///    none of the ephemeral values it produces are either.
     fn is_past_limit<T: HasRange>(&self, maybe_item: &Option<T>) -> bool {
         let limit = self.bytes_to_skip.saturating_add(self.limit_bytes);
         maybe_item
@@ -491,7 +491,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         self.write_comment("End of stream")
     }
 
-    fn inspect_macro_invocation<'x>(
+    fn inspect_macro_invocation(
         &mut self,
         depth: usize,
         trailing_delimiter: &str,
@@ -513,7 +513,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         Ok(())
     }
 
-    fn inspect_eexp<'x>(
+    fn inspect_eexp(
         &mut self,
         depth: usize,
         trailing_delimiter: &str,
@@ -588,7 +588,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         Ok(())
     }
 
-    fn inspect_eexp_arg_group<'x>(
+    fn inspect_eexp_arg_group(
         &mut self,
         depth: usize,
         arg_group: EExpArgGroup<AnyEncoding>,

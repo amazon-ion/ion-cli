@@ -96,28 +96,28 @@ impl IonSchemaCommandInput {
             // to treat it as an inline type.
             type_definition = schema.get_type(type_name_or_inline_type);
 
-            if type_definition.is_none() && empty_schema_version.is_some() {
-                let version = empty_schema_version.unwrap();
-                // There is no convenient way to add a type to an existing schema, so we'll
-                // construct a new one.
+            if type_definition.is_none() {
+                if let Some(version) = empty_schema_version {
+                    // There is no convenient way to add a type to an existing schema, so we'll
+                    // construct a new one.
 
-                // Create a symbol element so that ion-rs handle escaping any special characters.
-                let type_name = Element::symbol(type_name_or_inline_type);
+                    // Create a symbol element so that ion-rs handle escaping any special characters.
+                    let type_name = Element::symbol(type_name_or_inline_type);
 
-                let new_schema = format!(
-                    r#"
+                    let new_schema = format!(
+                        r#"
                     {version}
                     type::{{
                       name: {type_name},
                       type: {type_name_or_inline_type}
                     }}
                     "#
-                );
-                // And finally update the schema and type.
-                schema = schema_system.new_schema(new_schema.as_bytes(), "new-schema")?;
-                type_definition = schema.get_type(type_name_or_inline_type);
+                    );
+                    // And finally update the schema and type.
+                    schema = schema_system.new_schema(new_schema.as_bytes(), "new-schema")?;
+                    type_definition = schema.get_type(type_name_or_inline_type);
+                }
             }
-
             // Validate that the user didn't pass in an invalid type
             type_definition
                 .as_ref()
