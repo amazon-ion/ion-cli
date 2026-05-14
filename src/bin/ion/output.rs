@@ -15,7 +15,7 @@ use termcolor::{Color, ColorSpec, StandardStreamLock, WriteColor};
 /// Statically dispatches writes to either an output file or STDOUT while also supporting
 /// `termcolor` style escape sequences when the target is a TTY.
 pub enum CommandOutput<'a> {
-    HighlightedOut(HighlightedStreamWriter<'a>, CommandOutputSpec),
+    HighlightedOut(Box<HighlightedStreamWriter<'a>>, CommandOutputSpec),
     StdOut(StandardStreamLock<'a>, CommandOutputSpec),
     File(FileWriter, CommandOutputSpec),
 }

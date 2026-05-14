@@ -42,6 +42,9 @@ impl<R: Read> IonInput for HexReader<R> {
 impl<R: Read> From<R> for HexReader<R> {
     fn from(value: R) -> Self {
         Self {
+            // The hex bytes should only be used for small values from a CLI arg.
+            // For large binary, users should just use a regular Ion binary file.
+            #[allow(clippy::unbuffered_bytes)]
             inner: value.bytes(),
             digit_state: DigitState::Empty,
         }

@@ -54,7 +54,7 @@ pub fn convert(
     while let Some(value) = reader.next()? {
         writeln!(output, "{}", to_json_value(value)?)?;
         value_count += 1;
-        if value_count % FLUSH_EVERY_N == 0 {
+        if value_count.is_multiple_of(FLUSH_EVERY_N) {
             output.flush()?;
         }
     }

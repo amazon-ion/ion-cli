@@ -11,7 +11,7 @@ use crate::output::CommandOutput;
 use anyhow::{bail, Context, Result};
 use clap::builder::ValueParser;
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use ion_rs::v1_0::{EncodedBinaryValue, RawValueRef};
+use ion_rs::v1_0::{BinaryValueLiteral, RawValueRef};
 use ion_rs::*;
 use termcolor::{Color, ColorSpec, WriteColor};
 
@@ -265,8 +265,8 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         limit_bytes: usize,
         hide_expansion: bool,
     ) -> IonResult<IonInspector<'a, 'b>> {
-        let text_writer = WriteConfig::<v1_0::Text>::new(TextFormat::Compact)
-            .build_raw_writer(Vec::with_capacity(TEXT_WRITER_INITIAL_BUFFER_SIZE))?;
+        let text_writer =
+            v1_0::RawTextWriter::new(Vec::with_capacity(TEXT_WRITER_INITIAL_BUFFER_SIZE))?;
         let inspector = IonInspector {
             output: out,
             bytes_to_skip,
@@ -365,11 +365,11 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     }
 
     /// If `maybe_item` is:
-    ///    * `Some(entity)`, checks to see if the entity's final byte offset is beyond the configured
-    ///                      number of bytes to skip.
-    ///    * `None`, then there is no stream-level entity backing the item (that is: it was the result
-    ///              of a macro expansion). Checks to see if the inspector has already completed its
-    ///              skipping phase on an earlier item.
+    ///  * `Some(entity)`, checks to see if the entity's final byte offset is beyond the configured
+    ///    number of bytes to skip.
+    ///  * `None`, then there is no stream-level entity backing the item (that is: it was the result
+    ///    of a macro expansion). Checks to see if the inspector has already completed its
+    ///    skipping phase on an earlier item.
     fn should_skip<T: HasRange>(&mut self, maybe_item: &Option<T>) -> bool {
         match maybe_item {
             // If this item came from an input literal, see if the input literal ends after
@@ -382,11 +382,11 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     }
 
     /// If `maybe_item` is:
-    ///    * `Some(entity)`, checks to see if the entity's final byte offset is beyond the configured
-    ///                      number of bytes to inspect.
-    ///    * `None`, then there is no stream-level entity backing the item. These will always be
-    ///              inspected; if the e-expression that produced the value was not beyond the limit,
-    ///              none of the ephemeral values it produces are either.
+    ///  * `Some(entity)`, checks to see if the entity's final byte offset is beyond the configured
+    ///    number of bytes to inspect.
+    ///  * `None`, then there is no stream-level entity backing the item. These will always be
+    ///    inspected; if the e-expression that produced the value was not beyond the limit,
+    ///    none of the ephemeral values it produces are either.
     fn is_past_limit<T: HasRange>(&self, maybe_item: &Option<T>) -> bool {
         let limit = self.bytes_to_skip.saturating_add(self.limit_bytes);
         maybe_item
@@ -491,7 +491,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         self.write_comment("End of stream")
     }
 
-    fn inspect_macro_invocation<'x>(
+    fn inspect_macro_invocation(
         &mut self,
         depth: usize,
         trailing_delimiter: &str,
@@ -513,7 +513,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         Ok(())
     }
 
-    fn inspect_eexp<'x>(
+    fn inspect_eexp(
         &mut self,
         depth: usize,
         trailing_delimiter: &str,
@@ -588,7 +588,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         Ok(())
     }
 
-    fn inspect_eexp_arg_group<'x>(
+    fn inspect_eexp_arg_group(
         &mut self,
         depth: usize,
         arg_group: EExpArgGroup<AnyEncoding>,
@@ -955,7 +955,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         &mut self,
         depth: usize,
         value: LazyValue<'x, AnyEncoding>,
-        encoded_value: impl EncodedBinaryValue<'x, D>,
+        encoded_value: impl BinaryValueLiteral<'x, D>,
     ) -> Result<()> {
         if !value.has_annotations() {
             return Ok(());
@@ -1036,7 +1036,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     fn inspect_literal_container_header<'x, D: Decoder>(
         &mut self,
         depth: usize,
-        encoded_value: impl EncodedBinaryValue<'x, D>,
+        encoded_value: impl BinaryValueLiteral<'x, D>,
     ) -> Result<()> {
         let opcode_bytes: &[u8] = encoded_value.value_opcode_span().bytes();
         let mut formatter = BytesFormatter::new(
@@ -1057,7 +1057,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
     fn inspect_literal_container_footer<'x, D: Decoder>(
         &mut self,
         depth: usize,
-        encoded_value: impl EncodedBinaryValue<'x, D>,
+        encoded_value: impl BinaryValueLiteral<'x, D>,
         closing_delimiter: &str,
         trailing_delimiter: &str,
     ) -> Result<()> {
@@ -1091,7 +1091,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         depth: usize,
         delimiter: &str,
         sexp: LazySExp<'x, AnyEncoding>,
-        encoded_value: impl EncodedBinaryValue<'x, D>,
+        encoded_value: impl BinaryValueLiteral<'x, D>,
     ) -> Result<()> {
         self.inspect_literal_sequence(
             depth,
@@ -1114,7 +1114,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         closing_delimiter: &str,
         trailing_delimiter: &str,
         nested_values: impl IntoIterator<Item = IonResult<ValueExpr<'x, AnyEncoding>>>,
-        encoded_value: impl EncodedBinaryValue<'x, D>,
+        encoded_value: impl BinaryValueLiteral<'x, D>,
         value_comment_fn: impl CommentFn<'x>,
     ) -> Result<()> {
         self.inspect_literal_container_header(depth, encoded_value)?;
@@ -1305,7 +1305,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         depth: usize,
         trailing_delimiter: &str,
         struct_: LazyStruct<AnyEncoding>,
-        encoded_value: impl EncodedBinaryValue<'x, D>,
+        encoded_value: impl BinaryValueLiteral<'x, D>,
         kind: StructKind,
     ) -> Result<()> {
         self.inspect_literal_container_header(depth, encoded_value)?;
@@ -1421,7 +1421,7 @@ impl<'a, 'b> IonInspector<'a, 'b> {
         depth: usize,
         delimiter: &str,
         value: LazyValue<'x, AnyEncoding>,
-        encoded_value: impl EncodedBinaryValue<'x, D>,
+        encoded_value: impl BinaryValueLiteral<'x, D>,
         mut comment_fn: impl CommentFn<'x>,
     ) -> Result<()> {
         let range = encoded_value.value_span().range();

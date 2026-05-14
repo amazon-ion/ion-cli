@@ -1000,9 +1000,9 @@ dependencies = [
 
 [[package]]
 name = "ion-rs"
-version = "1.0.0-rc.11"
+version = "1.0.0-rc.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1635de5984b66df8c9061125d02235c7e04c575d45cd93dbd85e14e307c06695"
+checksum = "5dc4f9082317e60fd5f7ffbef56f42b37ccce84c8e28c3afae8990c439867186"
 dependencies = [
  "arrayvec",
  "base64 0.12.3",
@@ -1011,7 +1011,10 @@ dependencies = [
  "compact_str",
  "delegate",
  "digest 0.9.0",
+ "generic-array",
  "ice_code",
+ "memchr",
+ "num-bigint",
  "num-integer",
  "num-traits",
  "phf",
@@ -1020,14 +1023,15 @@ dependencies = [
  "serde_with",
  "smallvec",
  "thiserror 1.0.69",
+ "visibility",
  "winnow",
 ]
 
 [[package]]
 name = "ion-schema"
-version = "0.15.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73d3f6caeca9720ae78eb68516353f6a1e2f8f589170284a03bdc355fbf5309a"
+checksum = "68c9f969910a7cd961148e05dff15316242dc14fc35c096362b37e1bb61451a8"
 dependencies = [
  "half",
  "ion-rs",
@@ -2165,6 +2169,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
+name = "visibility"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d674d135b4a8c1d7e813e2f8d1c9a58308aee4a680323066025e53132218bd91"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.95",
+]
+
+[[package]]
 name = "wait-timeout"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2490,9 +2505,9 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
 name = "winnow"
-version = "0.6.22"
+version = "0.6.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39281189af81c07ec09db316b302a3e67bf9bd7cbf6c820b50e35fee9c2fa980"
+checksum = "c8d71a593cc5c42ad7876e2c1fda56f314f3754c084128833e64f1345ff8a03a"
 dependencies = [
  "memchr",
 ]
