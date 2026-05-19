@@ -6,7 +6,7 @@ use std::io;
 use std::io::Write;
 use syntect::dumps::from_uncompressed_data;
 use syntect::easy::HighlightLines;
-use syntect::highlighting::Style;
+use syntect::highlighting::{Style, Theme};
 use syntect::parsing::SyntaxSet;
 use syntect::util::LinesWithEndings;
 use syntect_assets::assets::HighlightingAssets;
@@ -21,8 +21,8 @@ pub enum CommandOutput<'a> {
 }
 
 pub struct HighlightedStreamWriter<'a> {
-    assets: HighlightingAssets,
     syntaxes: SyntaxSet,
+    theme: Theme,
     stdout: StandardStreamLock<'a>,
 }
 
@@ -40,9 +40,17 @@ impl<'a> HighlightedStreamWriter<'a> {
         let syntaxes: SyntaxSet =
             from_uncompressed_data(include_bytes!("assets/ion.newlines.packdump"))
                 .expect("Failed to load syntaxes");
+        let light_mode = terminal_light::luma().is_ok_and(|luma| luma > 0.6);
+        let theme_name = if light_mode {
+            "Monokai Extended Light"
+        } else {
+            "Monokai Extended"
+        };
+        let theme = assets.get_theme(theme_name).clone();
+
         Self {
-            assets,
             syntaxes,
+            theme,
             stdout,
         }
     }
@@ -139,12 +147,9 @@ impl Write for HighlightedStreamWriter<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let output = std::str::from_utf8(buf).unwrap();
 
-        let ion_syntax = &self.syntaxes.find_syntax_by_name("ion").unwrap();
-        // There's a lot to learn from sharkdp/bat the subject of automated light/dark theming,
-        // see src/theme.rs in: https://github.com/sharkdp/bat/pull/2896
-        // Here we will hardcode something "dark" until someone complains or sends a patch
-        let theme = &self.assets.get_theme("Monokai Extended"); //TODO: choose theme somehow
-        let mut highlighter = HighlightLines::new(ion_syntax, theme);
+        let ion_syntax = self.syntaxes.find_syntax_by_name("ion").unwrap();
+
+        let mut highlighter = HighlightLines::new(ion_syntax, &self.theme);
 
         for line in LinesWithEndings::from(output) {
             let ranges: Vec<(Style, &str)> =

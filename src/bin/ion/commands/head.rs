@@ -32,6 +32,7 @@ impl IonCliCommand for HeadCommand {
             .with_output()
             .with_format()
             .with_ion_version()
+            .with_syntax_highlighting()
             .arg(
                 Arg::new("values")
                     .long("values")
