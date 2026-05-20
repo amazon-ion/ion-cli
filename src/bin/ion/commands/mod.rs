@@ -138,7 +138,11 @@ pub trait WithIonCliArgument {
     fn with_input(self) -> Self;
     fn with_output(self) -> Self;
     fn with_format(self) -> Self;
-    fn with_color(self) -> Self;
+    /// Adds `--color` and `--no-color` flags.
+    ///
+    /// Only use this for commands that output Ion because the Syntect parsing is incompatible with
+    /// other output types.
+    fn with_syntax_highlighting(self) -> Self;
     fn with_ion_version(self) -> Self;
     fn with_decompression_control(self) -> Self;
     fn show_unstable_flag(self) -> Self;
@@ -173,24 +177,22 @@ impl WithIonCliArgument for ClapCommand {
         )
     }
 
-    fn with_color(self) -> Self {
-        // This might be a better pattern: https://jwodder.github.io/kbits/posts/clap-bool-negate/
-        // Alternatively, we could use a --color <always|auto|never> defaulting to <auto>
+    fn with_syntax_highlighting(self) -> Self {
+        // See https://jwodder.github.io/kbits/posts/clap-bool-negate/
+        // Except that we want 3-value logic (color, no-color, neither specified)
         self.arg(
             Arg::new("color")
                 .long("color")
-                .short('C')
                 .action(ArgAction::SetTrue)
-                .help("colorize Ion output")
-                .conflicts_with("monochrome"),
+                .help("Enable colored syntax highlighting in output")
+                .overrides_with("no-color"),
         )
         .arg(
-            Arg::new("monochrome") // 'monochrome' copied from `jq`
-                .long("monochrome")
-                .short('M')
+            Arg::new("no-color")
+                .long("no-color")
                 .action(ArgAction::SetTrue)
-                .help("disable colored output")
-                .conflicts_with("color"),
+                .help("Disable colored syntax highlighting in output")
+                .overrides_with("color"),
         )
     }
 
@@ -276,28 +278,11 @@ impl CommandIo<'_> {
             (unrecognized, _) => bail!("unrecognized Ion version '{unrecognized}'"),
         };
 
-        let color = args
-            .try_get_one::<bool>("color")
-            .ok()
-            .flatten()
-            .unwrap_or(&false);
-        let monochrome = args
-            .try_get_one::<bool>("monochrome")
-            .ok()
-            .flatten()
-            .unwrap_or(&false);
-
-        // clap::ColorChoice maps better onto our options here, but we will re-use this color choice
-        // when we instantiate TermColor's StandardStream::stdout
         let color = if format == Binary {
             ColorChoice::Never
-        } else if *color {
-            ColorChoice::Always
-        } else if !std::io::stdout().is_terminal() || *monochrome {
-            // We disable color if stdout is not a terminal or if explicitly disabled by the user
-            ColorChoice::Never
         } else {
-            ColorChoice::Auto
+            let default_use_color = std::io::stdout().is_terminal();
+            resolve_color_choice(default_use_color, args)
         };
 
         Ok(CommandIo {
@@ -425,5 +410,61 @@ impl CommandIo<'_> {
             CommandOutput::StdOut(stdout_lock, spec)
         };
         f(&mut output)
+    }
+}
+
+fn resolve_color_choice(context_default: bool, arg_matches: &ArgMatches) -> ColorChoice {
+    if arg_matches.try_contains_id("color").is_err()
+        || arg_matches.try_contains_id("no-color").is_err()
+    {
+        // This command doesn't support the color flag.
+        return ColorChoice::Never;
+    }
+    let color = arg_matches.get_flag("color");
+    let no_color = arg_matches.get_flag("no-color");
+    if color {
+        ColorChoice::Always
+    } else if no_color {
+        ColorChoice::Never
+    } else if context_default {
+        ColorChoice::Auto
+    } else {
+        ColorChoice::Never
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::commands::{resolve_color_choice, WithIonCliArgument};
+    use rstest::rstest;
+    use termcolor::ColorChoice;
+
+    // Like https://jwodder.github.io/kbits/posts/clap-bool-negate/
+    // Except that we want 3-value logic (color, no-color, neither specified)
+    #[rstest]
+    #[case(true, "test ", ColorChoice::Auto)]
+    #[case(false, "test ", ColorChoice::Never)]
+    #[case(true, "test --color", ColorChoice::Always)]
+    #[case(true, "test --no-color", ColorChoice::Never)]
+    #[case(false, "test --color", ColorChoice::Always)]
+    #[case(false, "test --no-color", ColorChoice::Never)]
+    #[case(true, "test --no-color --color", ColorChoice::Always)]
+    #[case(true, "test --color --no-color", ColorChoice::Never)]
+    #[case(false, "test --no-color --color", ColorChoice::Always)]
+    #[case(false, "test --color --no-color", ColorChoice::Never)]
+    #[case(true, "test --color --no-color --color", ColorChoice::Always)]
+    #[case(true, "test --no-color --color --no-color", ColorChoice::Never)]
+    #[case(false, "test --color --no-color --color", ColorChoice::Always)]
+    #[case(false, "test --no-color --color --no-color", ColorChoice::Never)]
+    // Tests both `with_color` and `resolve_color_choice` functions.
+    fn resolve_color_choice_args(
+        #[case] context_default: bool,
+        #[case] args: &str,
+        #[case] expected: ColorChoice,
+    ) {
+        let args = clap::builder::Command::new("test")
+            .with_syntax_highlighting()
+            .get_matches_from(args.split_ascii_whitespace().collect::<Vec<_>>());
+        assert_eq!(resolve_color_choice(context_default, &args), expected)
     }
 }

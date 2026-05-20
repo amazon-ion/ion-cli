@@ -47,7 +47,7 @@ impl IonCliCommand for JqCommand {
             .with_input()
             .with_output()
             .with_format()
-            .with_color()
+            .with_syntax_highlighting()
             .with_ion_version()
     }
 

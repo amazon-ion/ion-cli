@@ -40,6 +40,7 @@ jaq-std = "2.1.0"
 bigdecimal = "0.4.8"
 syntect = "5.2.0"
 syntect-assets = "0.23.6"
+terminal-light = "1.8.0"
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 pager = "0.16.1"
