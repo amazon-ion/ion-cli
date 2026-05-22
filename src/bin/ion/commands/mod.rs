@@ -414,14 +414,18 @@ impl CommandIo<'_> {
 }
 
 fn resolve_color_choice(context_default: bool, arg_matches: &ArgMatches) -> ColorChoice {
-    if arg_matches.try_contains_id("color").is_err()
-        || arg_matches.try_contains_id("no-color").is_err()
-    {
-        // This command doesn't support the color flag.
-        return ColorChoice::Never;
-    }
-    let color = arg_matches.get_flag("color");
-    let no_color = arg_matches.get_flag("no-color");
+    // For SetTrue args, clap stores a default value, so try_get_one returns Ok(Some(&false)) when
+    // the arg is registered but not passed by the user. It returns Ok(None) when the arg was never
+    // registered (release builds) or Err (debug builds). In either unregistered case, the command
+    // doesn't support color, so we return Never.
+    let color = match arg_matches.try_get_one::<bool>("color") {
+        Ok(Some(&val)) => val,
+        _ => return ColorChoice::Never,
+    };
+    let no_color = match arg_matches.try_get_one::<bool>("no-color") {
+        Ok(Some(&val)) => val,
+        _ => return ColorChoice::Never,
+    };
     if color {
         ColorChoice::Always
     } else if no_color {
@@ -456,7 +460,6 @@ mod test {
     #[case(true, "test --no-color --color --no-color", ColorChoice::Never)]
     #[case(false, "test --color --no-color --color", ColorChoice::Always)]
     #[case(false, "test --no-color --color --no-color", ColorChoice::Never)]
-    // Tests both `with_color` and `resolve_color_choice` functions.
     fn resolve_color_choice_args(
         #[case] context_default: bool,
         #[case] args: &str,
@@ -466,5 +469,16 @@ mod test {
             .with_syntax_highlighting()
             .get_matches_from(args.split_ascii_whitespace().collect::<Vec<_>>());
         assert_eq!(resolve_color_choice(context_default, &args), expected)
+    }
+
+    #[rstest]
+    #[case(true)]
+    #[case(false)]
+    fn resolve_color_choice_without_color_args_registered(#[case] context_default: bool) {
+        let args = clap::builder::Command::new("test").get_matches_from(vec!["test"]);
+        assert_eq!(
+            resolve_color_choice(context_default, &args),
+            ColorChoice::Never
+        )
     }
 }
