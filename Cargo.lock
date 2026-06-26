@@ -1138,9 +1138,9 @@ dependencies = [
 
 [[package]]
 name = "ion-rs"
-version = "1.0.0-rc.12"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5dc4f9082317e60fd5f7ffbef56f42b37ccce84c8e28c3afae8990c439867186"
+checksum = "8a5bcc8f6c6984869c017fcd205963c411f0c5e89a4cb31577f8914304c8e5c8"
 dependencies = [
  "arrayvec",
  "base64 0.12.3",
@@ -1159,6 +1159,7 @@ dependencies = [
  "rustc-hash",
  "serde",
  "serde_with",
+ "sha2 0.9.9",
  "smallvec",
  "thiserror 1.0.69",
  "visibility",
@@ -1167,9 +1168,9 @@ dependencies = [
 
 [[package]]
 name = "ion-schema"
-version = "0.16.0"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68c9f969910a7cd961148e05dff15316242dc14fc35c096362b37e1bb61451a8"
+checksum = "feb186aa207207c87eccbc9bd80c2225f3753a3c0914176cb7c47c0d50813628"
 dependencies = [
  "half",
  "ion-rs",

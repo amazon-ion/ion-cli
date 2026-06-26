@@ -141,8 +141,10 @@ fn filter_and_print(
 /// Wraps an `Element` so we can:
 ///  1. Define implementations of common traits like `Ord` and `Eq` without `Element` itself needing to.
 ///  2. Keep all logic related to `jq` behavior in one place.
-#[derive(Clone, Eq, Debug)]
+#[derive(Clone, Debug)]
 struct JaqElement(Element);
+
+impl Eq for JaqElement {}
 //TODO: move to sibling module so that people can't construct this and have to go through 'from'
 // this will allow consistent construction/transformation rules e.g. field deduplication
 
@@ -212,8 +214,7 @@ impl FromIterator<Self> for JaqElement {
 
 impl PartialEq<Self> for JaqElement {
     fn eq(&self, other: &Self) -> bool {
-        // TODO: Should this use IonData::eq instead?
-        self.0.eq(&other.0)
+        IonData::from(&self.0).eq(&IonData::from(&other.0))
     }
 }
 
@@ -295,7 +296,7 @@ impl Add for JaqElement {
             (Struct(a), Struct(b)) => a.clone_builder().with_fields(b.fields()).build().into(),
 
             // Number types, only lossless operations
-            (Int(a), Int(b)) => (a + b).into(),
+            (Int(a), Int(b)) => a.add(b).into(),
             (Float(a), Float(b)) => a.add(b).into(),
             (Decimal(a), Decimal(b)) => a.add(b).into(),
             (Decimal(a), Int(b)) | (Int(b), Decimal(a)) => a.add(b).into(),
@@ -337,7 +338,7 @@ impl Sub for JaqElement {
             (SExp(a), SExp(b)) => ion_rs::SExp::from_iter(remove_elements(a, &b)).into(),
 
             // Number types, only lossless operations
-            (Int(a), Int(b)) => (a + -b).into(), //TODO: use bare - with ion-rs > rc.11
+            (Int(a), Int(b)) => a.add(b.neg()).into(),
             (Float(a), Float(b)) => a.sub(b).into(),
             (Decimal(a), Decimal(b)) => DecimalMath::sub(a, b).into(),
             (Decimal(a), Int(b)) => DecimalMath::sub(a, b).into(),
@@ -490,7 +491,7 @@ impl Neg for JaqElement {
 
         let elt: Element = match val {
             // Only number types can be negated
-            Int(a) => (-a).into(),
+            Int(a) => a.neg().into(),
             Float(a) => (-a).into(),
             Decimal(a) => (-a.into_big_decimal()).into_decimal().into(),
 
@@ -672,7 +673,7 @@ impl jaq_std::ValT for JaqElement {
 pub(crate) mod ion_math {
     use bigdecimal::num_bigint::BigInt;
     use bigdecimal::{BigDecimal, ToPrimitive};
-    use ion_rs::decimal::coefficient::Sign;
+    use ion_rs::decimal::Sign;
     use ion_rs::{Decimal, Int, Value};
 
     /// We can't provide math traits for Decimal directly, so we have a helper trait
