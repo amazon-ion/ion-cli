@@ -5,9 +5,15 @@ use anyhow::Result;
 use anyhow::{bail, Context};
 use clap::builder::ValueParser;
 use clap::{crate_authors, crate_version, Arg, ArgAction, ArgMatches, Command as ClapCommand};
-use ion_rs::Format::Binary;
-use ion_rs::{Format, IonEncoding, TextFormat};
+use ion_rs::{IonEncoding, TextFormat};
 use std::fs::File;
+
+/// Local replacement for the `Format` enum that was removed from ion-rs in 1.0.0.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub(crate) enum Format {
+    Text(TextFormat),
+    Binary,
+}
 use std::io::IsTerminal;
 use std::io::Write;
 use termcolor::{ColorChoice, StandardStream, StandardStreamLock};
@@ -278,7 +284,7 @@ impl CommandIo<'_> {
             (unrecognized, _) => bail!("unrecognized Ion version '{unrecognized}'"),
         };
 
-        let color = if format == Binary {
+        let color = if format == Format::Binary {
             ColorChoice::Never
         } else {
             let default_use_color = std::io::stdout().is_terminal();

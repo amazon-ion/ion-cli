@@ -1,3 +1,4 @@
+use crate::commands::Format;
 use anyhow::{bail, Result};
 use ion_rs::*;
 use std::io::Write;

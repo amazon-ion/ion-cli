@@ -1,6 +1,7 @@
+use crate::commands::Format;
 use crate::file_writer::FileWriter;
 use anyhow::bail;
-use ion_rs::{v1_0, v1_1, Format, IonEncoding, Writer};
+use ion_rs::{v1_0, v1_1, IonEncoding, Writer};
 use ion_rs::{IonResult, WriteAsIon};
 use std::io;
 use std::io::Write;
