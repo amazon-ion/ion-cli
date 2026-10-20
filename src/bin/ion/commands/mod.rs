@@ -28,6 +28,7 @@ pub mod head;
 pub mod inspect;
 pub mod jq;
 pub mod primitive;
+pub mod sanitize;
 pub mod schema;
 pub mod stats;
 pub mod structural_recursion;
