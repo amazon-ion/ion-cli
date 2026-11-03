@@ -351,3 +351,86 @@ mod code_gen_tests {
         Ok(())
     }
 }
+
+/// Tests for `ion cat` comment preservation (GitHub issue #225).
+///
+/// Ion comments are not part of the data model, so `ion cat` historically discarded them. These
+/// tests verify that comments appearing between top-level values are now preserved by default for
+/// text output, that `--strip-comments` restores the old behavior, and that comment-like byte
+/// sequences inside string/clob literals are never mistaken for comments.
+mod comment_preservation {
+    use assert_cmd::Command;
+    use std::time::Duration;
+
+    /// Runs `ion cat` with the given extra args and stdin, returning stdout as a `String`.
+    fn cat(extra_args: &[&str], stdin: &str) -> String {
+        let mut cmd = Command::cargo_bin("ion").unwrap();
+        cmd.arg("cat").args(extra_args).timeout(Duration::new(5, 0));
+        cmd.write_stdin(stdin.to_owned());
+        let output = cmd.assert().success().get_output().stdout.clone();
+        String::from_utf8(output).expect("ion cat produced non-UTF-8 text output")
+    }
+
+    #[test]
+    fn preserves_top_level_line_comment_by_default() {
+        let out = cat(&[], "// a leading comment\n42\n");
+        assert!(out.contains("// a leading comment"), "got: {out:?}");
+        assert!(out.contains("42"), "got: {out:?}");
+    }
+
+    #[test]
+    fn preserves_block_comment_between_values() {
+        let out = cat(&[], "1\n/* block comment */\n2\n");
+        assert!(out.contains("/* block comment */"), "got: {out:?}");
+    }
+
+    #[test]
+    fn preserves_trailing_comment_after_last_value() {
+        let out = cat(&[], "42\n// trailing comment\n");
+        assert!(out.contains("// trailing comment"), "got: {out:?}");
+    }
+
+    #[test]
+    fn preserves_comment_when_no_values_present() {
+        let out = cat(&[], "// only a comment\n");
+        assert!(out.contains("// only a comment"), "got: {out:?}");
+    }
+
+    #[test]
+    fn strip_comments_flag_discards_comments() {
+        let out = cat(&["--strip-comments"], "// a comment\n42\n");
+        assert!(
+            !out.contains("a comment"),
+            "comment should be stripped, got: {out:?}"
+        );
+        assert!(out.contains("42"), "got: {out:?}");
+    }
+
+    #[test]
+    fn comment_markers_inside_strings_are_not_treated_as_comments() {
+        // The `//` and `/*` here are string content, not comments. They must appear verbatim
+        // inside the quoted string and must not cause spurious comment extraction.
+        let out = cat(&[], "\"not // a comment or /* block */\"\n");
+        assert!(
+            out.contains("not // a comment or /* block */"),
+            "got: {out:?}"
+        );
+    }
+
+    #[test]
+    fn binary_output_succeeds_and_drops_comments() {
+        // Binary Ion has no comments; the command must still succeed and emit valid binary Ion.
+        let mut cmd = Command::cargo_bin("ion").unwrap();
+        cmd.arg("cat")
+            .args(["-f", "binary"])
+            .timeout(Duration::new(5, 0))
+            .write_stdin("// a comment\n42\n".to_owned());
+        let output = cmd.assert().success().get_output().stdout.clone();
+        // Binary Ion 1.0 streams start with the binary version marker 0xE0 0x01 0x00 0xEA.
+        assert_eq!(
+            &output[0..4],
+            &[0xE0, 0x01, 0x00, 0xEA],
+            "expected a binary IVM"
+        );
+    }
+}

@@ -47,6 +47,18 @@ You can use the `--format`/`-f` flag to specify the desired format. The supporte
 * `lines` - Text Ion that places each value on its own line.
 * `binary`- Binary Ion
 
+#### Comments
+
+Ion comments are not part of the Ion data model, but `ion cat` preserves comments that appear
+between top-level values when the output is text. Use `--strip-comments` to discard them instead:
+
+```shell
+ion cat --strip-comments my_file.ion
+```
+
+Comments are always discarded when the output format is `binary` (binary Ion has no comments), and
+comments that appear *inside* a value (for example, between a struct's fields) are not preserved.
+
 ### Converting between Ion formats
 
 Convert Ion text (or JSON) to Ion binary:
